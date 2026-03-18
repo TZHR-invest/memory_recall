@@ -27,7 +27,11 @@ class Settings(BaseSettings):
     VOLC_API_KEY: Optional[str] = None
     VOLC_API_BASE: str = "https://ark.cn-beijing.volces.com/api/v3"
     VOLC_LLM_MODEL: str = "doubao-seed-2-0-pro-260215"
-    VOLC_EMBEDDING_MODEL: str = "doubao-embedding-vision-251215"
+    
+    # 火山引擎 LAS 服务配置（多模态向量化）
+    LAS_API_KEY: Optional[str] = None
+    LAS_API_BASE: str = "https://operator.las.cn-beijing.volces.com/api/v1"
+    LAS_EMBEDDING_MODEL: str = "doubao-embedding-vision-250615"
     
     # 文件存储
     STORAGE_PATH: str = "/data/storage"

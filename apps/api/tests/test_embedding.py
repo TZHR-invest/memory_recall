@@ -119,10 +119,12 @@ async def test_vector_storage():
 if __name__ == "__main__":
     import asyncio
     
-    # 检查 API Key
-    if not os.getenv("VOLC_API_KEY"):
-        print("❌ 错误：未配置 VOLC_API_KEY 环境变量")
+    # 检查 API Key（LAS 或 VOLC）
+    if not os.getenv("LAS_API_KEY") and not os.getenv("VOLC_API_KEY"):
+        print("❌ 错误：未配置 LAS_API_KEY 或 VOLC_API_KEY 环境变量")
         print("\n请在 .env 文件中配置：")
+        print("LAS_API_KEY=your_api_key_here")
+        print("或")
         print("VOLC_API_KEY=your_api_key_here")
         sys.exit(1)
     
