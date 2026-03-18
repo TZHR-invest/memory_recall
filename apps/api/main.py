@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 from src.config import settings
 from src.database import db
 from src.routes import health
+from src.routes import memories
 
 
 @asynccontextmanager
@@ -42,6 +43,7 @@ app.add_middleware(
 
 # 注册路由
 app.include_router(health.router, tags=["健康检查"])
+app.include_router(memories.router, prefix="/api/v1")
 
 
 @app.get("/")
