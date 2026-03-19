@@ -21,8 +21,8 @@ class SearchRequest(BaseModel):
     """搜索请求"""
     query: str = Field(..., description="搜索查询文本")
     limit: int = Field(10, ge=1, le=100, description="返回数量限制")
-    min_similarity: float = Field(0.1, ge=0.0, le=1.0, description="最小相似度阈值")
-    hybrid_weight: float = Field(0.7, ge=0.0, le=1.0, description="向量检索权重")
+    min_similarity: float = Field(0.25, ge=0.0, le=1.0, description="最小相似度阈值（默认0.25，提高准确性）")
+    hybrid_weight: float = Field(0.6, ge=0.0, le=1.0, description="向量检索权重（默认0.6，增加关键词权重）")
 
 
 class RecallRequest(BaseModel):
@@ -30,7 +30,7 @@ class RecallRequest(BaseModel):
     query: str = Field(..., description="自然语言查询")
     limit: int = Field(10, ge=1, le=100, description="返回数量限制")
     use_parser: bool = Field(True, description="是否使用自然语言解析")
-    min_similarity: float = Field(0.1, ge=0.0, le=1.0, description="最小相似度阈值")
+    min_similarity: float = Field(0.25, ge=0.0, le=1.0, description="最小相似度阈值（默认0.25）")
 
 
 class NaturalLanguageQuery(BaseModel):
