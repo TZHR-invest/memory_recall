@@ -802,8 +802,11 @@
     </div>
 
     <script>
-        // API Configuration
-        const API_BASE = 'http://192.168.0.206:8000';
+        // API Configuration - 动态检测 API 地址
+        const API_BASE = window.location.hostname === 'localhost' 
+            ? 'http://localhost:8000' 
+            : `http://${window.location.hostname}:8000`;
+        console.log('API Base:', API_BASE);
         let currentPage = 1;
         const pageSize = 10;
 

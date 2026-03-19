@@ -428,7 +428,8 @@ async def recall_memories(request: RecallRequest):
             time_range=time_range,
             location_filter=location_filter,
             person_filter=person_filter,
-            min_similarity=request.min_similarity
+            min_similarity=request.min_similarity,
+            keywords=parsed_query.get("keywords") if parsed_query else None
         )
         
         return {

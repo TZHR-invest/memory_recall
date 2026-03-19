@@ -27,7 +27,8 @@ class RecallService:
         person_filter: Optional[str] = None,
         tag_filter: Optional[str] = None,
         min_similarity: float = 0.1,
-        hybrid_weight: float = 0.7
+        hybrid_weight: float = 0.7,
+        keywords: Optional[List[str]] = None
     ) -> List[Dict[str, Any]]:
         """
         混合检索记忆
@@ -41,6 +42,7 @@ class RecallService:
             tag_filter: 标签过滤
             min_similarity: 最小相似度阈值
             hybrid_weight: 混合权重（向量相似度权重，1-hybrid_weight 为关键词权重）
+            keywords: 预提取的关键词列表（来自 LLM 解析）
         
         Returns:
             检索结果列表，包含记忆数据和相似度分数
@@ -68,7 +70,8 @@ class RecallService:
             time_range,
             location_filter,
             person_filter,
-            tag_filter
+            tag_filter,
+            keywords=keywords
         )
         
         # 4. 混合排序
@@ -168,7 +171,8 @@ class RecallService:
         time_range: Optional[Dict[str, datetime]] = None,
         location_filter: Optional[str] = None,
         person_filter: Optional[str] = None,
-        tag_filter: Optional[str] = None
+        tag_filter: Optional[str] = None,
+        keywords: Optional[List[str]] = None
     ) -> List[Dict[str, Any]]:
         """
         关键词检索
@@ -180,6 +184,7 @@ class RecallService:
             location_filter: 地点过滤
             person_filter: 人物过滤
             tag_filter: 标签过滤
+            keywords: 预提取的关键词列表
         
         Returns:
             检索结果列表
@@ -196,7 +201,11 @@ class RecallService:
         """
         
         # 处理查询文本（支持中文）
-        query_keywords = " | ".join(query.split())  # 使用 OR 连接关键词
+        # 使用传入的关键词，如果没有则降级到空格分割
+        if keywords:
+            query_keywords = " | ".join(keywords)
+        else:
+            query_keywords = " | ".join(query.split())
         
         params = [query_keywords]
         param_count = 1
