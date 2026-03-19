@@ -183,6 +183,64 @@
             margin-top: 20px;
         }
 
+        /* Tabs */
+        .tabs {
+            display: flex;
+            border-bottom: 2px solid #e0e0e0;
+            margin-bottom: 20px;
+        }
+
+        .tab {
+            padding: 12px 24px;
+            border: none;
+            background: none;
+            color: #666;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s;
+            border-bottom: 3px solid transparent;
+            margin-bottom: -2px;
+        }
+
+        .tab:hover {
+            color: #667eea;
+        }
+
+        .tab.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+            font-weight: 500;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        /* Filter Section */
+        .filter-section {
+            background: #f9f9f9;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .filter-row {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            align-items: flex-end;
+        }
+
+        .filter-row .form-group {
+            flex: 1;
+            min-width: 200px;
+            margin-bottom: 0;
+        }
+
         /* Memory List */
         .memory-list {
             display: grid;
@@ -461,64 +519,6 @@
         .modal-close:hover {
             color: #333;
         }
-
-        /* Tabs */
-        .tabs {
-            display: flex;
-            border-bottom: 2px solid #e0e0e0;
-            margin-bottom: 20px;
-        }
-
-        .tab {
-            padding: 12px 24px;
-            border: none;
-            background: none;
-            color: #666;
-            font-size: 16px;
-            cursor: pointer;
-            transition: all 0.3s;
-            border-bottom: 3px solid transparent;
-            margin-bottom: -2px;
-        }
-
-        .tab:hover {
-            color: #667eea;
-        }
-
-        .tab.active {
-            color: #667eea;
-            border-bottom-color: #667eea;
-            font-weight: 500;
-        }
-
-        .tab-content {
-            display: none;
-        }
-
-        .tab-content.active {
-            display: block;
-        }
-
-        /* Filter Section */
-        .filter-section {
-            background: #f9f9f9;
-            padding: 20px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-        }
-
-        .filter-row {
-            display: flex;
-            gap: 15px;
-            flex-wrap: wrap;
-            align-items: flex-end;
-        }
-
-        .filter-row .form-group {
-            flex: 1;
-            min-width: 200px;
-            margin-bottom: 0;
-        }
     </style>
 </head>
 <body>
@@ -662,6 +662,12 @@
                         <h3 style="margin-bottom: 10px;">解析结果</h3>
                         <div id="parsed-details" style="background: #f9f9f9; padding: 15px; border-radius: 8px;"></div>
                     </div>
+                    
+                    <!-- 智能召回结果 -->
+                    <div id="recall-results" class="card" style="display: none; margin-top: 20px;">
+                        <h3>召回结果</h3>
+                        <div id="recall-result-list" class="memory-list"></div>
+                    </div>
                 </div>
 
                 <!-- 高级筛选 -->
@@ -670,7 +676,7 @@
                         <div class="filter-row">
                             <div class="form-group">
                                 <label>时间范围</label>
-                                <select id="filter-time" onchange="toggleDateInputs()">
+                                <select id="filter-time">
                                     <option value="">不限</option>
                                     <option value="today">今天</option>
                                     <option value="week">本周</option>
@@ -686,6 +692,7 @@
                                 <label>结束日期</label>
                                 <input type="date" id="filter-end-date" disabled>
                             </div>
+                            <button class="btn btn-primary" onclick="searchByTime()" style="align-self: flex-end;">按时间筛选</button>
                         </div>
                     </div>
                     
@@ -695,10 +702,17 @@
                                 <label>地点</label>
                                 <input type="text" id="filter-location" placeholder="输入地点关键词">
                             </div>
+                            <button class="btn btn-primary" onclick="searchByLocation()" style="align-self: flex-end;">按地点筛选</button>
+                        </div>
+                    </div>
+                    
+                    <div class="filter-section">
+                        <div class="filter-row">
                             <div class="form-group">
                                 <label>人物</label>
                                 <input type="text" id="filter-person" placeholder="输入人物姓名">
                             </div>
+                            <button class="btn btn-primary" onclick="searchByPerson()" style="align-self: flex-end;">按人物筛选</button>
                         </div>
                     </div>
                     
@@ -715,8 +729,14 @@
                         </div>
                     </div>
                     
-                    <button class="btn btn-primary" onclick="advancedSearch()">筛选</button>
+                    <button class="btn btn-primary" onclick="advancedSearch()">综合筛选</button>
                     <button class="btn btn-secondary" onclick="clearFilters()" style="margin-left: 10px;">清空</button>
+                    
+                    <!-- 筛选结果 -->
+                    <div id="filter-results" class="card" style="display: none; margin-top: 20px;">
+                        <h3>筛选结果</h3>
+                        <div id="filter-result-list" class="memory-list"></div>
+                    </div>
                 </div>
             </div>
 
@@ -742,7 +762,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h2>记忆详情</h2>
-                <button class="modal-close" onclick="closeDetailModal()">&times;</button>
+                <button class="modal-close" onclick="closeModal()">&times;</button>
             </div>
             <div id="modal-detail-content"></div>
         </div>
@@ -840,38 +860,6 @@
             }
         }
 
-        // Tab Navigation for Search Page
-        function showSearchTab(tabName) {
-            // Update tabs
-            document.querySelectorAll('.tab').forEach(tab => {
-                tab.classList.remove('active');
-            });
-            event.target.classList.add('active');
-
-            // Hide all tab contents
-            document.querySelectorAll('.tab-content').forEach(content => {
-                content.classList.remove('active');
-            });
-
-            // Show selected tab content
-            document.getElementById(`tab-${tabName}`).classList.add('active');
-        }
-
-        // Toggle Date Inputs
-        function toggleDateInputs() {
-            const timeFilter = document.getElementById('filter-time').value;
-            const startDate = document.getElementById('filter-start-date');
-            const endDate = document.getElementById('filter-end-date');
-            
-            if (timeFilter === 'custom') {
-                startDate.disabled = false;
-                endDate.disabled = false;
-            } else {
-                startDate.disabled = true;
-                endDate.disabled = true;
-            }
-        }
-
         // Toast Notification
         function showToast(message, type = 'info') {
             const toast = document.createElement('div');
@@ -894,7 +882,7 @@
                     },
                 };
 
-                if (data && method !== 'GET') {
+                if (data) {
                     options.body = JSON.stringify(data);
                 }
 
@@ -1043,11 +1031,13 @@
 
         // Render Memory Item
         function renderMemoryItem(memory) {
+            // 支持两种数据格式：嵌套对象（列表API）和扁平字段（搜索API）
             const timeValue = memory.time?.value || memory.time_value;
             const time = timeValue ? new Date(timeValue).toLocaleDateString('zh-CN') : '-';
             
             const locationName = memory.location?.name || memory.location_name || '-';
             
+            // people 可能是数组或 JSON 字符串
             let people = '-';
             if (memory.people) {
                 if (Array.isArray(memory.people)) {
@@ -1062,6 +1052,7 @@
                 }
             }
             
+            // emotion 可能是对象或 JSON 字符串
             let emotion = '-';
             if (memory.emotion) {
                 if (typeof memory.emotion === 'object') {
@@ -1076,6 +1067,7 @@
                 }
             }
             
+            // tags 可能是数组或 JSON 字符串
             let tags = [];
             if (memory.tags) {
                 if (Array.isArray(memory.tags)) {
@@ -1116,17 +1108,23 @@
                 return;
             }
 
-            let html = `<button ${currentPage === 1 ? 'disabled' : ''} onclick="loadMemories(${currentPage - 1})">上一页</button>`;
+            let html = `
+                <button ${currentPage === 1 ? 'disabled' : ''} onclick="loadMemories(${currentPage - 1})">上一页</button>
+            `;
 
             for (let i = 1; i <= totalPages; i++) {
                 if (i === 1 || i === totalPages || (i >= currentPage - 2 && i <= currentPage + 2)) {
-                    html += `<button class="${i === currentPage ? 'active' : ''}" onclick="loadMemories(${i})">${i}</button>`;
+                    html += `
+                        <button class="${i === currentPage ? 'active' : ''}" onclick="loadMemories(${i})">${i}</button>
+                    `;
                 } else if (i === currentPage - 3 || i === currentPage + 3) {
                     html += '<button disabled>...</button>';
                 }
             }
 
-            html += `<button ${currentPage === totalPages ? 'disabled' : ''} onclick="loadMemories(${currentPage + 1})">下一页</button>`;
+            html += `
+                <button ${currentPage === totalPages ? 'disabled' : ''} onclick="loadMemories(${currentPage + 1})">下一页</button>
+            `;
 
             container.innerHTML = html;
         }
@@ -1194,10 +1192,10 @@
                             <div class="field-value">${new Date(memory.created_at).toLocaleString('zh-CN')}</div>
                         </div>
                         
-                        <div class="btn-group">
-                            <button class="btn btn-primary" onclick="openEditModal('${memory.id}')">✏️ 编辑</button>
-                            <button class="btn btn-warning" onclick="archiveMemory('${memory.id}')">📦 归档</button>
-                            <button class="btn btn-danger" onclick="deleteMemory('${memory.id}')">🗑️ 删除</button>
+                        <div style="margin-top: 20px; display: flex; gap: 10px; flex-wrap: wrap;">
+                            <button class="btn btn-primary" onclick="editMemory('${memory.id}', \`${memory.content.replace(/`/g, '\\`').replace(/\n/g, '\\n')}\`)">编辑</button>
+                            <button class="btn" style="background: #f59e0b; color: white;" onclick="archiveMemory('${memory.id}')">归档</button>
+                            <button class="btn btn-danger" onclick="deleteMemory('${memory.id}')">删除</button>
                         </div>
                     </div>
                 `;
@@ -1209,124 +1207,28 @@
             }
         }
 
-        // Close Detail Modal
-        function closeDetailModal() {
+        // Close Modal
+        function closeModal() {
             document.getElementById('modal-detail').classList.remove('show');
         }
 
-        // Open Edit Modal
-        async function openEditModal(memoryId) {
-            try {
-                const memory = await apiCall(`/api/v1/memories/${memoryId}`);
-                
-                // 填充表单
-                document.getElementById('edit-memory-id').value = memoryId;
-                document.getElementById('edit-content').value = memory.content || '';
-                
-                // 时间
-                if (memory.time && memory.time.value) {
-                    const date = new Date(memory.time.value);
-                    const localDateTime = date.toISOString().slice(0, 16);
-                    document.getElementById('edit-time').value = localDateTime;
-                } else {
-                    document.getElementById('edit-time').value = '';
-                }
-                
-                // 地点
-                document.getElementById('edit-location').value = memory.location?.name || '';
-                
-                // 人物
-                if (memory.people && Array.isArray(memory.people)) {
-                    document.getElementById('edit-people').value = memory.people.map(p => p.name).join(', ');
-                } else {
-                    document.getElementById('edit-people').value = '';
-                }
-                
-                // 标签
-                if (memory.tags && Array.isArray(memory.tags)) {
-                    document.getElementById('edit-tags').value = memory.tags.join(', ');
-                } else {
-                    document.getElementById('edit-tags').value = '';
-                }
-                
-                // 情绪
-                document.getElementById('edit-emotion').value = memory.emotion?.type || '';
-                document.getElementById('edit-emotion-intensity').value = memory.emotion?.intensity || 5;
-                
-                // 关闭详情模态框，打开编辑模态框
-                closeDetailModal();
-                document.getElementById('modal-edit').classList.add('show');
-            } catch (error) {
-                showToast('加载记忆失败：' + error.message, 'error');
-            }
-        }
-
-        // Close Edit Modal
-        function closeEditModal() {
-            document.getElementById('modal-edit').classList.remove('show');
-        }
-
-        // Save Edit Memory
-        async function saveEditMemory() {
-            const memoryId = document.getElementById('edit-memory-id').value;
-            const content = document.getElementById('edit-content').value.trim();
-            
-            if (!content) {
-                showToast('请输入记忆内容', 'error');
+        // Edit Memory
+        function editMemory(memoryId, currentContent) {
+            const newContent = prompt('编辑记忆内容：', currentContent);
+            if (newContent === null || newContent.trim() === '') {
                 return;
             }
-            
-            // 构建更新数据
-            const updates = {
-                content: content
-            };
-            
-            // 时间
-            const timeValue = document.getElementById('edit-time').value;
-            if (timeValue) {
-                updates.time = {
-                    value: new Date(timeValue).toISOString(),
-                    source: 'manual'
-                };
-            }
-            
-            // 地点
-            const locationName = document.getElementById('edit-location').value.trim();
-            if (locationName) {
-                updates.location = {
-                    name: locationName,
-                    need_confirm: false
-                };
-            }
-            
-            // 人物
-            const peopleInput = document.getElementById('edit-people').value.trim();
-            if (peopleInput) {
-                updates.people = peopleInput.split(',').map(name => ({
-                    name: name.trim(),
-                    need_confirm: false
-                }));
-            }
-            
-            // 标签
-            const tagsInput = document.getElementById('edit-tags').value.trim();
-            if (tagsInput) {
-                updates.tags = tagsInput.split(',').map(t => t.trim()).filter(t => t);
-            }
-            
-            // 情绪
-            const emotionType = document.getElementById('edit-emotion').value;
-            if (emotionType) {
-                updates.emotion = {
-                    type: emotionType,
-                    intensity: parseInt(document.getElementById('edit-emotion-intensity').value)
-                };
-            }
-            
+            updateMemory(memoryId, newContent);
+        }
+
+        // Update Memory
+        async function updateMemory(memoryId, newContent) {
             try {
-                await apiCall(`/api/v1/memories/${memoryId}`, 'PUT', updates);
-                showToast('记忆更新成功！', 'success');
-                closeEditModal();
+                await apiCall(`/api/v1/memories/${memoryId}`, 'PUT', {
+                    content: newContent
+                });
+                showToast('记忆已更新', 'success');
+                closeModal();
                 loadRecentMemories();
                 loadMemories(currentPage);
             } catch (error) {
@@ -1336,17 +1238,13 @@
 
         // Archive Memory
         async function archiveMemory(memoryId) {
-            if (!confirm('确定要归档这条记忆吗？归档后记忆将不在列表中显示。')) {
+            if (!confirm('确定要归档这条记忆吗？归档后可在后台查看。')) {
                 return;
             }
-            
             try {
-                // 使用 PUT 方法更新状态
-                await apiCall(`/api/v1/memories/${memoryId}`, 'PUT', {
-                    status: 'archived'
-                });
+                await apiCall(`/api/v1/memories/${memoryId}/archive`, 'PATCH');
                 showToast('记忆已归档', 'success');
-                closeDetailModal();
+                closeModal();
                 loadRecentMemories();
                 loadMemories(currentPage);
             } catch (error) {
@@ -1363,7 +1261,7 @@
             try {
                 await apiCall(`/api/v1/memories/${memoryId}`, 'DELETE');
                 showToast('记忆已删除', 'success');
-                closeDetailModal();
+                closeModal();
                 loadRecentMemories();
                 loadMemories(currentPage);
             } catch (error) {
@@ -1400,6 +1298,7 @@
                 } else {
                     container.innerHTML = data.results.map(result => {
                         const html = renderMemoryItem(result);
+                        // Add similarity score
                         const similarityPercent = (result.similarity * 100).toFixed(1);
                         return html.replace('<div class="content">', `<div class="content"><small style="color: #667eea;">相关度：${similarityPercent}%</small><br>`);
                     }).join('');
@@ -1409,155 +1308,6 @@
             } catch (error) {
                 showToast('搜索失败：' + error.message, 'error');
             }
-        }
-
-        // Recall Memories (Natural Language)
-        async function recallMemories() {
-            const query = document.getElementById('recall-query').value.trim();
-            if (!query) {
-                showToast('请输入查询内容', 'error');
-                return;
-            }
-
-            const limit = parseInt(document.getElementById('recall-limit').value);
-
-            try {
-                const data = await apiCall('/api/v1/memories/recall', 'POST', {
-                    query,
-                    limit,
-                    use_parser: true
-                });
-
-                // 显示解析结果
-                if (data.parsed_query) {
-                    const parsedInfo = document.getElementById('parsed-query-info');
-                    const parsedDetails = document.getElementById('parsed-details');
-                    
-                    let parsedHtml = '';
-                    if (data.parsed_query.time_range) {
-                        parsedHtml += `<p><strong>时间范围：</strong>${data.parsed_query.time_range.start || ''} 至 ${data.parsed_query.time_range.end || ''}</p>`;
-                    }
-                    if (data.parsed_query.location) {
-                        parsedHtml += `<p><strong>地点：</strong>${data.parsed_query.location}</p>`;
-                    }
-                    if (data.parsed_query.people && data.parsed_query.people.length > 0) {
-                        parsedHtml += `<p><strong>人物：</strong>${data.parsed_query.people.join(', ')}</p>`;
-                    }
-                    if (data.parsed_query.keywords && data.parsed_query.keywords.length > 0) {
-                        parsedHtml += `<p><strong>关键词：</strong>${data.parsed_query.keywords.join(', ')}</p>`;
-                    }
-                    
-                    if (parsedHtml) {
-                        parsedDetails.innerHTML = parsedHtml;
-                        parsedInfo.style.display = 'block';
-                    }
-                }
-
-                // 显示搜索结果
-                const container = document.getElementById('search-result-list');
-                const resultsCard = document.getElementById('search-results');
-
-                if (!data.results || data.results.length === 0) {
-                    container.innerHTML = `
-                        <div class="empty-state">
-                            <div class="icon">🔍</div>
-                            <p>没有找到相关记忆</p>
-                        </div>
-                    `;
-                } else {
-                    container.innerHTML = data.results.map(result => {
-                        const html = renderMemoryItem(result);
-                        const similarityPercent = (result.similarity * 100).toFixed(1);
-                        return html.replace('<div class="content">', `<div class="content"><small style="color: #667eea;">相关度：${similarityPercent}%</small><br>`);
-                    }).join('');
-                }
-
-                resultsCard.style.display = 'block';
-            } catch (error) {
-                showToast('召回失败：' + error.message, 'error');
-            }
-        }
-
-        // Advanced Search
-        async function advancedSearch() {
-            const timeFilter = document.getElementById('filter-time').value;
-            const location = document.getElementById('filter-location').value.trim();
-            const person = document.getElementById('filter-person').value.trim();
-            const tags = document.getElementById('filter-tags').value.trim();
-            const keyword = document.getElementById('filter-keyword-adv').value.trim();
-
-            // 构建查询参数
-            let queryParams = [];
-            
-            if (keyword) {
-                queryParams.push(`keyword=${encodeURIComponent(keyword)}`);
-            }
-            
-            if (location) {
-                queryParams.push(`location=${encodeURIComponent(location)}`);
-            }
-            
-            if (person) {
-                queryParams.push(`person=${encodeURIComponent(person)}`);
-            }
-            
-            if (tags) {
-                queryParams.push(`tags=${encodeURIComponent(tags)}`);
-            }
-            
-            // 时间范围
-            if (timeFilter === 'custom') {
-                const startDate = document.getElementById('filter-start-date').value;
-                const endDate = document.getElementById('filter-end-date').value;
-                if (startDate && endDate) {
-                    queryParams.push(`start_date=${startDate}`);
-                    queryParams.push(`end_date=${endDate}`);
-                }
-            } else if (timeFilter) {
-                queryParams.push(`time_range=${timeFilter}`);
-            }
-
-            try {
-                let endpoint = '/api/v1/memories?limit=50&offset=0';
-                if (queryParams.length > 0) {
-                    endpoint += '&' + queryParams.join('&');
-                }
-
-                const data = await apiCall(endpoint);
-                const container = document.getElementById('search-result-list');
-                const resultsCard = document.getElementById('search-results');
-
-                if (!data.memories || data.memories.length === 0) {
-                    container.innerHTML = `
-                        <div class="empty-state">
-                            <div class="icon">🔍</div>
-                            <p>没有找到符合条件的记忆</p>
-                        </div>
-                    `;
-                } else {
-                    container.innerHTML = data.memories.map(memory => renderMemoryItem(memory)).join('');
-                }
-
-                resultsCard.style.display = 'block';
-            } catch (error) {
-                showToast('筛选失败：' + error.message, 'error');
-            }
-        }
-
-        // Clear Filters
-        function clearFilters() {
-            document.getElementById('filter-time').value = '';
-            document.getElementById('filter-start-date').value = '';
-            document.getElementById('filter-end-date').value = '';
-            document.getElementById('filter-location').value = '';
-            document.getElementById('filter-person').value = '';
-            document.getElementById('filter-tags').value = '';
-            document.getElementById('filter-keyword-adv').value = '';
-            
-            document.getElementById('filter-start-date').disabled = true;
-            document.getElementById('filter-end-date').disabled = true;
-            
-            showToast('筛选条件已清空', 'info');
         }
 
         // Load Detailed Stats
@@ -1619,24 +1369,261 @@
             return div.innerHTML;
         }
 
+        // Search Tab Switching
+        function showSearchTab(tab) {
+            // Update tab buttons
+            document.querySelectorAll('.tabs .tab').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+            
+            // Update tab content
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            document.getElementById(`tab-${tab}`).classList.add('active');
+        }
+
+        // Natural Language Recall
+        async function recallMemories() {
+            const query = document.getElementById('recall-query').value.trim();
+            if (!query) {
+                showToast('请输入查询内容', 'error');
+                return;
+            }
+
+            const limit = parseInt(document.getElementById('recall-limit').value);
+
+            try {
+                const data = await apiCall('/api/v1/memories/recall', 'POST', {
+                    query,
+                    limit
+                });
+
+                // 显示解析结果
+                if (data.parsed_query) {
+                    const parsedInfo = document.getElementById('parsed-query-info');
+                    const parsedDetails = document.getElementById('parsed-details');
+                    
+                    let parsedHtml = '';
+                    if (data.parsed_query.time) {
+                        parsedHtml += `<p><strong>时间：</strong>${data.parsed_query.time.original_text || data.parsed_query.time.value}</p>`;
+                    }
+                    if (data.parsed_query.location) {
+                        parsedHtml += `<p><strong>地点：</strong>${data.parsed_query.location.name || data.parsed_query.location}</p>`;
+                    }
+                    if (data.parsed_query.people && data.parsed_query.people.length > 0) {
+                        parsedHtml += `<p><strong>人物：</strong>${data.parsed_query.people.map(p => p.name).join('、')}</p>`;
+                    }
+                    if (data.parsed_query.keywords && data.parsed_query.keywords.length > 0) {
+                        parsedHtml += `<p><strong>关键词：</strong>${data.parsed_query.keywords.join('、')}</p>`;
+                    }
+                    
+                    if (parsedHtml) {
+                        parsedDetails.innerHTML = parsedHtml;
+                        parsedInfo.style.display = 'block';
+                    } else {
+                        parsedInfo.style.display = 'none';
+                    }
+                }
+
+                // 显示搜索结果
+                const container = document.getElementById('recall-result-list');
+                const resultsCard = document.getElementById('recall-results');
+
+                if (!data.results || data.results.length === 0) {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <div class="icon">🤖</div>
+                            <p>没有找到相关记忆</p>
+                        </div>
+                    `;
+                } else {
+                    container.innerHTML = data.results.map(result => {
+                        const html = renderMemoryItem(result);
+                        const similarityPercent = (result.similarity * 100).toFixed(1);
+                        return html.replace('<div class="content">', `<div class="content"><small style="color: #667eea;">相关度：${similarityPercent}%</small><br>`);
+                    }).join('');
+                }
+
+                resultsCard.style.display = 'block';
+            } catch (error) {
+                showToast('召回失败：' + error.message, 'error');
+            }
+        }
+
+        // Advanced Filter Functions
+        async function searchByTime() {
+            const startDate = document.getElementById('filter-start-date').value;
+            const endDate = document.getElementById('filter-end-date').value;
+            
+            if (!startDate && !endDate) {
+                showToast('请选择时间范围', 'error');
+                return;
+            }
+
+            try {
+                const params = new URLSearchParams();
+                if (startDate) params.append('start_date', startDate);
+                if (endDate) params.append('end_date', endDate);
+                params.append('limit', '20');
+
+                const data = await apiCall(`/api/v1/memories/search/time?${params.toString()}`);
+                
+                const container = document.getElementById('filter-result-list');
+                const resultsCard = document.getElementById('filter-results');
+
+                if (!data.results || data.results.length === 0) {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <div class="icon">📅</div>
+                            <p>没有找到该时间段的记忆</p>
+                        </div>
+                    `;
+                } else {
+                    container.innerHTML = data.results.map(memory => renderMemoryItem(memory)).join('');
+                }
+
+                resultsCard.style.display = 'block';
+            } catch (error) {
+                showToast('搜索失败：' + error.message, 'error');
+            }
+        }
+
+        async function searchByLocation() {
+            const location = document.getElementById('filter-location').value.trim();
+            
+            if (!location) {
+                showToast('请输入地点', 'error');
+                return;
+            }
+
+            try {
+                const data = await apiCall(`/api/v1/memories/search/location?location=${encodeURIComponent(location)}&limit=20`);
+                
+                const container = document.getElementById('filter-result-list');
+                const resultsCard = document.getElementById('filter-results');
+
+                if (!data.results || data.results.length === 0) {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <div class="icon">📍</div>
+                            <p>没有找到该地点的记忆</p>
+                        </div>
+                    `;
+                } else {
+                    container.innerHTML = data.results.map(memory => renderMemoryItem(memory)).join('');
+                }
+
+                resultsCard.style.display = 'block';
+            } catch (error) {
+                showToast('搜索失败：' + error.message, 'error');
+            }
+        }
+
+        async function searchByPerson() {
+            const person = document.getElementById('filter-person').value.trim();
+            
+            if (!person) {
+                showToast('请输入人物名称', 'error');
+                return;
+            }
+
+            try {
+                const data = await apiCall(`/api/v1/memories/search/person?person_name=${encodeURIComponent(person)}&limit=20`);
+                
+                const container = document.getElementById('filter-result-list');
+                const resultsCard = document.getElementById('filter-results');
+
+                if (!data.results || data.results.length === 0) {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <div class="icon">👥</div>
+                            <p>没有找到与该人物相关的记忆</p>
+                        </div>
+                    `;
+                } else {
+                    container.innerHTML = data.results.map(memory => renderMemoryItem(memory)).join('');
+                }
+
+                resultsCard.style.display = 'block';
+            } catch (error) {
+                showToast('搜索失败：' + error.message, 'error');
+            }
+        }
+
+        // Advanced Search (combine all filters)
+        async function advancedSearch() {
+            const keyword = document.getElementById('filter-keyword-adv').value.trim();
+            
+            if (!keyword) {
+                showToast('请输入关键词进行筛选', 'error');
+                return;
+            }
+
+            try {
+                const data = await apiCall('/api/v1/memories/search', 'POST', {
+                    query: keyword,
+                    limit: 20
+                });
+                
+                const container = document.getElementById('filter-result-list');
+                const resultsCard = document.getElementById('filter-results');
+
+                if (!data.results || data.results.length === 0) {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <div class="icon">🔍</div>
+                            <p>没有找到符合条件的记忆</p>
+                        </div>
+                    `;
+                } else {
+                    container.innerHTML = data.results.map(result => {
+                        const html = renderMemoryItem(result);
+                        const similarityPercent = (result.similarity * 100).toFixed(1);
+                        return html.replace('<div class="content">', `<div class="content"><small style="color: #667eea;">相关度：${similarityPercent}%</small><br>`);
+                    }).join('');
+                }
+
+                resultsCard.style.display = 'block';
+            } catch (error) {
+                showToast('筛选失败：' + error.message, 'error');
+            }
+        }
+
+        // Clear Filters
+        function clearFilters() {
+            document.getElementById('filter-time').value = '';
+            document.getElementById('filter-start-date').value = '';
+            document.getElementById('filter-end-date').value = '';
+            document.getElementById('filter-location').value = '';
+            document.getElementById('filter-person').value = '';
+            document.getElementById('filter-tags').value = '';
+            document.getElementById('filter-keyword-adv').value = '';
+            document.getElementById('filter-results').style.display = 'none';
+            showToast('已清空筛选条件', 'info');
+        }
+
         // Close modal on outside click
         document.getElementById('modal-detail').addEventListener('click', (e) => {
             if (e.target === document.getElementById('modal-detail')) {
-                closeDetailModal();
-            }
-        });
-
-        document.getElementById('modal-edit').addEventListener('click', (e) => {
-            if (e.target === document.getElementById('modal-edit')) {
-                closeEditModal();
+                closeModal();
             }
         });
 
         // Keyboard shortcuts
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
-                closeDetailModal();
-                closeEditModal();
+                closeModal();
+            }
+        });
+
+        // Enable custom date inputs when "custom" is selected
+        document.getElementById('filter-time')?.addEventListener('change', (e) => {
+            const startDate = document.getElementById('filter-start-date');
+            const endDate = document.getElementById('filter-end-date');
+            if (e.target.value === 'custom') {
+                startDate.disabled = false;
+                endDate.disabled = false;
+            } else {
+                startDate.disabled = true;
+                endDate.disabled = true;
             }
         });
     </script>
