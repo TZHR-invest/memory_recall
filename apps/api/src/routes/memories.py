@@ -318,9 +318,8 @@ async def search_memories(request: SearchRequest):
         recall_service = get_recall_service()
         
         # 提取关键词用于混合检索
-        from ..services.jieba_service import get_jieba_service
-        jieba_service = get_jieba_service()
-        keywords = jieba_service.extract_keywords(request.query, top_n=5)
+        from ..services.jieba_service import extract_keywords
+        keywords = extract_keywords(request.query, min_length=2)[:5]  # 取前5个关键词
         
         results = await recall_service.search(
             query=request.query,
