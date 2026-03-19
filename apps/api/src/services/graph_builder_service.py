@@ -5,7 +5,7 @@
 1. 使用 Function Calling 提取实体和关系
 2. 智能更新逻辑（LLM 判断 ADD/UPDATE/DELETE/NONE）
 3. 并发处理
-4. Phase 3: 场景自适应、智能确认、软过滤
+4. 智能确认和软过滤
 """
 
 import asyncio
@@ -13,13 +13,12 @@ import json
 from typing import List, Dict, Optional, Any
 from datetime import datetime
 from ..database import db
-from .graph_tools import GRAPH_TOOLS, EXTRACT_ENTITIES_TOOL, ESTABLISH_RELATIONS_TOOL, EXTRACT_ENTITIES_WITH_SCENARIO_TOOL
+from .graph_tools import GRAPH_TOOLS, EXTRACT_ENTITIES_TOOL, ESTABLISH_RELATIONS_TOOL
 from .prompts import (
     ENTITY_EXTRACTION_PROMPT,
     RELATION_EXTRACTION_PROMPT,
     get_entity_extraction_prompt,
-    get_relation_extraction_prompt,
-    get_scenario_aware_extraction_prompt
+    get_relation_extraction_prompt
 )
 from .llm_recall_service import get_llm_recall_service
 from .confirmation_service import get_confirmation_service
@@ -42,17 +41,17 @@ class GraphBuilderService:
         memory_id: Optional[str] = None,
         agent_id: Optional[str] = None,
         run_id: Optional[str] = None,
-        enable_adaptive: bool = True,
+        enable_adaptive: bool = True,  # 废弃参数，保留以兼容旧代码
         enable_confirmation: bool = False
     ) -> Dict[str, Any]:
         """
         构建图谱
         
-        流程（Phase 3 更新）：
-        1. 场景自适应提取（一次 LLM 调用）
+        流程（修正后）：
+        1. 实体提取（Function Calling）
         2. 智能确认判断（新实体/低置信度/冲突）
-        3. 存储实体和关系
-        4. 返回结果（含确认队列）
+        3. 关系推理
+        4. 存储实体和关系
         
         Args:
             content: 记忆内容
@@ -60,12 +59,11 @@ class GraphBuilderService:
             memory_id: 记忆 ID（可选）
             agent_id: Agent ID（可选）
             run_id: Run ID（可选）
-            enable_adaptive: 是否启用场景自适应（默认 True）
+            enable_adaptive: 废弃参数（保留以兼容旧代码）
             enable_confirmation: 是否启用智能确认（默认 False）
         
         Returns:
             构建结果，包含：
-            - scenario: 场景类型（Phase 3）
             - entities: 提取的实体列表
             - relations: 提取的关系列表
             - entity_count: 实体数量
@@ -73,22 +71,11 @@ class GraphBuilderService:
             - confirmations: 确认队列（如果启用）
         """
         try:
-            # Phase 3: 场景自适应提取
-            scenario = "daily_chat"
-            entities = []
-            
-            if enable_adaptive:
-                # 使用场景自适应提取（一次 LLM 调用）
-                result = await self._extract_entities_adaptive(content)
-                scenario = result.get("scenario", "daily_chat")
-                entities = result.get("entities", [])
-            else:
-                # 使用传统方法
-                entities = await self._extract_entities(content)
+            # 1. 实体提取
+            entities = await self._extract_entities(content)
             
             if not entities:
                 return {
-                    "scenario": scenario,
                     "entities": [],
                     "relations": [],
                     "entity_count": 0,
@@ -96,7 +83,7 @@ class GraphBuilderService:
                     "status": "no_entities"
                 }
             
-            # Phase 3: 智能确认
+            # 2. 智能确认
             confirmations = []
             if enable_confirmation:
                 # 获取已存在的实体和关系
@@ -127,10 +114,10 @@ class GraphBuilderService:
                             **confirmation
                         })
             
-            # 2. 提取关系（Function Calling）
+            # 3. 关系推理
             relations = await self._extract_relations(content, entities)
             
-            # 3. 存储实体
+            # 4. 存储实体
             entity_ids = {}
             for entity in entities:
                 entity_id = await self._upsert_entity(
@@ -150,7 +137,7 @@ class GraphBuilderService:
                         mention_context=content
                     )
             
-            # 4. 存储关系
+            # 5. 存储关系
             stored_relations = []
             for relation in relations:
                 success = await self._upsert_relation(
@@ -165,7 +152,6 @@ class GraphBuilderService:
                     stored_relations.append(relation)
             
             return {
-                "scenario": scenario,
                 "entities": entities,
                 "relations": stored_relations,
                 "entity_count": len(entities),
@@ -177,7 +163,6 @@ class GraphBuilderService:
         except Exception as e:
             print(f"构建图谱失败: {e}")
             return {
-                "scenario": scenario if 'scenario' in locals() else "daily_chat",
                 "entities": [],
                 "relations": [],
                 "entity_count": 0,
@@ -231,66 +216,6 @@ class GraphBuilderService:
             print(f"提取实体失败: {e}")
             # 降级处理：返回空列表
             return []
-    
-    async def _extract_entities_adaptive(self, content: str) -> Dict[str, Any]:
-        """
-        场景自适应实体提取（Phase 3）
-        
-        一次 LLM 调用同时完成场景判断和实体提取
-        
-        Args:
-            content: 文本内容
-        
-        Returns:
-            包含场景类型和实体列表的字典：
-            - scenario: 场景类型
-            - entities: 实体列表
-        """
-        try:
-            # 调用 LLM Function Calling
-            response = await self.llm_service.call_with_tools(
-                system_prompt=get_scenario_aware_extraction_prompt(),
-                user_prompt=f"请判断以下文本的场景类型并提取实体：\n\n{content}",
-                tools=[EXTRACT_ENTITIES_WITH_SCENARIO_TOOL]
-            )
-            
-            # 解析工具调用结果
-            if response.get("tool_calls"):
-                for tool_call in response["tool_calls"]:
-                    if tool_call["function"]["name"] == "extract_entities_with_scenario":
-                        arguments = tool_call["function"]["arguments"]
-                        scenario = arguments.get("scenario", "daily_chat")
-                        entities = arguments.get("entities", [])
-                        
-                        # 确保每个实体都有置信度
-                        for entity in entities:
-                            if "confidence" not in entity:
-                                entity["confidence"] = 0.8
-                        
-                        return {
-                            "scenario": scenario,
-                            "entities": entities
-                        }
-            
-            # 如果没有工具调用，尝试从 JSON 响应中解析
-            if response.get("content"):
-                result = self._parse_scenario_entities_from_json(response["content"])
-                if result:
-                    return result
-            
-            # 降级处理：返回默认场景和空实体列表
-            return {
-                "scenario": "daily_chat",
-                "entities": []
-            }
-            
-        except Exception as e:
-            print(f"场景自适应实体提取失败: {e}")
-            # 降级处理：返回默认场景和空实体列表
-            return {
-                "scenario": "daily_chat",
-                "entities": []
-            }
     
     async def _extract_relations(
         self,
@@ -566,35 +491,6 @@ class GraphBuilderService:
             return []
         except json.JSONDecodeError:
             return []
-    
-    def _parse_scenario_entities_from_json(self, content: str) -> Optional[Dict[str, Any]]:
-        """
-        从 JSON 内容中解析场景和实体
-        
-        Args:
-            content: JSON 字符串
-        
-        Returns:
-            包含场景和实体的字典
-        """
-        try:
-            data = json.loads(content)
-            if isinstance(data, dict):
-                scenario = data.get("scenario", "daily_chat")
-                entities = data.get("entities", [])
-                
-                # 确保每个实体都有置信度
-                for entity in entities:
-                    if "confidence" not in entity:
-                        entity["confidence"] = 0.8
-                
-                return {
-                    "scenario": scenario,
-                    "entities": entities
-                }
-            return None
-        except json.JSONDecodeError:
-            return None
     
     async def _get_existing_entities(self, user_id: str) -> List[Dict[str, Any]]:
         """

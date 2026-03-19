@@ -157,51 +157,6 @@ NOOP_TOOL = {
     }
 }
 
-# 场景自适应实体提取工具（Phase 3）
-EXTRACT_ENTITIES_WITH_SCENARIO_TOOL = {
-    "type": "function",
-    "function": {
-        "name": "extract_entities_with_scenario",
-        "description": "判断文本场景类型并提取实体。一次调用完成场景判断和实体提取。",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "scenario": {
-                    "type": "string",
-                    "description": "场景类型",
-                    "enum": ["daily_chat", "work_meeting", "diary", "technical"]
-                },
-                "entities": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "entity": {
-                                "type": "string",
-                                "description": "实体名称"
-                            },
-                            "entity_type": {
-                                "type": "string",
-                                "description": "实体类型",
-                                "enum": ["person", "location", "event", "topic", "emotion", "time", "task", "decision", "concept", "solution", "problem"]
-                            },
-                            "confidence": {
-                                "type": "number",
-                                "description": "置信度（0-1）",
-                                "minimum": 0,
-                                "maximum": 1
-                            }
-                        },
-                        "required": ["entity", "entity_type"]
-                    },
-                    "description": "提取的实体列表"
-                }
-            },
-            "required": ["scenario", "entities"]
-        }
-    }
-}
-
 # 所有工具列表
 GRAPH_TOOLS = [
     EXTRACT_ENTITIES_TOOL,
@@ -209,8 +164,7 @@ GRAPH_TOOLS = [
     ADD_GRAPH_MEMORY_TOOL,
     UPDATE_GRAPH_MEMORY_TOOL,
     DELETE_GRAPH_MEMORY_TOOL,
-    NOOP_TOOL,
-    EXTRACT_ENTITIES_WITH_SCENARIO_TOOL
+    NOOP_TOOL
 ]
 
 # 常用的关系类型
@@ -249,21 +203,12 @@ ENTITY_TYPES = {
     "event": "事件",
     "topic": "主题",
     "emotion": "情感",
-    # Phase 3 新增实体类型
     "time": "时间",
     "task": "任务",
     "decision": "决策",
     "concept": "概念",
     "solution": "解决方案",
     "problem": "问题"
-}
-
-# 场景类型（Phase 3）
-SCENARIO_TYPES = {
-    "daily_chat": "日常对话",
-    "work_meeting": "工作会议",
-    "diary": "日记",
-    "technical": "技术讨论"
 }
 
 
