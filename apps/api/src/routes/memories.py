@@ -398,20 +398,27 @@ async def recall_memories(request: RecallRequest):
         parsed_query = None
         if request.use_parser:
             # 使用 Jieba 分词
-            from ..services.jieba_service import extract_keywords, extract_time_keywords
+            from ..services.jieba_service import (
+                extract_keywords, 
+                extract_time_keywords,
+                extract_location,
+                extract_person
+            )
             import time
             
             start_time = time.time()
             keywords = extract_keywords(request.query)
             time_range = extract_time_keywords(request.query)
+            location = extract_location(request.query)
+            person = extract_person(request.query)
             jieba_time = (time.time() - start_time) * 1000
             
             parsed_query = {
                 "source": "jieba",
                 "keywords": keywords,
                 "time_range": time_range,
-                "location": None,  # Jieba 不提取地点
-                "people": [],  # Jieba 不提取人物
+                "location": location,
+                "people": [person] if person else [],
                 "parse_time_ms": jieba_time
             }
         
@@ -431,11 +438,11 @@ async def recall_memories(request: RecallRequest):
                         "end_time": datetime.fromisoformat(str(tr["end"])) if isinstance(tr["end"], str) else tr["end"]
                     }
             
-            # 地点
+            # 地点过滤
             if parsed_query.get("location"):
                 location_filter = parsed_query["location"]
             
-            # 人物
+            # 人物过滤
             if parsed_query.get("people") and len(parsed_query["people"]) > 0:
                 person_filter = parsed_query["people"][0]
         
