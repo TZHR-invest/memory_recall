@@ -148,7 +148,7 @@ class SegmentService:
         max_size: int = 5000
     ) -> List[Dict[str, Any]]:
         """
-        按话题分段（简单实现：按段落分隔）
+        按话题分段（混合策略：段落 + 句子）
         
         Args:
             content: 文本内容
@@ -157,8 +157,9 @@ class SegmentService:
         Returns:
             分段列表
         """
-        # 简单实现：按空行分隔段落
+        # 1. 按空行分隔段落
         paragraphs = re.split(r'\n\s*\n', content)
+        paragraphs = [p.strip() for p in paragraphs if p.strip()]
         
         segments = []
         current_content = []
@@ -167,17 +168,50 @@ class SegmentService:
         for para in paragraphs:
             para_size = len(para)
             
-            if current_size + para_size > max_size and current_content:
-                segments.append(self._create_segment(
-                    current_content,
-                    len(segments)
-                ))
-                current_content = []
-                current_size = 0
+            # 如果段落本身太大，按句子细分
+            if para_size > max_size:
+                # 先保存当前分段
+                if current_content:
+                    segments.append(self._create_segment(
+                        current_content,
+                        len(segments)
+                    ))
+                    current_content = []
+                    current_size = 0
+                
+                # 按句子分段
+                sentences = re.split(r'([。！？\n])', para)
+                sentences = [''.join(i) for i in zip(sentences[0::2], sentences[1::2] + [''])]
+                sentences = [s.strip() for s in sentences if s.strip()]
+                
+                for sentence in sentences:
+                    sent_size = len(sentence)
+                    
+                    if current_size + sent_size > max_size and current_content:
+                        segments.append(self._create_segment(
+                            current_content,
+                            len(segments)
+                        ))
+                        current_content = []
+                        current_size = 0
+                    
+                    current_content.append(sentence)
+                    current_size += sent_size
             
-            current_content.append(para)
-            current_size += para_size
+            # 正常段落
+            else:
+                if current_size + para_size > max_size and current_content:
+                    segments.append(self._create_segment(
+                        current_content,
+                        len(segments)
+                    ))
+                    current_content = []
+                    current_size = 0
+                
+                current_content.append(para)
+                current_size += para_size
         
+        # 最后一个分段
         if current_content:
             segments.append(self._create_segment(
                 current_content,
