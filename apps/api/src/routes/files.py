@@ -8,7 +8,7 @@ import os
 import tempfile
 from ..services.segment_service import get_segment_service
 from ..services.summary_service import get_summary_service
-from ..services.memory_service import get_memory_service
+from ..services.memory_service import memory_service as get_memory_service
 
 router = APIRouter(prefix="/files", tags=["文件"])
 
