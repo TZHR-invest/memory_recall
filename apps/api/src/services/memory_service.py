@@ -175,13 +175,14 @@ class MemoryService:
                         pass
             
             # 存储分段摘要
+            seg_id = str(uuid.uuid4())  # 为每个分段生成独立的 UUID
             await db.execute("""
                 INSERT INTO memories (
                     id, content, input_type, created_at,
                     time_value, embedding, status
                 ) VALUES ($1, $2, $3, $4, $5, $6, $7)
             """,
-                f"{memory_id}_seg{segment.get('index', 0)}",
+                seg_id,
                 seg_content,
                 "segment",
                 now,
