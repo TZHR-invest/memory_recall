@@ -146,8 +146,8 @@ class RecallService:
         # 添加人物过滤
         if person_filter:
             param_count += 1
-            sql += f" AND people @> ${param_count}::jsonb"
-            params.append(f'[{{"name": "{person_filter}"}}]')
+            sql += f" AND (people::text LIKE ${param_count} OR content LIKE ${param_count})"
+            params.append(f'%{person_filter}%')
         
         # 添加标签过滤
         if tag_filter:
@@ -234,8 +234,8 @@ class RecallService:
         # 添加人物过滤
         if person_filter:
             param_count += 1
-            sql += f" AND people @> ${param_count}::jsonb"
-            params.append(f'[{{"name": "{person_filter}"}}]')
+            sql += f" AND (people::text LIKE ${param_count} OR content LIKE ${param_count})"
+            params.append(f'%{person_filter}%')
         
         # 添加标签过滤
         if tag_filter:
