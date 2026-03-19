@@ -413,9 +413,15 @@ async def recall_memories(request: RecallRequest):
         person_filter = None
         
         if parsed_query:
-            # 时间范围
+            # 时间范围（转换格式）
             if parsed_query.get("time_range"):
-                time_range = parsed_query["time_range"]
+                tr = parsed_query["time_range"]
+                if tr.get("start") and tr.get("end"):
+                    from datetime import datetime
+                    time_range = {
+                        "start_time": datetime.fromisoformat(str(tr["start"])) if isinstance(tr["start"], str) else tr["start"],
+                        "end_time": datetime.fromisoformat(str(tr["end"])) if isinstance(tr["end"], str) else tr["end"]
+                    }
             
             # 地点
             if parsed_query.get("location"):
