@@ -577,7 +577,7 @@
 
     <script>
         // API Configuration
-        const API_BASE = 'http://localhost:8000';
+        const API_BASE = 'http://192.168.0.206:8000';
         let currentPage = 1;
         const pageSize = 10;
 
@@ -723,7 +723,7 @@
                 const data = await apiCall('/api/v1/memories?limit=5&offset=0');
                 const container = document.getElementById('recent-memories');
 
-                if (!data.items || data.items.length === 0) {
+                if (!data.memories || data.memories.length === 0) {
                     container.innerHTML = `
                         <div class="empty-state">
                             <div class="icon">📝</div>
@@ -733,7 +733,7 @@
                     return;
                 }
 
-                container.innerHTML = data.items.map(memory => renderMemoryItem(memory)).join('');
+                container.innerHTML = data.memories.map(memory => renderMemoryItem(memory)).join('');
             } catch (error) {
                 document.getElementById('recent-memories').innerHTML = `
                     <div class="empty-state">
@@ -758,7 +758,7 @@
                 const data = await apiCall(endpoint);
                 const container = document.getElementById('memory-list');
 
-                if (!data.items || data.items.length === 0) {
+                if (!data.memories || data.memories.length === 0) {
                     container.innerHTML = `
                         <div class="empty-state">
                             <div class="icon">🔍</div>
@@ -769,7 +769,7 @@
                     return;
                 }
 
-                container.innerHTML = data.items.map(memory => renderMemoryItem(memory)).join('');
+                container.innerHTML = data.memories.map(memory => renderMemoryItem(memory)).join('');
 
                 // Pagination
                 const totalPages = Math.ceil(data.total / pageSize);
@@ -785,18 +785,62 @@
 
         // Render Memory Item
         function renderMemoryItem(memory) {
-            const time = memory.time?.value ? new Date(memory.time.value).toLocaleDateString('zh-CN') : '-';
-            const location = memory.location?.name || '-';
-            const people = memory.people?.map(p => p.name).join(', ') || '-';
-            const emotion = memory.emotion?.type || '-';
-            const tags = memory.tags || [];
+            // 支持两种数据格式：嵌套对象（列表API）和扁平字段（搜索API）
+            const timeValue = memory.time?.value || memory.time_value;
+            const time = timeValue ? new Date(timeValue).toLocaleDateString('zh-CN') : '-';
+            
+            const locationName = memory.location?.name || memory.location_name || '-';
+            
+            // people 可能是数组或 JSON 字符串
+            let people = '-';
+            if (memory.people) {
+                if (Array.isArray(memory.people)) {
+                    people = memory.people.map(p => p.name).join(', ') || '-';
+                } else if (typeof memory.people === 'string') {
+                    try {
+                        const peopleArr = JSON.parse(memory.people);
+                        people = peopleArr.map(p => p.name).join(', ') || '-';
+                    } catch (e) {
+                        people = '-';
+                    }
+                }
+            }
+            
+            // emotion 可能是对象或 JSON 字符串
+            let emotion = '-';
+            if (memory.emotion) {
+                if (typeof memory.emotion === 'object') {
+                    emotion = memory.emotion.type || '-';
+                } else if (typeof memory.emotion === 'string') {
+                    try {
+                        const emotionObj = JSON.parse(memory.emotion);
+                        emotion = emotionObj.type || '-';
+                    } catch (e) {
+                        emotion = '-';
+                    }
+                }
+            }
+            
+            // tags 可能是数组或 JSON 字符串
+            let tags = [];
+            if (memory.tags) {
+                if (Array.isArray(memory.tags)) {
+                    tags = memory.tags;
+                } else if (typeof memory.tags === 'string') {
+                    try {
+                        tags = JSON.parse(memory.tags);
+                    } catch (e) {
+                        tags = [];
+                    }
+                }
+            }
 
             return `
                 <div class="memory-item" onclick="showMemoryDetail('${memory.id}')">
                     <div class="content">${escapeHtml(memory.content)}</div>
                     <div class="meta">
                         <span>📅 ${time}</span>
-                        <span>📍 ${location}</span>
+                        <span>📍 ${locationName}</span>
                         <span>👥 ${people}</span>
                         <span>😊 ${emotion}</span>
                     </div>
@@ -965,10 +1009,10 @@
                     `;
                 } else {
                     container.innerHTML = data.results.map(result => {
-                        const memory = result.memory;
-                        const html = renderMemoryItem(memory);
-                        // Add score
-                        return html.replace('<div class="content">', `<div class="content"><small style="color: #667eea;">相关度：${(result.score * 100).toFixed(1)}%</small><br>`);
+                        const html = renderMemoryItem(result);
+                        // Add similarity score
+                        const similarityPercent = (result.similarity * 100).toFixed(1);
+                        return html.replace('<div class="content">', `<div class="content"><small style="color: #667eea;">相关度：${similarityPercent}%</small><br>`);
                     }).join('');
                 }
 
