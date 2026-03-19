@@ -4,6 +4,7 @@
 """
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
+import json
 from ..database import db
 from ..embedding.client import get_embedding_client
 from ..llm.client import get_llm_client

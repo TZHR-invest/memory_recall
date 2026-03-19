@@ -2,6 +2,7 @@
 LLM 召回服务
 基于大语言模型的记忆召回与回答生成
 """
+import json
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 from ..llm.client import get_llm_client
@@ -14,6 +15,95 @@ class LLMRecallService:
     def __init__(self):
         """初始化服务"""
         self.llm_client = get_llm_client()
+    
+    async def call_with_tools(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        tools: List[Dict[str, Any]],
+        temperature: float = 0.3,
+        max_tokens: int = 2000
+    ) -> Dict[str, Any]:
+        """
+        使用 Function Calling 调用 LLM
+        
+        Args:
+            system_prompt: 系统提示
+            user_prompt: 用户提示
+            tools: 工具列表（OpenAI Function Calling 格式）
+            temperature: 温度参数
+            max_tokens: 最大 token 数
+        
+        Returns:
+            包含 tool_calls 或 content 的响应：
+            {
+                "content": str,  # 普通文本响应
+                "tool_calls": [  # 工具调用列表
+                    {
+                        "id": str,
+                        "type": "function",
+                        "function": {
+                            "name": str,
+                            "arguments": dict
+                        }
+                    }
+                ]
+            }
+        """
+        try:
+            # 准备消息
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ]
+            
+            # 调用 OpenAI 兼容的 API（支持 Function Calling）
+            response = self.llm_client.client.chat.completions.create(
+                model=self.llm_client.model,
+                messages=messages,
+                tools=tools,
+                tool_choice="auto",
+                temperature=temperature,
+                max_tokens=max_tokens
+            )
+            
+            # 解析响应
+            message = response.choices[0].message
+            
+            result = {
+                "content": message.content,
+                "tool_calls": []
+            }
+            
+            # 如果有工具调用
+            if message.tool_calls:
+                for tool_call in message.tool_calls:
+                    # 解析参数
+                    try:
+                        arguments = json.loads(tool_call.function.arguments)
+                    except json.JSONDecodeError as e:
+                        print(f"解析工具参数失败: {e}")
+                        arguments = {}
+                    
+                    result["tool_calls"].append({
+                        "id": tool_call.id,
+                        "type": tool_call.type,
+                        "function": {
+                            "name": tool_call.function.name,
+                            "arguments": arguments
+                        }
+                    })
+            
+            return result
+            
+        except Exception as e:
+            print(f"Function Calling 调用失败: {e}")
+            # 降级处理：返回空响应
+            return {
+                "content": None,
+                "tool_calls": [],
+                "error": str(e)
+            }
     
     async def generate_recall_response(
         self,
