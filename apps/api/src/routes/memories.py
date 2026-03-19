@@ -370,11 +370,11 @@ async def recall_memories(request: RecallRequest):
     """
     自然语言召回记忆
     
-    智能解析自然语言查询：
+    智能解析自然语言查询（使用大模型）：
     - **query**: 自然语言查询，例如"上周在咖啡店和老同学见面"
     - **limit**: 返回数量，默认 10
     - **use_parser**: 是否使用自然语言解析，默认 True
-    - **min_similarity**: 最小相似度阈值，默认 0.3
+    - **min_similarity**: 最小相似度阈值，默认 0.25
     
     支持的查询类型：
     - 时间查询："上周发生了什么"、"最近3天"
@@ -386,10 +386,19 @@ async def recall_memories(request: RecallRequest):
     try:
         recall_service = get_recall_service()
         
-        # 解析查询
+        # 解析查询（优先使用大模型，失败则降级到代码解析）
         parsed_query = None
         if request.use_parser:
-            parsed_query = query_parser.parse(request.query)
+            try:
+                # 使用大模型解析
+                from ..processors.text_processor import get_text_processor
+                processor = get_text_processor()
+                parsed_query = await processor.parse_query(request.query)
+                parsed_query["source"] = "llm"
+            except Exception as e:
+                # 降级到代码解析
+                parsed_query = query_parser.parse(request.query)
+                parsed_query["source"] = "code"
         
         # 构建过滤条件
         time_range = None

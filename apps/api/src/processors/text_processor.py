@@ -363,6 +363,105 @@ class TextProcessor:
             return datetime.fromisoformat(value.replace("Z", "+00:00"))
         except:
             return None
+    
+    async def parse_query(self, query: str) -> Dict[str, Any]:
+        """
+        使用大模型解析自然语言查询
+        
+        Args:
+            query: 自然语言查询文本
+        
+        Returns:
+            解析结果，包含：
+            - time_range: 时间范围 {start, end}
+            - location: 地点
+            - people: 人物列表
+            - emotion: 情绪
+            - tags: 标签列表
+            - keywords: 关键词列表
+        """
+        from datetime import datetime, timedelta
+        
+        now = datetime.now()
+        
+        prompt = f"""
+从以下自然语言查询中提取结构化信息，用于搜索记忆：
+
+查询：{query}
+
+当前时间：{now.strftime("%Y-%m-%d %H:%M:%S")}
+
+请提取以下信息：
+1. time_range: 时间范围
+   - start: 开始时间（ISO 8601格式）
+   - end: 结束时间（ISO 8601格式）
+   - original_text: 原文中的时间表述
+
+2. location: 地点名称
+
+3. people: 人物列表
+
+4. emotion: 情绪类型
+
+5. tags: 标签列表（如：社交、工作、学习等）
+
+6. keywords: 关键词列表
+
+注意事项：
+- 如果某个字段无法提取，设为 null
+- 时间范围要准确计算（如"上周"要计算具体日期范围）
+- 人物名称要准确提取（如"老同学"保留原词）
+- 返回纯 JSON 格式
+
+返回格式示例：
+{{
+    "time_range": {{
+        "start": "2026-03-12T00:00:00",
+        "end": "2026-03-19T23:59:59",
+        "original_text": "最近"
+    }},
+    "location": "咖啡店",
+    "people": ["老同学"],
+    "emotion": null,
+    "tags": ["社交"],
+    "keywords": ["见面", "咖啡店", "老同学"]
+}}
+        """
+        
+        result = self.llm_client.extract_json(prompt)
+        
+        if not result:
+            return {
+                "time_range": None,
+                "location": None,
+                "people": [],
+                "emotion": None,
+                "tags": [],
+                "keywords": []
+            }
+        
+        # 处理时间范围
+        time_range = None
+        if result.get("time_range"):
+            tr = result["time_range"]
+            if tr.get("start") and tr.get("end"):
+                try:
+                    time_range = {
+                        "start": datetime.fromisoformat(tr["start"].replace("Z", "+00:00")),
+                        "end": datetime.fromisoformat(tr["end"].replace("Z", "+00:00")),
+                        "original_text": tr.get("original_text")
+                    }
+                except:
+                    pass
+        
+        return {
+            "time_range": time_range,
+            "location": result.get("location"),
+            "people": result.get("people", []),
+            "emotion": result.get("emotion"),
+            "tags": result.get("tags", []),
+            "keywords": result.get("keywords", [])
+        }
 
 
 # 全局文本处理器实例
