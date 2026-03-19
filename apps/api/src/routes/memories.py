@@ -41,6 +41,14 @@ class NaturalLanguageQuery(BaseModel):
     limit: int = Field(10, ge=1, le=100, description="返回数量限制")
 
 
+class CreateMemoryWithGraphRequest(BaseModel):
+    """创建记忆（带图谱构建）请求"""
+    content: str = Field(..., description="记忆内容")
+    user_id: str = Field(..., description="用户 ID")
+    enable_graph: bool = Field(True, description="是否启用图谱构建")
+    enable_confirmation: bool = Field(False, description="是否启用智能确认")
+
+
 # ==================== CRUD 端点 ====================
 
 @router.post(
@@ -600,6 +608,67 @@ async def batch_create_memories(memories: List[MemoryCreate]):
                 "memory_ids": created_ids
             }
         }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post(
+    "/with-graph",
+    response_model=dict,
+    summary="创建记忆（带图谱构建）",
+    description="创建记忆并并发构建知识图谱",
+    responses={
+        200: {
+            "description": "创建成功",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "success": True,
+                        "memory_id": "uuid",
+                        "graph": {
+                            "entities": [...],
+                            "relations": [...],
+                            "entity_count": 4,
+                            "relation_count": 2
+                        }
+                    }
+                }
+            }
+        }
+    }
+)
+async def create_memory_with_graph(request: CreateMemoryWithGraphRequest):
+    """
+    创建记忆（带图谱构建）
+    
+    并发执行：
+    - 向量存储（生成 embedding + 存储 memories 表）
+    - 图谱构建（提取实体 + 关系）
+    
+    参数：
+    - **content**: 记忆内容（必填）
+    - **user_id**: 用户 ID（必填）
+    - **enable_graph**: 是否启用图谱构建（默认 True）
+    - **enable_confirmation**: 是否启用智能确认（默认 False）
+    
+    返回：
+    - memory_id: 记忆 ID
+    - graph: 图谱信息（如果启用）
+    """
+    try:
+        result = await memory_service.create_memory_with_graph(
+            content=request.content,
+            user_id=request.user_id,
+            enable_graph=request.enable_graph,
+            enable_confirmation=request.enable_confirmation
+        )
+        
+        return {
+            "success": True,
+            "memory_id": result["memory_id"],
+            "graph": result.get("graph")
+        }
+    
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

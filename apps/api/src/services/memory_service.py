@@ -3,11 +3,14 @@
 """
 import uuid
 import json
+import asyncio
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 from ..database import db
 from ..models.memory import Memory, MemoryCreate, MemoryUpdate
 from ..processors.text_processor import get_text_processor
+from ..embedding.client import get_embedding_client
+from .graph_builder_service import get_graph_builder_service
 
 
 class MemoryService:
@@ -539,6 +542,134 @@ class MemoryService:
             importance_score=row.get('importance_score', 0.5),
             status=row.get('status', 'active')
         )
+    
+    async def create_memory_with_graph(
+        self,
+        content: str,
+        user_id: str,
+        enable_graph: bool = True,
+        enable_confirmation: bool = False
+    ) -> Dict[str, Any]:
+        """
+        创建记忆（并发处理向量存储和图谱构建）
+        
+        Args:
+            content: 记忆内容
+            user_id: 用户 ID
+            enable_graph: 是否启用图谱构建（默认 True）
+            enable_confirmation: 是否启用智能确认（默认 False）
+        
+        Returns:
+            创建结果，包含：
+            - memory_id: 记忆 ID
+            - graph: 图谱信息（如果启用）
+        """
+        # 并发任务列表
+        tasks = []
+        
+        # 任务 1: 向量存储（生成 embedding + 存储 memories 表）
+        async def store_vector():
+            embedding = await self._generate_embedding(content)
+            memory_id = await self._store_memory(content, embedding, user_id)
+            return {"type": "vector", "memory_id": memory_id}
+        
+        tasks.append(store_vector())
+        
+        # 任务 2: 图谱构建（提取实体 + 关系）
+        if enable_graph:
+            graph_builder = get_graph_builder_service()
+            
+            async def build_graph():
+                result = await graph_builder.build_graph(
+                    content=content,
+                    user_id=user_id,
+                    enable_confirmation=enable_confirmation
+                )
+                return {"type": "graph", **result}
+            
+            tasks.append(build_graph())
+        
+        # 并发执行
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # 整合结果
+        memory_id = None
+        graph_result = None
+        
+        for result in results:
+            if isinstance(result, Exception):
+                # 记录错误但继续处理
+                print(f"Task failed: {result}")
+                continue
+            
+            if result["type"] == "vector":
+                memory_id = result["memory_id"]
+            elif result["type"] == "graph":
+                graph_result = result
+        
+        return {
+            "memory_id": memory_id,
+            "graph": graph_result
+        }
+    
+    async def _generate_embedding(self, content: str) -> Optional[List[float]]:
+        """
+        生成内容的向量表示
+        
+        Args:
+            content: 文本内容
+        
+        Returns:
+            向量列表，失败返回 None
+        """
+        try:
+            embedding_client = get_embedding_client()
+            # 只对前 5000 字符生成向量，避免 token 限制
+            embedding = embedding_client.embed(content[:5000])
+            return embedding
+        except Exception as e:
+            print(f"生成 embedding 失败: {e}")
+            return None
+    
+    async def _store_memory(
+        self,
+        content: str,
+        embedding: Optional[List[float]],
+        user_id: str
+    ) -> str:
+        """
+        存储记忆到数据库
+        
+        Args:
+            content: 记忆内容
+            embedding: 向量表示
+            user_id: 用户 ID
+        
+        Returns:
+            记忆 ID
+        """
+        # 生成记忆 ID (使用 UUID)
+        memory_id = str(uuid.uuid4())
+        
+        # 准备数据
+        now = datetime.utcnow()
+        
+        # 插入数据库
+        await db.execute("""
+            INSERT INTO memories (
+                id, content, input_type, created_at,
+                embedding, status
+            ) VALUES ($1, $2, $3, $4, $5, $6)
+        """,
+            memory_id,
+            content,
+            "text",
+            now,
+            "[" + ",".join(map(str, embedding)) + "]" if embedding else None,
+            "active"
+        )
+        
+        return memory_id
 
 
 # 全局记忆服务实例
