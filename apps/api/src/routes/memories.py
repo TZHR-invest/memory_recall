@@ -30,7 +30,7 @@ class RecallRequest(BaseModel):
     query: str = Field(..., description="自然语言查询")
     limit: int = Field(10, ge=1, le=100, description="返回数量限制")
     use_parser: bool = Field(True, description="是否使用自然语言解析")
-    min_similarity: float = Field(0.25, ge=0.0, le=1.0, description="最小相似度阈值（默认0.25）")
+    min_similarity: float = Field(0.15, ge=0.0, le=1.0, description="最小相似度阈值（默认0.15）")
 
 
 class NaturalLanguageQuery(BaseModel):
@@ -379,7 +379,7 @@ async def recall_memories(request: RecallRequest):
     - **query**: 自然语言查询，例如"上周在咖啡店和老同学见面"
     - **limit**: 返回数量，默认 10
     - **use_parser**: 是否使用自然语言解析，默认 True
-    - **min_similarity**: 最小相似度阈值，默认 0.25
+    - **min_similarity**: 最小相似度阈值，默认 0.15
     
     支持的查询类型：
     - 时间查询："上周发生了什么"、"最近3天"
