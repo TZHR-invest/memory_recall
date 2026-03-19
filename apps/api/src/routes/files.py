@@ -106,8 +106,7 @@ async def upload_file(
             key_events = await summary_service.extract_key_events(segments)
         
         # 6. 存储记忆
-        memory_service = get_memory_service()
-        memory_id = await memory_service.create_from_file(
+        memory_id = await get_memory_service.create_from_file(
             content=text_content,
             file_info=file_info,
             segments=segments,
