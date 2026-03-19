@@ -112,6 +112,86 @@ class MemoryService:
         
         return memory_id
     
+    async def create_from_file(
+        self,
+        content: str,
+        file_info: Dict[str, Any],
+        segments: List[Dict[str, Any]],
+        overall_summary: Optional[str] = None,
+        key_events: Optional[List[str]] = None
+    ) -> str:
+        """
+        从文件创建记忆
+        
+        Args:
+            content: 文件内容
+            file_info: 文件信息
+            segments: 分段列表
+            overall_summary: 整体摘要
+            key_events: 关键事件
+        
+        Returns:
+            主记忆 ID
+        """
+        import json
+        from ..embedding.client import get_embedding_client
+        
+        # 1. 生成主记忆的向量
+        embedding_client = get_embedding_client()
+        # 只对前 5000 字符生成向量，避免 token 限制
+        embedding = embedding_client.embed(content[:5000])
+        
+        # 2. 创建主记忆
+        memory_id = str(uuid.uuid4())
+        now = datetime.utcnow()
+        
+        await db.execute("""
+            INSERT INTO memories (
+                id, content, input_type, created_at,
+                embedding, status
+            ) VALUES ($1, $2, $3, $4, $5, $6)
+        """,
+            memory_id,
+            content,
+            "file",
+            now,
+            "[" + ",".join(map(str, embedding)) + "]" if embedding else None,
+            "active"
+        )
+        
+        # 3. 为每个分段生成向量并创建子记忆
+        for segment in segments:
+            seg_content = segment.get("content", "")
+            seg_embedding = embedding_client.embed(seg_content[:2000]) if seg_content else None
+            
+            # 提取时间范围
+            time_value = None
+            if segment.get("time_range"):
+                time_range = segment["time_range"]
+                if time_range.get("start"):
+                    try:
+                        time_value = datetime.fromisoformat(time_range["start"])
+                    except:
+                        pass
+            
+            # 存储分段摘要
+            await db.execute("""
+                INSERT INTO memories (
+                    id, content, input_type, created_at,
+                    time_value, embedding, status
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+            """,
+                f"{memory_id}_seg{segment.get('index', 0)}",
+                seg_content,
+                "segment",
+                now,
+                time_value,
+                "[" + ",".join(map(str, seg_embedding)) + "]" if seg_embedding else None,
+                "active"
+            )
+        
+        return memory_id
+    
     async def get(self, memory_id: str) -> Optional[Memory]:
         """
         获取记忆

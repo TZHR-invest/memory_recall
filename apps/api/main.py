@@ -15,6 +15,7 @@ from src.database import db
 from src.routes import health
 from src.routes import memories
 from src.routes import upload
+from src.routes import files
 
 
 # ==================== 应用生命周期管理 ====================
@@ -159,6 +160,7 @@ app.include_router(health.router, tags=["健康检查"])
 # API 路由（带版本前缀）
 app.include_router(memories.router, prefix="/api/v1", tags=["记忆管理"])
 app.include_router(upload.router, prefix="/api/v1", tags=["图片上传"])
+app.include_router(files.router, prefix="/api/v1", tags=["文件上传"])
 
 
 # ==================== 根路径和元数据 ====================
