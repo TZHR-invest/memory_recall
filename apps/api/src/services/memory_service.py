@@ -11,6 +11,7 @@ from ..models.memory import Memory, MemoryCreate, MemoryUpdate
 from ..processors.text_processor import get_text_processor
 from ..embedding.client import get_embedding_client
 from .graph_builder_service import get_graph_builder_service
+from .embedding_cache import get_embedding_cache
 
 
 class MemoryService:
@@ -670,6 +671,101 @@ class MemoryService:
         )
         
         return memory_id
+    
+    async def batch_create_memories(
+        self,
+        contents: List[str],
+        user_id: str,
+        enable_graph: bool = True
+    ) -> Dict[str, Any]:
+        """
+        批量创建记忆（减少数据库连接次数）
+        
+        Args:
+            contents: 记忆内容列表
+            user_id: 用户 ID
+            enable_graph: 是否启用图谱构建（默认 True）
+        
+        Returns:
+            创建结果，包含：
+            - memory_ids: 记忆 ID 列表
+            - graph_results: 图谱结果列表
+            - stats: 统计信息
+        """
+        import time
+        
+        start_time = time.time()
+        
+        # 1. 批量生成 embedding（带缓存）
+        embeddings = []
+        for content in contents:
+            embedding = await self._generate_embedding(content)
+            embeddings.append(embedding)
+        
+        # 2. 批量存储记忆
+        memory_ids = []
+        now = datetime.utcnow()
+        
+        # 准备批量插入数据
+        values = []
+        for i, (content, embedding) in enumerate(zip(contents, embeddings)):
+            memory_id = str(uuid.uuid4())
+            memory_ids.append(memory_id)
+            values.append((
+                memory_id,
+                content,
+                "text",
+                now,
+                "[" + ",".join(map(str, embedding)) + "]" if embedding else None,
+                "active"
+            ))
+        
+        # 批量插入（一次数据库连接）
+        try:
+            await db.executemany("""
+                INSERT INTO memories (
+                    id, content, input_type, created_at,
+                    embedding, status
+                ) VALUES ($1, $2, $3, $4, $5, $6)
+            """, values)
+        except Exception as e:
+            print(f"批量插入失败: {e}")
+            # 降级：逐个插入
+            for content, embedding, memory_id in zip(contents, embeddings, memory_ids):
+                await self._store_memory(content, embedding, user_id)
+        
+        # 3. 并发构建图谱
+        graph_results = []
+        if enable_graph:
+            graph_builder = get_graph_builder_service()
+            
+            tasks = [
+                graph_builder.build_graph(
+                    content=content,
+                    user_id=user_id,
+                    enable_confirmation=False
+                )
+                for content in contents
+            ]
+            
+            graph_results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        elapsed = time.time() - start_time
+        
+        # 获取缓存统计
+        cache = get_embedding_cache()
+        cache_stats = cache.get_stats()
+        
+        return {
+            "memory_ids": memory_ids,
+            "graph_results": graph_results,
+            "stats": {
+                "total": len(contents),
+                "elapsed": elapsed,
+                "avg_time": elapsed / len(contents) if contents else 0,
+                "cache_hit_rate": cache_stats["hit_rate"]
+            }
+        }
 
 
 # 全局记忆服务实例

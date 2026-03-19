@@ -1,0 +1,83 @@
+{
+  "timestamp": "2026-03-20 02:25:12",
+  "tests": {
+    "create_memory": {
+      "status": "passed",
+      "response_time": 52.320266008377075,
+      "status_code": 200,
+      "memory_id": "f0cc5be8-a195-4dec-80a1-c291c0a9bbec",
+      "entity_count": 5,
+      "entities": [
+        "张三",
+        "咖啡店",
+        "聊天",
+        "讨论",
+        "机器学习项目"
+      ]
+    },
+    "search_memory": {
+      "status": "passed",
+      "status_code": 200,
+      "result_count": 5
+    },
+    "entity_accuracy": {
+      "status": "passed",
+      "accuracy": 1.0,
+      "correct": 4,
+      "total": 4,
+      "details": [
+        {
+          "content": "今天和张三在咖啡店聊天",
+          "expected": [
+            "张三",
+            "咖啡店"
+          ],
+          "actual": [
+            "今天",
+            "张三",
+            "咖啡店",
+            "聊天"
+          ],
+          "found": [
+            "张三",
+            "咖啡店"
+          ]
+        },
+        {
+          "content": "我和老王是多年的朋友",
+          "expected": [
+            "老王"
+          ],
+          "actual": [
+            "我",
+            "老王"
+          ],
+          "found": [
+            "老王"
+          ]
+        },
+        {
+          "content": "今天在公司加班到很晚",
+          "expected": [
+            "公司"
+          ],
+          "actual": [
+            "今天",
+            "公司",
+            "加班"
+          ],
+          "found": [
+            "公司"
+          ]
+        }
+      ]
+    },
+    "performance": {
+      "status": "failed",
+      "avg_time": 24.404246616363526,
+      "max_time": 28.305685997009277,
+      "min_time": 18.049378156661987,
+      "samples": 5
+    }
+  }
+}
