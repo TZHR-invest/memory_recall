@@ -35,14 +35,18 @@ class PersonInfo(BaseModel):
 
 class EmotionInfo(BaseModel):
     """情绪信息"""
-    value: Optional[str] = None
+    type: Optional[str] = None
+    intensity: Optional[int] = Field(None, ge=1, le=10)
     confidence: Optional[float] = Field(None, ge=0.0, le=1.0)
+    original_text: Optional[str] = None
 
 
 class DurationInfo(BaseModel):
     """持续时间信息"""
-    value: Optional[str] = None
+    value: Optional[int] = None  # 时长数值
+    unit: Optional[str] = None  # 单位（分钟、小时、天等）
     source: Optional[str] = None
+    original_text: Optional[str] = None
 
 
 class TopicInfo(BaseModel):
@@ -103,6 +107,7 @@ class MemoryCreate(BaseModel):
     duration: Optional[DurationInfo] = None
     topic: Optional[TopicInfo] = None
     attachments: Optional[List[Attachment]] = None
+    embedding: Optional[List[float]] = None
 
 
 class MemoryUpdate(BaseModel):

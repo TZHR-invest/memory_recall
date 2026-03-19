@@ -6,6 +6,7 @@ import json
 from typing import Dict, Any, Optional, List
 from openai import OpenAI
 from ..config import settings
+from ..cache.manager import cache_manager
 
 
 class LLMClient:
@@ -27,6 +28,7 @@ class LLMClient:
         messages: List[Dict[str, str]],
         temperature: float = 0.7,
         max_tokens: int = 2000,
+        use_cache: bool = True,
         **kwargs
     ) -> str:
         """
@@ -36,11 +38,24 @@ class LLMClient:
             messages: 消息列表
             temperature: 温度参数
             max_tokens: 最大 token 数
+            use_cache: 是否使用缓存
             **kwargs: 其他参数
         
         Returns:
             模型响应文本
         """
+        # 尝试从缓存获取
+        if use_cache:
+            cache_key = json.dumps({
+                "messages": messages,
+                "temperature": temperature,
+                "model": self.model
+            }, sort_keys=True)
+            cached = cache_manager.get_llm_result(cache_key)
+            if cached is not None:
+                return cached
+        
+        # 调用 API
         response = self.client.chat.completions.create(
             model=self.model,
             messages=messages,
@@ -49,7 +64,13 @@ class LLMClient:
             **kwargs
         )
         
-        return response.choices[0].message.content
+        result = response.choices[0].message.content
+        
+        # 缓存结果
+        if use_cache:
+            cache_manager.cache_llm_result(cache_key, result)
+        
+        return result
     
     def chat_with_system(
         self,

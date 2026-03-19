@@ -1,10 +1,11 @@
 """
 火山引擎 Embedding 客户端
-使用 LAS 服务多模态向量化 API
+使用火山引擎方舟多模态向量化 API
 """
 from typing import List, Optional, Dict, Any
 import requests
 from ..config import settings
+from ..cache.manager import cache_manager
 
 
 class EmbeddingClient:
@@ -12,26 +13,34 @@ class EmbeddingClient:
     
     def __init__(self):
         """初始化客户端"""
-        # 优先使用 LAS API Key，否则使用 volc API Key
-        self.api_key = settings.LAS_API_KEY or settings.VOLC_API_KEY
+        # 使用 VOLC API Key
+        self.api_key = settings.VOLC_API_KEY
         if not self.api_key:
-            raise ValueError("LAS_API_KEY 或 VOLC_API_KEY 未配置")
+            raise ValueError("VOLC_API_KEY 未配置")
         
-        # 使用 LAS 服务端点
-        self.base_url = settings.LAS_API_BASE
-        self.model = settings.LAS_EMBEDDING_MODEL
-        self.dimension = 2048  # doubao-embedding-vision-250615 支持 1024 或 2048
+        # 使用火山引擎方舟 API 端点
+        self.base_url = settings.VOLC_API_BASE
+        # 使用 doubao-embedding-vision-251215 模型
+        self.model = "doubao-embedding-vision-251215"
+        self.dimension = 1024  # 支持 1024 或 2048
     
-    def embed(self, text: str) -> Optional[List[float]]:
+    def embed(self, text: str, use_cache: bool = True) -> Optional[List[float]]:
         """
         生成文本的向量表示
         
         Args:
             text: 输入文本
+            use_cache: 是否使用缓存
         
         Returns:
             向量列表，失败返回 None
         """
+        # 尝试从缓存获取
+        if use_cache:
+            cached = cache_manager.get_embedding(text)
+            if cached is not None:
+                return cached
+        
         try:
             url = f"{self.base_url}/embeddings/multimodal"
             headers = {
@@ -40,14 +49,14 @@ class EmbeddingClient:
             }
             payload = {
                 "model": self.model,
-                "encoding_format": "float",
-                "dimensions": self.dimension,
                 "input": [
                     {
                         "type": "text",
                         "text": text
                     }
-                ]
+                ],
+                "encoding_format": "float",
+                "dimensions": self.dimension
             }
             
             response = requests.post(url, json=payload, headers=headers, timeout=30)
@@ -57,9 +66,15 @@ class EmbeddingClient:
             if 'data' in data:
                 # 处理单个或多个结果
                 if isinstance(data['data'], list):
-                    return data['data'][0]['embedding']
+                    result = data['data'][0]['embedding']
                 else:
-                    return data['data']['embedding']
+                    result = data['data']['embedding']
+                
+                # 缓存结果
+                if use_cache and result:
+                    cache_manager.cache_embedding(text, result)
+                
+                return result
             
             print(f"Embedding 生成失败: 响应格式错误")
             return None
@@ -84,13 +99,13 @@ class EmbeddingClient:
                 "Content-Type": "application/json"
             }
             
-            # 构造输入
+            # 构造多模态输入格式
             inputs = [{"type": "text", "text": text} for text in texts]
             payload = {
                 "model": self.model,
+                "input": inputs,
                 "encoding_format": "float",
-                "dimensions": self.dimension,
-                "input": inputs
+                "dimensions": self.dimension
             }
             
             response = requests.post(url, json=payload, headers=headers, timeout=60)
@@ -114,7 +129,7 @@ class EmbeddingClient:
         生成图片（或图文）的向量表示
         
         Args:
-            image_url: 图片 URL
+            image_url: 图片 URL（支持 http/https/data URL）
             text: 可选的文本描述
         
         Returns:
@@ -128,6 +143,7 @@ class EmbeddingClient:
             }
             
             # 构造输入
+            # 火山引擎 API 支持 data URL (base64)
             inputs = [
                 {
                     "type": "image_url",
@@ -139,9 +155,9 @@ class EmbeddingClient:
             
             payload = {
                 "model": self.model,
+                "input": inputs,
                 "encoding_format": "float",
-                "dimensions": self.dimension,
-                "input": inputs
+                "dimensions": self.dimension
             }
             
             response = requests.post(url, json=payload, headers=headers, timeout=30)
@@ -157,6 +173,8 @@ class EmbeddingClient:
             return None
         except Exception as e:
             print(f"图片 Embedding 生成失败: {e}")
+            import traceback
+            traceback.print_exc()
             return None
 
 

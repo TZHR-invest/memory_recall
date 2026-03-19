@@ -7,10 +7,48 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any
 from ..database import db
 from ..models.memory import Memory, MemoryCreate, MemoryUpdate
+from ..processors.text_processor import get_text_processor
 
 
 class MemoryService:
     """记忆管理服务"""
+    
+    async def process_text_input(
+        self,
+        text: str,
+        auto_confirm: bool = False
+    ) -> Dict[str, Any]:
+        """
+        处理文本输入
+        
+        Args:
+            text: 输入文本
+            auto_confirm: 是否自动确认（无需询问用户）
+        
+        Returns:
+            处理结果，包含：
+            - success: 是否成功
+            - memory_id: 记忆 ID（如果已创建）
+            - memory_data: 记忆数据
+            - need_confirm: 是否需要用户确认
+            - confirm_fields: 需要确认的字段
+            - questions: 需要询问的问题
+        """
+        # 获取文本处理器
+        processor = get_text_processor()
+        
+        # 处理文本
+        result = await processor.process(text, auto_confirm)
+        
+        if not result["success"]:
+            return result
+        
+        # 如果不需要确认或自动确认，直接创建记忆
+        if not result["need_confirm"] or auto_confirm:
+            memory_id = await self.create(result["memory_data"])
+            result["memory_id"] = memory_id
+        
+        return result
     
     async def create(self, memory_data: MemoryCreate) -> str:
         """
@@ -22,8 +60,8 @@ class MemoryService:
         Returns:
             记忆 ID
         """
-        # 生成记忆 ID
-        memory_id = f"mem_{uuid.uuid4().hex[:12]}"
+        # 生成记忆 ID (使用 UUID)
+        memory_id = str(uuid.uuid4())
         
         # 准备数据
         now = datetime.utcnow()
@@ -35,14 +73,14 @@ class MemoryService:
                 time_value, time_source, time_confidence, time_original_text,
                 location_name, location_address, location_latitude, location_longitude,
                 location_need_confirm, location_original_text,
-                people, emotion, tags, duration, topic, attachments,
+                people, emotion, tags, duration, topic, attachments, embedding,
                 access_count, importance_score, status
             ) VALUES (
                 $1, $2, $3, $4,
                 $5, $6, $7, $8,
                 $9, $10, $11, $12, $13, $14,
-                $15, $16, $17, $18, $19, $20,
-                $21, $22, $23
+                $15, $16, $17, $18, $19, $20, $21,
+                $22, $23, $24
             )
         """,
             memory_id,
@@ -65,6 +103,8 @@ class MemoryService:
             json.dumps(memory_data.duration.model_dump()) if memory_data.duration else None,
             json.dumps(memory_data.topic.model_dump()) if memory_data.topic else None,
             json.dumps([a.model_dump() for a in memory_data.attachments]) if memory_data.attachments else None,
+            # 向量数据：转换为字符串格式
+            "[" + ",".join(map(str, memory_data.embedding)) + "]" if memory_data.embedding else None,
             0,
             0.5,
             "active"
@@ -327,6 +367,13 @@ class MemoryService:
         )
         
         # 解析 JSON 字段
+        
+        # 处理 embedding 字段（从字符串转换为列表）
+        embedding_data = row.get('embedding')
+        if embedding_data and isinstance(embedding_data, str):
+            # 解析向量字符串 "[0.1,0.2,...]" 为列表
+            embedding_data = json.loads(embedding_data)
+        
         people_data = row.get('people')
         people = None
         if people_data:
@@ -392,7 +439,7 @@ class MemoryService:
             )
         
         return Memory(
-            id=row['id'],
+            id=str(row['id']),
             content=row['content'],
             input_type=row['input_type'],
             created_at=row['created_at'],
@@ -405,7 +452,7 @@ class MemoryService:
             duration=duration,
             topic=topic,
             attachments=attachments,
-            embedding=row.get('embedding'),
+            embedding=embedding_data,
             access_count=row.get('access_count', 0),
             last_accessed_at=row.get('last_accessed_at'),
             importance_score=row.get('importance_score', 0.5),

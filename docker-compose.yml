@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   postgres:
-    image: postgres:14
+    image: pgvector/pgvector:pg16
     container_name: memory_recall_db
     environment:
       POSTGRES_USER: postgres
