@@ -140,7 +140,7 @@ class RecallService:
         # 添加地点过滤
         if location_filter:
             param_count += 1
-            sql += f" AND to_tsvector('simple', location_name) @@ to_tsquery('simple', ${param_count})"
+            sql += f" AND location_name LIKE ${param_count}"
             params.append(location_filter)
         
         # 添加人物过滤
@@ -177,6 +177,8 @@ class RecallService:
         """
         关键词检索
         
+        使用 LIKE 查询支持中文关键词匹配
+        
         Args:
             query: 查询文本
             limit: 返回数量限制
@@ -189,25 +191,27 @@ class RecallService:
         Returns:
             检索结果列表
         """
-        # 使用 PostgreSQL 全文检索
+        # 使用传入的关键词，如果没有则使用 Jieba 提取
+        if not keywords:
+            from .jieba_service import extract_keywords
+            keywords = extract_keywords(query, min_length=2)
+        
+        if not keywords:
+            return []
+        
+        # 构建 SQL - 使用 LIKE ANY 匹配关键词
         sql = """
             SELECT 
                 id, content, input_type, created_at,
-                time_value, location_name, people, emotion, tags,
-                ts_rank_cd(to_tsvector('simple', content), to_tsquery('simple', $1)) as rank
+                time_value, location_name, people, emotion, tags
             FROM memories
             WHERE status = 'active'
-                AND to_tsvector('simple', content) @@ to_tsquery('simple', $1)
+                AND content LIKE ANY($1::text[])
         """
         
-        # 处理查询文本（支持中文）
-        # 使用传入的关键词，如果没有则降级到空格分割
-        if keywords:
-            query_keywords = " | ".join(keywords)
-        else:
-            query_keywords = " | ".join(query.split())
-        
-        params = [query_keywords]
+        # 构建 LIKE 模式
+        like_patterns = [f'%{kw}%' for kw in keywords]
+        params = [like_patterns]
         param_count = 1
         
         # 添加时间过滤
@@ -224,7 +228,7 @@ class RecallService:
         # 添加地点过滤
         if location_filter:
             param_count += 1
-            sql += f" AND to_tsvector('simple', location_name) @@ to_tsquery('simple', ${param_count})"
+            sql += f" AND location_name LIKE ${param_count}"
             params.append(location_filter)
         
         # 添加人物过滤
@@ -239,19 +243,25 @@ class RecallService:
             sql += f" AND ${param_count} = ANY(tags)"
             params.append(tag_filter)
         
-        # 添加排序和限制
-        sql += f" ORDER BY rank DESC LIMIT ${param_count + 1}"
+        # 添加限制
+        sql += f" LIMIT ${param_count + 1}"
         params.append(limit)
         
         # 执行查询
         rows = await db.fetch(sql, *params)
         
-        # 归一化 rank 到 0-1 范围
+        # 计算匹配分数
         results = []
         for row in rows:
             result = dict(row)
-            result["similarity"] = min(1.0, result["rank"])  # 简单归一化
+            # 计算关键词匹配数量
+            match_count = sum(1 for kw in keywords if kw in result["content"])
+            # 归一化到 0-1 范围
+            result["similarity"] = match_count / len(keywords) if keywords else 0
             results.append(result)
+        
+        # 按匹配分数排序
+        results.sort(key=lambda x: x["similarity"], reverse=True)
         
         return results
     
@@ -362,11 +372,11 @@ class RecallService:
         """
         rows = await db.fetch("""
             SELECT * FROM memories
-            WHERE to_tsvector('simple', location_name) @@ to_tsquery('simple', $1)
+            WHERE location_name LIKE $1
             AND status = 'active'
             ORDER BY created_at DESC
             LIMIT $2
-        """, location_name, limit)
+        """, f'%{location_name}%', limit)
         
         return [self._row_to_memory(row) for row in rows]
     
