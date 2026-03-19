@@ -186,20 +186,67 @@ class QueryParser:
         """解析人物"""
         people = []
         
-        for keyword in self.people_keywords:
+        # 人物称呼模式（前置词 + 人物类型）
+        person_prefixes = ["老", "小", "大", "阿"]
+        person_types = ["同学", "朋友", "同事", "老板", "领导", "客户", "家人", "亲戚", "邻居"]
+        
+        # 动词停用词（这些词后面通常不是人名）
+        verb_stopwords = ["见面", "吃饭", "聊天", "开会", "讨论", "工作", "学习", "聚", "约", "汇报", "商量"]
+        
+        # 副词/后缀词（这些词紧跟在人名后面，需要去除）
+        suffix_words = ["一起", "一同", "共同"]
+        
+        # 主要人物连接词（按优先级排序）
+        main_connectors = ["和", "与", "跟", "同"]
+        
+        # 优先使用主要连接词
+        for keyword in main_connectors:
             if keyword in query:
                 # 分割句子
-                parts = query.split(keyword)
+                parts = query.split(keyword, 1)  # 只分割一次
                 if len(parts) > 1:
                     # 提取关键词后面的词（假设是人名）
                     next_part = parts[1].strip()
                     
+                    # 去除副词后缀
+                    for suffix in suffix_words:
+                        if next_part.startswith(suffix):
+                            next_part = next_part[len(suffix):].strip()
+                    
+                    # 尝试匹配称呼模式（老同学、小李、大客户等）
+                    for prefix in person_prefixes:
+                        for ptype in person_types:
+                            pattern = prefix + ptype
+                            if next_part.startswith(pattern):
+                                people.append(pattern)
+                                return list(set(people))
+                    
+                    # 尝试匹配单纯人物类型（同学、朋友等）
+                    for ptype in person_types:
+                        if next_part.startswith(ptype):
+                            people.append(ptype)
+                            return list(set(people))
+                    
                     # 提取第一个词（假设是人名）
-                    words = re.findall(r'[\u4e00-\u9fa5]+', next_part)
+                    # 使用更精确的分词：按空格、标点、动词分词
+                    words = re.split(r'[\s，。！？、]|' + '|'.join(verb_stopwords), next_part)
+                    words = [w.strip() for w in words if w.strip()]
+                    
                     if words:
                         name = words[0]
+                        # 检查是否包含动词，如果包含则截取
+                        for verb in verb_stopwords:
+                            if verb in name:
+                                name = name.split(verb)[0]
+                                break
+                        
+                        # 检查是否以副词结尾，如果是则去除
+                        for suffix in suffix_words:
+                            if name.endswith(suffix):
+                                name = name[:-len(suffix)]
+                        
                         # 假设人名不超过 4 个字
-                        if len(name) <= 4:
+                        if len(name) <= 4 and len(name) >= 2:
                             people.append(name)
         
         return list(set(people))
