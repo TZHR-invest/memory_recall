@@ -10,6 +10,7 @@ from ..models.memory import Memory, MemoryCreate, MemoryUpdate
 from ..services.memory_service import memory_service
 from ..services.recall_service import get_recall_service
 from ..services.query_parser import query_parser
+from ..services.llm_recall_service import get_llm_recall_service
 from ..database import db
 
 router = APIRouter(prefix="/memories", tags=["记忆管理"])
@@ -30,7 +31,8 @@ class RecallRequest(BaseModel):
     query: str = Field(..., description="自然语言查询")
     limit: int = Field(10, ge=1, le=100, description="返回数量限制")
     use_parser: bool = Field(True, description="是否使用自然语言解析")
-    min_similarity: float = Field(0.15, ge=0.0, le=1.0, description="最小相似度阈值（默认0.15）")
+    min_similarity: float = Field(0.05, ge=0.0, le=1.0, description="最小相似度阈值（默认0.05）")
+    detail_level: str = Field("medium", description="回答详情级别 (brief/medium/detailed)")
 
 
 class NaturalLanguageQuery(BaseModel):
@@ -346,7 +348,7 @@ async def search_memories(request: SearchRequest):
     "/recall",
     response_model=dict,
     summary="自然语言召回",
-    description="使用自然语言查询召回相关记忆",
+    description="使用自然语言查询召回相关记忆，并生成自然语言回答",
     responses={
         200: {
             "description": "召回成功",
@@ -356,13 +358,12 @@ async def search_memories(request: SearchRequest):
                         "code": 200,
                         "message": "success",
                         "data": {
-                            "results": [],
-                            "count": 3,
+                            "answer": "上周你主要做了几件事...",
+                            "used_memories": [],
+                            "memory_count": 3,
                             "parsed_query": {
                                 "time_range": {"start": "2024-01-01", "end": "2024-01-07"},
-                                "location": "咖啡店",
-                                "people": ["老同学"],
-                                "keywords": ["见面", "聊天"]
+                                "keywords": ["工作", "会议"]
                             }
                         }
                     }
@@ -375,14 +376,15 @@ async def recall_memories(request: RecallRequest):
     """
     自然语言召回记忆
     
-    智能解析自然语言查询（默认使用 Jieba 分词）：
+    智能解析自然语言查询并生成自然语言回答：
     - **query**: 自然语言查询，例如"上周在咖啡店和老同学见面"
     - **limit**: 返回数量，默认 10
     - **use_parser**: 是否使用自然语言解析，默认 True
-    - **min_similarity**: 最小相似度阈值，默认 0.15
+    - **min_similarity**: 最小相似度阈值，默认 0.05
+    - **detail_level**: 回答详情级别，默认 medium
     
     支持的查询类型：
-    - 时间查询："上周发生了什么"、"最近3天"
+    - 时间查询："上周做了什么"、"最近3天"
     - 地点查询："在咖啡店发生了什么"
     - 人物查询："和老同学相关的记忆"
     - 情绪查询："最近开心的事"
@@ -390,6 +392,7 @@ async def recall_memories(request: RecallRequest):
     """
     try:
         recall_service = get_recall_service()
+        llm_recall = get_llm_recall_service()
         
         # 解析查询（默认使用 Jieba 分词，速度快）
         parsed_query = None
@@ -437,7 +440,7 @@ async def recall_memories(request: RecallRequest):
                 person_filter = parsed_query["people"][0]
         
         # 执行搜索
-        results = await recall_service.search(
+        memory_results = await recall_service.search(
             query=request.query,
             limit=request.limit,
             time_range=time_range,
@@ -447,12 +450,20 @@ async def recall_memories(request: RecallRequest):
             keywords=parsed_query.get("keywords") if parsed_query else None
         )
         
+        # 调用 LLM 生成回答
+        llm_result = await llm_recall.generate_recall_response(
+            query=request.query,
+            memory_results=memory_results,
+            detail_level=request.detail_level
+        )
+        
         return {
             "code": 200,
             "message": "success",
             "data": {
-                "results": results,
-                "count": len(results),
+                "answer": llm_result["answer"],
+                "used_memories": llm_result["used_memories"],
+                "memory_count": llm_result["memory_count"],
                 "parsed_query": parsed_query
             }
         }

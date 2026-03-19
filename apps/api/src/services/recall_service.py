@@ -21,12 +21,12 @@ class RecallService:
     async def search(
         self,
         query: str,
-        limit: int = 10,
+        limit: int = 50,
         time_range: Optional[Dict[str, datetime]] = None,
         location_filter: Optional[str] = None,
         person_filter: Optional[str] = None,
         tag_filter: Optional[str] = None,
-        min_similarity: float = 0.1,
+        min_similarity: float = 0.05,
         hybrid_weight: float = 0.7,
         keywords: Optional[List[str]] = None
     ) -> List[Dict[str, Any]]:
