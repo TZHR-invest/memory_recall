@@ -317,11 +317,17 @@ async def search_memories(request: SearchRequest):
     try:
         recall_service = get_recall_service()
         
+        # 提取关键词用于混合检索
+        from ..services.jieba_service import get_jieba_service
+        jieba_service = get_jieba_service()
+        keywords = jieba_service.extract_keywords(request.query, top_n=5)
+        
         results = await recall_service.search(
             query=request.query,
             limit=request.limit,
             min_similarity=request.min_similarity,
-            hybrid_weight=request.hybrid_weight
+            hybrid_weight=request.hybrid_weight,
+            keywords=keywords  # 传递关键词
         )
         
         return {
