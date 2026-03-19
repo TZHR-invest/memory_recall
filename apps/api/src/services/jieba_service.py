@@ -62,16 +62,32 @@ def extract_time_keywords(text: str) -> dict:
     
     now = datetime.now()
     
-    # 时间关键词映射
+    # 时间关键词映射（使用整点时间，避免小数秒问题）
     time_keywords = {
-        "今天": (now.replace(hour=0, minute=0, second=0), now.replace(hour=23, minute=59, second=59)),
-        "昨天": ((now - timedelta(days=1)).replace(hour=0, minute=0, second=0), 
-                 (now - timedelta(days=1)).replace(hour=23, minute=59, second=59)),
-        "前天": ((now - timedelta(days=2)).replace(hour=0, minute=0, second=0),
-                 (now - timedelta(days=2)).replace(hour=23, minute=59, second=59)),
-        "最近": (now - timedelta(days=7), now),
-        "本周": (now - timedelta(days=now.weekday()), now + timedelta(days=6-now.weekday())),
-        "上周": (now - timedelta(days=now.weekday()+7), now - timedelta(days=now.weekday()+1)),
+        "今天": (
+            now.replace(hour=0, minute=0, second=0, microsecond=0),
+            now.replace(hour=23, minute=59, second=59, microsecond=0)
+        ),
+        "昨天": (
+            (now - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0),
+            (now - timedelta(days=1)).replace(hour=23, minute=59, second=59, microsecond=0)
+        ),
+        "前天": (
+            (now - timedelta(days=2)).replace(hour=0, minute=0, second=0, microsecond=0),
+            (now - timedelta(days=2)).replace(hour=23, minute=59, second=59, microsecond=0)
+        ),
+        "最近": (
+            (now - timedelta(days=7)).replace(hour=0, minute=0, second=0, microsecond=0),
+            now.replace(hour=23, minute=59, second=59, microsecond=0)
+        ),
+        "本周": (
+            (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0),
+            (now + timedelta(days=6-now.weekday())).replace(hour=23, minute=59, second=59, microsecond=0)
+        ),
+        "上周": (
+            (now - timedelta(days=now.weekday()+7)).replace(hour=0, minute=0, second=0, microsecond=0),
+            (now - timedelta(days=now.weekday()+1)).replace(hour=23, minute=59, second=59, microsecond=0)
+        ),
     }
     
     for keyword, (start, end) in time_keywords.items():
