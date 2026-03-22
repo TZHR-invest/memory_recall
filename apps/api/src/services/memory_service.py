@@ -590,8 +590,11 @@ class MemoryService:
             memory_id = await self._store_memory(content, embedding, user_id)
             return {
                 "memory_id": memory_id,
-                "graph": None,
-                "extracted": None
+                "graph": {"entity_count": 0, "relation_count": 0},
+                "extracted": {
+                    "memory_ids": [memory_id],
+                    "count": 1
+                }
             }
         
         memories = extraction_result.get("memories", [])
@@ -604,8 +607,11 @@ class MemoryService:
             memory_id = await self._store_memory(content, embedding, user_id)
             return {
                 "memory_id": memory_id,
-                "graph": None,
-                "extracted": None
+                "graph": {"entity_count": 0, "relation_count": 0},
+                "extracted": {
+                    "memory_ids": [memory_id],
+                    "count": 1
+                }
             }
         
         print(f"✅ 记忆提取成功：{len(memories)} 条记忆")
