@@ -554,7 +554,7 @@ class MemoryService:
         
         # 检查文本长度，决定是否需要分块
         content_chars = len(content)
-        MAX_CHARS_PER_CHUNK = 2500  # 降低阈值，避免 LLM 输出被截断
+        MAX_CHARS_PER_CHUNK = 5000  # 超过 5000 字符才分段
         
         if content_chars > MAX_CHARS_PER_CHUNK:
             print(f"⚠️ 文本过长（{content_chars} 字符），启动分块策略")
@@ -959,6 +959,11 @@ class MemoryService:
             是否成功
         """
         try:
+            # ⚠️ 验证 relation_type 不为空
+            if not relation_type:
+                print(f"⚠️ 跳过无效关系：relation_type 为空 (source={source}, target={target})")
+                return False
+            
             # 获取实体 ID
             # ⚠️ 如果 source == "我"，使用特殊标识（NULL 或 user_id）
             if source == "我":
