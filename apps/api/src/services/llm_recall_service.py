@@ -109,7 +109,8 @@ class LLMRecallService:
         self,
         query: str,
         memory_results: List[Dict[str, Any]],
-        detail_level: str = "medium"
+        detail_level: str = "medium",
+        user_id: Optional[str] = None  # 新增参数
     ) -> Dict[str, Any]:
         """
         基于记忆检索结果生成自然语言回答
@@ -118,6 +119,7 @@ class LLMRecallService:
             query: 用户查询
             memory_results: 检索到的记忆列表
             detail_level: 详情级别 (brief/medium/detailed)
+            user_id: 用户 ID（用于获取图谱关系）
         
         Returns:
             包含回答和引用记忆的结果
@@ -129,8 +131,13 @@ class LLMRecallService:
                 "memory_count": 0
             }
         
-        # 构建记忆上下文
-        memory_context = self._build_memory_context(memory_results, detail_level)
+        # 构建记忆上下文（包含图谱关系）
+        memory_context = await self._build_memory_context(
+            memory_results, 
+            detail_level,
+            include_relations=True,
+            user_id=user_id
+        )
         
         # 构建系统提示
         system_prompt = self._build_system_prompt(detail_level)
@@ -173,10 +180,12 @@ class LLMRecallService:
                 "memory_count": min(3, len(memory_results))
             }
     
-    def _build_memory_context(
+    async def _build_memory_context(
         self,
         memories: List[Dict[str, Any]],
-        detail_level: str
+        detail_level: str,
+        include_relations: bool = True,  # 新增参数
+        user_id: Optional[str] = None   # 新增参数
     ) -> str:
         """
         构建记忆上下文
@@ -184,12 +193,15 @@ class LLMRecallService:
         Args:
             memories: 记忆列表
             detail_level: 详情级别
+            include_relations: 是否包含实体关系
+            user_id: 用户 ID（用于查询图谱关系）
         
         Returns:
             格式化的记忆文本
         """
         context_parts = []
         
+        # 1. 构建记忆上下文
         for i, mem in enumerate(memories, 1):
             # 基础信息
             time_str = ""
@@ -266,6 +278,17 @@ class LLMRecallService:
                 meta_str = f" [{', '.join(meta)}]" if meta else ""
                 context_parts.append(f"{i}. {content}{meta_str}")
         
+        # 2. 获取并添加实体关系（如果启用）
+        if include_relations and user_id:
+            relations = await self._get_entity_relations(memories, user_id)
+            
+            if relations:
+                context_parts.append("\n实体关系图谱：")
+                for r in relations[:20]:  # 限制最多 20 个关系
+                    context_parts.append(
+                        f"- {r['source']} {r['relation_type']} {r['destination']}"
+                    )
+        
         return "\n".join(context_parts)
     
     def _build_system_prompt(self, detail_level: str) -> str:
@@ -326,6 +349,71 @@ class LLMRecallService:
             return memories[:min(3, len(memories))]
         
         return used
+    
+    async def _get_entity_relations(
+        self,
+        memories: List[Dict[str, Any]],
+        user_id: str
+    ) -> List[Dict[str, Any]]:
+        """
+        获取记忆中实体的关系
+        
+        Args:
+            memories: 记忆列表
+            user_id: 用户 ID
+        
+        Returns:
+            实体关系列表
+        """
+        try:
+            from ..database import db
+            
+            # 提取记忆中的实体
+            entity_names = set()
+            for mem in memories:
+                # 从 memory_entities 表获取实体
+                memory_id = mem.get("memory_id") or mem.get("id")
+                if memory_id:
+                    entities = await db.fetch(
+                        """
+                        SELECT e.name
+                        FROM entities e
+                        JOIN memory_entities me ON e.id = me.entity_id
+                        WHERE me.memory_id = $1
+                        """,
+                        memory_id
+                    )
+                    entity_names.update([e["name"] for e in entities])
+            
+            if not entity_names:
+                return []
+            
+            # 查询关系
+            relations = await db.fetch(
+                """
+                SELECT 
+                    e1.name as source,
+                    r.relation_type,
+                    e2.name as destination,
+                    r.weight
+                FROM relations r
+                JOIN entities e1 ON e1.id = r.from_entity_id
+                JOIN entities e2 ON e2.id = r.to_entity_id
+                WHERE (e1.name = ANY($1) OR e2.name = ANY($1))
+                AND (r.user_id = $2 OR r.user_id = 'system')
+                ORDER BY r.weight DESC
+                LIMIT 20
+                """,
+                list(entity_names), user_id
+            )
+            
+            return [dict(r) for r in relations]
+        
+        except Exception as e:
+            # 如果查询失败，返回空列表
+            import logging
+            logging.warning(f"获取实体关系失败: {e}")
+            return []
 
 
 # 全局 LLM 召回服务实例

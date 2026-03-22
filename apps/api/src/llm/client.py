@@ -3,10 +3,20 @@
 基于 OpenAI 兼容 API
 """
 import json
+import logging
 from typing import Dict, Any, Optional, List
 from openai import OpenAI
-from ..config import settings
-from ..cache.manager import cache_manager
+
+# 修改导入方式
+try:
+    from ..config import settings
+    from ..cache.manager import cache_manager
+except ImportError:
+    # 如果相对导入失败，尝试绝对导入
+    from config import settings
+    from cache.manager import cache_manager
+
+logger = logging.getLogger(__name__)
 
 
 class LLMClient:
@@ -153,6 +163,94 @@ class LLMClient:
                     pass
         
         return None
+    
+    def call_with_tools(
+        self,
+        messages: List[Dict[str, str]],
+        tools: List[Dict],
+        tool_choice: str = "auto",
+        temperature: float = 0.7,
+        max_tokens: int = 2000,
+        use_cache: bool = True
+    ) -> Dict[str, Any]:
+        """
+        使用 Function Calling 调用 LLM
+        
+        Args:
+            messages: 消息列表
+            tools: 工具定义列表
+            tool_choice: 工具选择策略（"auto", "none", 或指定工具名）
+            temperature: 温度参数
+            max_tokens: 最大 token 数
+            use_cache: 是否使用缓存
+        
+        Returns:
+            {
+                "tool_calls": [...],  # 工具调用列表
+                "content": str        # 文本响应（如果没有工具调用）
+            }
+        """
+        logger.info(f"[Function Calling] 开始调用，工具数量: {len(tools)}, tool_choice: {tool_choice}")
+        
+        # 尝试从缓存获取
+        if use_cache:
+            cache_key = json.dumps({
+                "messages": messages,
+                "tools": tools,
+                "tool_choice": tool_choice,
+                "temperature": temperature,
+                "model": self.model
+            }, sort_keys=True)
+            cached = cache_manager.get_llm_result(cache_key)
+            if cached is not None:
+                logger.info("[Function Calling] 使用缓存结果")
+                return cached
+        
+        try:
+            # 调用 API（带 tools 参数）
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                tools=tools,
+                tool_choice=tool_choice,
+                temperature=temperature,
+                max_tokens=max_tokens
+            )
+            
+            message = response.choices[0].message
+            
+            # 检查是否有工具调用
+            if message.tool_calls:
+                tool_calls = []
+                for tool_call in message.tool_calls:
+                    tool_calls.append({
+                        "id": tool_call.id,
+                        "name": tool_call.function.name,
+                        "arguments": json.loads(tool_call.function.arguments)
+                    })
+                
+                result = {"tool_calls": tool_calls, "content": None}
+                logger.info(f"[Function Calling] 工具调用成功，数量: {len(tool_calls)}")
+                
+                # 缓存结果
+                if use_cache:
+                    cache_manager.cache_llm_result(cache_key, result)
+                
+                return result
+            else:
+                # 没有工具调用，返回文本响应
+                result = {"tool_calls": None, "content": message.content}
+                logger.info(f"[Function Calling] 返回文本响应，长度: {len(message.content)}")
+                
+                # 缓存结果
+                if use_cache:
+                    cache_manager.cache_llm_result(cache_key, result)
+                
+                return result
+                
+        except Exception as e:
+            logger.error(f"[Function Calling] 调用失败: {e}", exc_info=True)
+            raise
 
 
 # 全局 LLM 客户端实例

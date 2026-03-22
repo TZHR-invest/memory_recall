@@ -1,13 +1,11 @@
 """
 文件上传路由
-支持长文本文件上传、智能分段、摘要生成
+支持长文本文件上传、智能分段、摘要生成、图谱构建
 """
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
-from typing import Optional, List, Dict, Any
+from typing import Optional
 import os
 import tempfile
-from ..services.segment_service import get_segment_service
-from ..services.summary_service import get_summary_service
 from ..services.memory_service import memory_service as get_memory_service
 
 router = APIRouter(prefix="/files", tags=["文件"])
@@ -17,19 +15,20 @@ router = APIRouter(prefix="/files", tags=["文件"])
     "/upload",
     response_model=dict,
     summary="上传长文本文件",
-    description="支持 txt、md、log 格式，自动智能分段和摘要生成"
+    description="支持 txt、md、log 格式，自动智能分段（最大 10MB）"
 )
 async def upload_file(
     file: UploadFile = File(..., description="文件"),
+    user_id: str = Form(..., description="用户 ID"),
     auto_segment: bool = Form(True, description="自动分段"),
     segment_strategy: str = Form("auto", description="分段策略：auto/time/topic/size"),
-    max_segment_size: int = Form(5000, description="最大分段大小（字符）"),
-    generate_summary: bool = Form(True, description="生成摘要")
+    max_segment_size: int = Form(800, description="最大分段大小（字符）")
 ):
     """
     上传长文本文件
     
-    - **file**: 文件（txt/md/log）
+    - **file**: 文件（txt/md/log，最大 10MB）
+    - **user_id**: 用户 ID（必填）
     - **auto_segment**: 是否自动分段
     - **segment_strategy**: 分段策略
       - auto: 自动检测
@@ -52,6 +51,14 @@ async def upload_file(
         
         # 2. 读取文件内容
         content = await file.read()
+        
+        # ⚠️ 3. 检查文件大小（最大 10MB）
+        MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+        if len(content) > MAX_FILE_SIZE:
+            raise HTTPException(
+                status_code=400,
+                detail=f"文件大小超过限制（最大 {MAX_FILE_SIZE / 1024 / 1024}MB）"
+            )
         try:
             text_content = content.decode("utf-8")
         except UnicodeDecodeError:
@@ -71,48 +78,36 @@ async def upload_file(
             "line_count": text_content.count("\n") + 1
         }
         
-        # 4. 智能分段
-        segment_service = get_segment_service()
+        # 设置当前用户（确保存储到正确的 schema）
+        from ..database import db
+        db.set_current_user(user_id)
         
-        if auto_segment:
-            segments = await segment_service.segment(
-                text_content,
-                strategy=segment_strategy,
-                max_size=max_segment_size
-            )
-        else:
-            # 不分段，整体作为一个分段
-            segments = [{
-                "content": text_content,
-                "index": 0
-            }]
-        
-        # 5. 生成摘要
-        summary_service = get_summary_service()
-        overall_summary = None
-        key_events = []
-        
-        if generate_summary:
-            # 为每个分段生成摘要
-            for segment in segments:
-                segment["summary"] = await summary_service.generate_segment_summary(
-                    segment["content"][:2000]  # 限制长度
-                )
-            
-            # 生成整体摘要
-            overall_summary = await summary_service.generate_overall_summary(segments)
-            
-            # 提取关键事件
-            key_events = await summary_service.extract_key_events(segments)
-        
-        # 6. 存储记忆
-        memory_id = await get_memory_service.create_from_file(
+        # 4. 统一调用 create_memory_with_graph_v2（Function Calling 方式）
+        result = await get_memory_service.create_memory_with_graph_v2(
             content=text_content,
-            file_info=file_info,
-            segments=segments,
-            overall_summary=overall_summary,
-            key_events=key_events
+            user_id=user_id,
+            enable_graph=True
         )
+        
+        # 获取所有记忆 ID
+        memory_ids = result.get("extracted", {}).get("memory_ids", [])
+        memory_id = memory_ids[0] if memory_ids else None
+        graph = result.get("graph", {})
+        
+        # 5. 更新所有记忆的文件元数据
+        if memory_ids:
+            # 更新所有记忆的文件信息
+            await db.execute("""
+                UPDATE memories 
+                SET input_type = 'file',
+                    file_name = $1,
+                    file_size = $2
+                WHERE id = ANY($3)
+            """,
+                file_info["filename"],
+                file_info["file_size"],
+                memory_ids
+            )
         
         return {
             "code": 200,
@@ -120,18 +115,11 @@ async def upload_file(
             "data": {
                 "memory_id": memory_id,
                 "file_info": file_info,
-                "segment_count": len(segments),
-                "overall_summary": overall_summary,
-                "key_events": key_events,
-                "segments": [
-                    {
-                        "index": s.get("index"),
-                        "summary": s.get("summary"),
-                        "time_range": s.get("time_range"),
-                        "line_count": s.get("content", "").count("\n") + 1
-                    }
-                    for s in segments[:10]  # 只返回前10个分段的信息
-                ]
+                "segment_count": graph.get("entity_count", 0) if graph else 0,
+                "graph": {
+                    "entities": graph.get("entity_count", 0),
+                    "relations": graph.get("relation_count", 0)
+                } if graph else None
             }
         }
     

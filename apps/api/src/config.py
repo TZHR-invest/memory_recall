@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     # 文件存储
     STORAGE_PATH: str = "/data/storage"
     
+    # Function Calling 配置
+    USE_FUNCTION_CALLING: bool = False  # 默认关闭，测试通过后开启
+    
     class Config:
         env_file = ".env"
         case_sensitive = True
