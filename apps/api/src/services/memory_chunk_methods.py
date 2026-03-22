@@ -28,8 +28,8 @@ async def _create_with_chunks(
     Returns:
         创建结果
     """
-    # 1. 分块（每块最大 5000 字符）
-    chunks = self._split_into_chunks(content, max_chars=5000)
+    # 1. 分块（每块最大 2500 字符，避免 LLM 输出被截断）
+    chunks = self._split_into_chunks(content, max_chars=2500)
     print(f"✂️ 文本已分为 {len(chunks)} 块")
     
     # 2. 使用 Function Calling 处理每个块
@@ -157,7 +157,7 @@ async def _create_with_chunks(
     }
 
 
-def _split_into_chunks(self, content: str, max_chars: int = 5000) -> List[str]:
+def _split_into_chunks(self, content: str, max_chars: int = 2500) -> List[str]:
     """
     将超长文本分块（按段落+大小+重叠窗口）
     
