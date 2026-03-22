@@ -121,7 +121,7 @@ class MemoryExtractionService:
             messages=messages,
             tools=[EXTRACT_MEMORIES_TOOL],
             temperature=0.3,  # 降低温度以提高一致性
-            max_tokens=4000   # 增加最大 token 数以支持长文本
+            max_tokens=100000   # 增加最大 token 数（模型支持 128k 输出）
         )
         
         return response
