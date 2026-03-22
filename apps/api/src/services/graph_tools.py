@@ -1,7 +1,8 @@
 """
-图谱工具定义（借鉴 Mem0）
+图谱工具定义
 
-使用 OpenAI Function Calling 机制，实现结构化输出
+借鉴 Mem0 的 Function Calling 机制
+用于结构化提取实体和关系
 """
 
 # 提取实体工具
@@ -9,7 +10,7 @@ EXTRACT_ENTITIES_TOOL = {
     "type": "function",
     "function": {
         "name": "extract_entities",
-        "description": "从文本中提取实体（人物、地点、事件等）及其类型。",
+        "description": "从文本中提取实体及其类型。支持的实体类型：person（人物）、location（地点）、event（事件）、topic（主题）、emotion（情感）、time（时间）、task（任务）、decision（决策）、concept（概念）、solution（解决方案）、problem（问题）。",
         "parameters": {
             "type": "object",
             "properties": {
@@ -20,12 +21,12 @@ EXTRACT_ENTITIES_TOOL = {
                         "properties": {
                             "entity": {
                                 "type": "string",
-                                "description": "实体名称（如'张三'、'咖啡店'）"
+                                "description": "实体名称（如'张三'、'咖啡店'、'今天下午'）"
                             },
                             "entity_type": {
                                 "type": "string",
-                                "description": "实体类型",
-                                "enum": ["person", "location", "event", "topic", "emotion"]
+                                "description": "实体类型（必须从以下类型中选择）",
+                                "enum": ["person", "location", "event", "topic", "emotion", "time", "task", "decision", "concept", "solution", "problem"]
                             },
                             "confidence": {
                                 "type": "number",
@@ -125,24 +126,6 @@ UPDATE_GRAPH_MEMORY_TOOL = {
     }
 }
 
-# 删除图谱记忆工具
-DELETE_GRAPH_MEMORY_TOOL = {
-    "type": "function",
-    "function": {
-        "name": "delete_graph_memory",
-        "description": "删除图谱记忆中的实体或关系。",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "entity": {"type": "string", "description": "要删除的实体名称"},
-                "source": {"type": "string", "description": "关系源实体"},
-                "destination": {"type": "string", "description": "关系目标实体"},
-                "relationship": {"type": "string", "description": "关系类型"}
-            }
-        }
-    }
-}
-
 # 无操作工具
 NOOP_TOOL = {
     "type": "function",
@@ -163,11 +146,10 @@ GRAPH_TOOLS = [
     ESTABLISH_RELATIONS_TOOL,
     ADD_GRAPH_MEMORY_TOOL,
     UPDATE_GRAPH_MEMORY_TOOL,
-    DELETE_GRAPH_MEMORY_TOOL,
     NOOP_TOOL
 ]
 
-# 常用的关系类型
+# 关系类型映射
 RELATION_TYPES = {
     # 人物关系
     "friend": "朋友",
@@ -210,44 +192,3 @@ ENTITY_TYPES = {
     "solution": "解决方案",
     "problem": "问题"
 }
-
-
-def validate_tool_definition(tool: dict) -> bool:
-    """验证工具定义是否符合 OpenAI Function Calling 格式"""
-    try:
-        assert tool["type"] == "function"
-        assert "name" in tool["function"]
-        assert "description" in tool["function"]
-        assert "parameters" in tool["function"]
-        # 修复：parameters 在 function 内部
-        params = tool["function"]["parameters"]
-        assert "type" in params
-        assert "properties" in params
-        return True
-    except (KeyError, AssertionError) as e:
-        print(f"  验证错误: {e}")
-        return False
-
-
-def validate_all_tools():
-    """验证所有工具定义"""
-    results = []
-    for tool in GRAPH_TOOLS:
-        tool_name = tool["function"]["name"]
-        is_valid = validate_tool_definition(tool)
-        results.append({
-            "name": tool_name,
-            "valid": is_valid
-        })
-        print(f"{'✓' if is_valid else '✗'} {tool_name}: {'有效' if is_valid else '无效'}")
-    
-    return all(r["valid"] for r in results)
-
-
-if __name__ == "__main__":
-    # 测试工具定义
-    print("验证工具定义...")
-    print()
-    all_valid = validate_all_tools()
-    print()
-    print(f"结果: {'所有工具定义有效 ✓' if all_valid else '部分工具定义无效 ✗'}")

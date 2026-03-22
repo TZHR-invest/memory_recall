@@ -29,7 +29,9 @@ class RecallService:
         tag_filter: Optional[str] = None,
         min_similarity: float = 0.05,
         hybrid_weight: float = 0.7,
-        keywords: Optional[List[str]] = None
+        keywords: Optional[List[str]] = None,
+        enable_graph: bool = False,
+        user_id: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """
         混合检索记忆
@@ -44,15 +46,55 @@ class RecallService:
             min_similarity: 最小相似度阈值
             hybrid_weight: 混合权重（向量相似度权重，1-hybrid_weight 为关键词权重）
             keywords: 预提取的关键词列表（来自 LLM 解析）
+            enable_graph: 是否启用图谱增强召回
+            user_id: 用户 ID（启用图谱召回时必需）
         
         Returns:
             检索结果列表，包含记忆数据和相似度分数
         """
+        # 调试日志
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"[DEBUG] search called with query={query}, limit={limit}, min_similarity={min_similarity}, enable_graph={enable_graph}, user_id={user_id}")
+
         # 1. 生成查询向量
         query_embedding = self.embedding_client.embed(query)
         
         if not query_embedding:
             return []
+        
+        # 如果启用图谱召回，使用三路混合召回
+        if enable_graph and user_id:
+            try:
+                from .graph_recall_service import get_graph_recall_service
+                
+                graph_service = get_graph_recall_service()
+                
+                # 定义图谱召回的权重配置
+                graph_weights = {
+                    "vector": hybrid_weight * 0.7,  # 向量权重
+                    "keyword": (1 - hybrid_weight) * 0.6,  # 关键词权重
+                    "graph": 0.2  # 图谱权重
+                }
+                
+                # 调用图谱服务的混合召回（传递时间过滤）
+                results = await graph_service.hybrid_recall(
+                    query=query,
+                    user_id=user_id,
+                    limit=limit,
+                    weights=graph_weights,
+                    time_range=time_range  # ✅ 传递时间过滤
+                )
+                
+                # 过滤低相似度结果
+                results = [r for r in results if r.get("similarity", 0) >= min_similarity]
+                
+                return results[:limit]
+            
+            except Exception as e:
+                # 如果图谱召回失败，回退到传统召回
+                import logging
+                logging.warning(f"图谱召回失败，回退到传统召回: {e}")
         
         # 2. 向量相似度检索
         vector_results = await self._vector_search(

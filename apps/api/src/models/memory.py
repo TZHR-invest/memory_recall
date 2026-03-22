@@ -3,7 +3,7 @@
 """
 from datetime import datetime
 from typing import Optional, List
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class TimeInfo(BaseModel):
@@ -75,6 +75,15 @@ class Memory(BaseModel):
     location: Optional[LocationInfo] = None
     people: Optional[List[PersonInfo]] = None
     
+    # 关键事件
+    key_events: Optional[List[str]] = None
+    
+    # 分段存储（用于长文本）
+    segment_ids: Optional[List[str]] = None  # 分段记忆 ID 列表
+    file_name: Optional[str] = None  # 文件名
+    file_size: Optional[int] = None  # 文件大小（字节）
+    segment_count: Optional[int] = None  # 分段数量
+    
     # 可选字段
     emotion: Optional[EmotionInfo] = None
     tags: Optional[List[str]] = None
@@ -102,12 +111,24 @@ class MemoryCreate(BaseModel):
     time: Optional[TimeInfo] = None
     location: Optional[LocationInfo] = None
     people: Optional[List[PersonInfo]] = None
+    
+    # 关键事件
+    key_events: Optional[List[str]] = None
+    
     emotion: Optional[EmotionInfo] = None
     tags: Optional[List[str]] = None
     duration: Optional[DurationInfo] = None
     topic: Optional[TopicInfo] = None
     attachments: Optional[List[Attachment]] = None
     embedding: Optional[List[float]] = None
+    
+    @field_validator('content')
+    @classmethod
+    def validate_content(cls, v):
+        """验证内容不能为空"""
+        if not v or not v.strip():
+            raise ValueError('内容不能为空')
+        return v.strip()  # 返回去除首尾空白的内容
 
 
 class MemoryUpdate(BaseModel):

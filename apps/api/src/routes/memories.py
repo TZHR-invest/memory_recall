@@ -21,6 +21,7 @@ router = APIRouter(prefix="/memories", tags=["记忆管理"])
 class SearchRequest(BaseModel):
     """搜索请求"""
     query: str = Field(..., description="搜索查询文本")
+    user_id: str = Field(..., description="用户 ID")
     limit: int = Field(10, ge=1, le=100, description="返回数量限制")
     min_similarity: float = Field(0.15, ge=0.0, le=1.0, description="最小相似度阈值（默认0.15）")
     hybrid_weight: float = Field(0.6, ge=0.0, le=1.0, description="向量检索权重（默认0.6，增加关键词权重）")
@@ -29,7 +30,8 @@ class SearchRequest(BaseModel):
 class RecallRequest(BaseModel):
     """召回请求"""
     query: str = Field(..., description="自然语言查询")
-    limit: int = Field(10, ge=1, le=100, description="返回数量限制")
+    user_id: str = Field(..., description="用户 ID")
+    limit: int = Field(20, ge=1, le=100, description="返回数量限制")
     use_parser: bool = Field(True, description="是否使用自然语言解析")
     min_similarity: float = Field(0.05, ge=0.0, le=1.0, description="最小相似度阈值（默认0.05）")
     detail_level: str = Field("medium", description="回答详情级别 (brief/medium/detailed)")
@@ -47,6 +49,7 @@ class CreateMemoryWithGraphRequest(BaseModel):
     user_id: str = Field(..., description="用户 ID")
     enable_graph: bool = Field(True, description="是否启用图谱构建")
     enable_confirmation: bool = Field(False, description="是否启用智能确认")
+    use_unified: bool = Field(True, description="是否使用统一提取（1次LLM调用）")
 
 
 # ==================== CRUD 端点 ====================
@@ -77,7 +80,10 @@ class CreateMemoryWithGraphRequest(BaseModel):
         500: {"description": "服务器内部错误"}
     }
 )
-async def create_memory(memory: MemoryCreate):
+async def create_memory(
+    memory: MemoryCreate,
+    user_id: str = Query(..., description="用户 ID")
+):
     """
     创建记忆
     
@@ -88,25 +94,33 @@ async def create_memory(memory: MemoryCreate):
     - **people**: 人物信息（可选）
     - **emotion**: 情绪信息（可选）
     - **tags**: 标签列表（可选）
+    - **user_id**: 用户 ID（必填）
     """
+    # 设置当前用户，后续数据库操作会自动使用该用户的 schema
+    db.set_current_user(user_id)
+    
     try:
-        # 如果是文本输入且没有提供结构化数据，使用文本处理器
+        # 如果是文本输入且没有提供结构化数据，使用 Function Calling 提取
         if memory.input_type == "text" and not any([
             memory.time, memory.location, memory.people,
             memory.emotion, memory.tags
         ]):
-            result = await memory_service.process_text_input(memory.content, auto_confirm=True)
-            if result["success"]:
-                memory_id = result.get("memory_id")
-                if memory_id:
-                    created_memory = await memory_service.get(memory_id)
-                    return {
-                        "code": 200,
-                        "message": "success",
-                        "data": created_memory.model_dump()
-                    }
+            result = await memory_service.create_memory_with_graph_v2(
+                content=memory.content,
+                user_id=user_id,
+                enable_graph=True,
+                enable_confirmation=False
+            )
+            memory_id = result.get("memory_id")
+            if memory_id:
+                created_memory = await memory_service.get(memory_id)
+                return {
+                    "code": 200,
+                    "message": "success",
+                    "data": created_memory.model_dump()
+                }
             else:
-                raise HTTPException(status_code=500, detail=result.get("error", "处理失败"))
+                raise HTTPException(status_code=500, detail="记忆创建失败")
         
         # 否则直接创建
         memory_id = await memory_service.create(memory)
@@ -149,6 +163,7 @@ async def create_memory(memory: MemoryCreate):
     }
 )
 async def list_memories(
+    user_id: str = Query(..., description="用户 ID"),
     limit: int = Query(50, ge=1, le=100, description="数量限制"),
     offset: int = Query(0, ge=0, description="偏移量"),
     status: str = Query("active", description="状态过滤（active/archived/deleted）"),
@@ -158,12 +173,16 @@ async def list_memories(
     """
     列出记忆
     
+    - **user_id**: 用户 ID（必填）
     - **limit**: 每页数量，1-100，默认 50
     - **offset**: 偏移量，默认 0
     - **status**: 状态过滤，默认 active
     - **order_by**: 排序字段，默认 created_at
     - **order**: 排序方向，默认 desc
     """
+    # 设置当前用户
+    db.set_current_user(user_id)
+    
     memories = await memory_service.list(limit, offset, status)
     
     # 获取总数
@@ -194,12 +213,19 @@ async def list_memories(
         404: {"description": "记忆不存在"}
     }
 )
-async def get_memory(memory_id: str):
+async def get_memory(
+    memory_id: str,
+    user_id: str = Query(..., description="用户 ID")
+):
     """
     获取记忆
     
     - **memory_id**: 记忆 ID
+    - **user_id**: 用户 ID（必填）
     """
+    # 设置当前用户
+    db.set_current_user(user_id)
+    
     memory = await memory_service.get(memory_id)
     
     if not memory:
@@ -230,13 +256,21 @@ async def get_memory(memory_id: str):
         404: {"description": "记忆不存在"}
     }
 )
-async def update_memory(memory_id: str, updates: MemoryUpdate):
+async def update_memory(
+    memory_id: str,
+    updates: MemoryUpdate,
+    user_id: str = Query(..., description="用户 ID")
+):
     """
     更新记忆（完整更新）
     
     - **memory_id**: 记忆 ID
     - **updates**: 更新数据
+    - **user_id**: 用户 ID（必填）
     """
+    # 设置当前用户
+    db.set_current_user(user_id)
+    
     success = await memory_service.update(memory_id, updates)
     
     if not success:
@@ -262,12 +296,19 @@ async def update_memory(memory_id: str, updates: MemoryUpdate):
         404: {"description": "记忆不存在"}
     }
 )
-async def delete_memory(memory_id: str):
+async def delete_memory(
+    memory_id: str,
+    user_id: str = Query(..., description="用户 ID")
+):
     """
     删除记忆（软删除）
     
     - **memory_id**: 记忆 ID
+    - **user_id**: 用户 ID（必填）
     """
+    # 设置当前用户
+    db.set_current_user(user_id)
+    
     success = await memory_service.delete(memory_id)
     
     if not success:
@@ -320,10 +361,14 @@ async def search_memories(request: SearchRequest):
     
     使用向量相似度 + 关键词混合检索：
     - **query**: 搜索查询文本
+    - **user_id**: 用户 ID（必填）
     - **limit**: 返回数量，默认 10
     - **min_similarity**: 最小相似度阈值，默认 0.5
     - **hybrid_weight**: 向量检索权重，默认 0.7（关键词权重为 0.3）
     """
+    # 设置当前用户
+    db.set_current_user(request.user_id)
+    
     try:
         recall_service = get_recall_service()
         
@@ -386,6 +431,7 @@ async def recall_memories(request: RecallRequest):
     
     智能解析自然语言查询并生成自然语言回答：
     - **query**: 自然语言查询，例如"上周在咖啡店和老同学见面"
+    - **user_id**: 用户 ID（必填）
     - **limit**: 返回数量，默认 10
     - **use_parser**: 是否使用自然语言解析，默认 True
     - **min_similarity**: 最小相似度阈值，默认 0.05
@@ -398,6 +444,9 @@ async def recall_memories(request: RecallRequest):
     - 情绪查询："最近开心的事"
     - 混合查询："上周在咖啡店和老同学见面"
     """
+    # 设置当前用户
+    db.set_current_user(request.user_id)
+    
     try:
         recall_service = get_recall_service()
         llm_recall = get_llm_recall_service()
@@ -454,15 +503,17 @@ async def recall_memories(request: RecallRequest):
             if parsed_query.get("people") and len(parsed_query["people"]) > 0:
                 person_filter = parsed_query["people"][0]
         
-        # 执行搜索
+        # 执行搜索（混合召回不使用硬过滤）
         memory_results = await recall_service.search(
             query=request.query,
             limit=request.limit,
-            time_range=time_range,
-            location_filter=location_filter,
-            person_filter=person_filter,
+            # 混合召回时，不使用 location_filter 和 person_filter
+            # 让向量相似度和图谱关系来召回相关记忆
+            time_range=time_range,  # ⏰ 时间过滤保留（更准确）
             min_similarity=request.min_similarity,
-            keywords=parsed_query.get("keywords") if parsed_query else None
+            keywords=parsed_query.get("keywords") if parsed_query else None,
+            enable_graph=True,       # ✅ 启用图谱召回
+            user_id=request.user_id  # ✅ 传递 user_id
         )
         
         # 调用 LLM 生成回答
@@ -484,97 +535,6 @@ async def recall_memories(request: RecallRequest):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-
-# ==================== 专用搜索端点 ====================
-
-@router.get(
-    "/search/time",
-    response_model=dict,
-    summary="按时间搜索",
-    description="按时间范围搜索记忆",
-    deprecated=True
-)
-async def search_by_time(
-    start: datetime = Query(..., description="开始时间"),
-    end: datetime = Query(..., description="结束时间"),
-    limit: int = Query(50, ge=1, le=100, description="数量限制")
-):
-    """
-    按时间范围搜索记忆
-    
-    - **start**: 开始时间（ISO 8601 格式）
-    - **end**: 结束时间（ISO 8601 格式）
-    - **limit**: 数量限制
-    """
-    memories = await memory_service.search_by_time(start, end, limit)
-    
-    return {
-        "code": 200,
-        "message": "success",
-        "data": {
-            "memories": [m.model_dump() for m in memories],
-            "count": len(memories)
-        }
-    }
-
-
-@router.get(
-    "/search/location",
-    response_model=dict,
-    summary="按地点搜索",
-    description="按地点搜索记忆",
-    deprecated=True
-)
-async def search_by_location(
-    location: str = Query(..., description="地点名称"),
-    limit: int = Query(50, ge=1, le=100, description="数量限制")
-):
-    """
-    按地点搜索记忆
-    
-    - **location**: 地点名称
-    - **limit**: 数量限制
-    """
-    memories = await memory_service.search_by_location(location, limit)
-    
-    return {
-        "code": 200,
-        "message": "success",
-        "data": {
-            "memories": [m.model_dump() for m in memories],
-            "count": len(memories)
-        }
-    }
-
-
-@router.get(
-    "/search/person",
-    response_model=dict,
-    summary="按人物搜索",
-    description="按人物搜索记忆",
-    deprecated=True
-)
-async def search_by_person(
-    person: str = Query(..., description="人物名称"),
-    limit: int = Query(50, ge=1, le=100, description="数量限制")
-):
-    """
-    按人物搜索记忆
-    
-    - **person**: 人物名称
-    - **limit**: 数量限制
-    """
-    memories = await memory_service.search_by_person(person, limit)
-    
-    return {
-        "code": 200,
-        "message": "success",
-        "data": {
-            "memories": [m.model_dump() for m in memories],
-            "count": len(memories)
-        }
-    }
 
 
 # ==================== 批量操作端点 ====================
@@ -655,8 +615,11 @@ async def create_memory_with_graph(request: CreateMemoryWithGraphRequest):
     - memory_id: 记忆 ID
     - graph: 图谱信息（如果启用）
     """
+    # 设置当前用户 schema
+    db.set_current_user(request.user_id)
+    
     try:
-        result = await memory_service.create_memory_with_graph(
+        result = await memory_service.create_memory_with_graph_v2(
             content=request.content,
             user_id=request.user_id,
             enable_graph=request.enable_graph,

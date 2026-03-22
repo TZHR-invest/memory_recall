@@ -16,6 +16,8 @@ from src.routes import health
 from src.routes import memories
 from src.routes import upload
 from src.routes import files
+from src.routes import graph
+from src.routes import users
 
 
 # ==================== 应用生命周期管理 ====================
@@ -124,13 +126,20 @@ app.add_middleware(
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     """请求验证异常处理"""
+    errors = []
+    for error in exc.errors():
+        errors.append({
+            "loc": error.get("loc", []),
+            "msg": str(error.get("msg", "")),
+            "type": error.get("type", "")
+        })
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content={
             "code": 422,
             "message": "请求参数验证失败",
-            "errors": exc.errors(),
-            "body": exc.body
+            "errors": errors,
+            "body": str(exc.body) if exc.body else None
         }
     )
 
@@ -158,9 +167,11 @@ async def global_exception_handler(request: Request, exc: Exception):
 app.include_router(health.router, tags=["健康检查"])
 
 # API 路由（带版本前缀）
+app.include_router(users.router, prefix="/api/v1", tags=["用户管理"])
 app.include_router(memories.router, prefix="/api/v1", tags=["记忆管理"])
 app.include_router(upload.router, prefix="/api/v1", tags=["图片上传"])
 app.include_router(files.router, prefix="/api/v1", tags=["文件上传"])
+app.include_router(graph.router, tags=["图谱增强召回"])
 
 
 # ==================== 根路径和元数据 ====================
@@ -236,10 +247,7 @@ async def api_info():
             },
             "search": {
                 "semantic": "POST /api/v1/memories/search",
-                "natural_language": "POST /api/v1/memories/recall",
-                "by_time": "GET /api/v1/memories/search/time",
-                "by_location": "GET /api/v1/memories/search/location",
-                "by_person": "GET /api/v1/memories/search/person"
+                "natural_language": "POST /api/v1/memories/recall"
             },
             "stats": {
                 "overview": "GET /api/stats",

@@ -8,51 +8,25 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any
 from ..database import db
 from ..models.memory import Memory, MemoryCreate, MemoryUpdate
-from ..processors.text_processor import get_text_processor
 from ..embedding.client import get_embedding_client
 from .graph_builder_service import get_graph_builder_service
 from .embedding_cache import get_embedding_cache
 
+from .memory_extraction_service import get_memory_extraction_service
+
+# 导入分块处理方法
+from .memory_chunk_methods import (
+    _create_with_chunks, 
+    _split_into_chunks, 
+    _deduplicate_memories,
+    _deduplicate_memories_by_content, 
+    _extract_keywords,
+    _calculate_keyword_similarity
+)
+
 
 class MemoryService:
     """记忆管理服务"""
-    
-    async def process_text_input(
-        self,
-        text: str,
-        auto_confirm: bool = False
-    ) -> Dict[str, Any]:
-        """
-        处理文本输入
-        
-        Args:
-            text: 输入文本
-            auto_confirm: 是否自动确认（无需询问用户）
-        
-        Returns:
-            处理结果，包含：
-            - success: 是否成功
-            - memory_id: 记忆 ID（如果已创建）
-            - memory_data: 记忆数据
-            - need_confirm: 是否需要用户确认
-            - confirm_fields: 需要确认的字段
-            - questions: 需要询问的问题
-        """
-        # 获取文本处理器
-        processor = get_text_processor()
-        
-        # 处理文本
-        result = await processor.process(text, auto_confirm)
-        
-        if not result["success"]:
-            return result
-        
-        # 如果不需要确认或自动确认，直接创建记忆
-        if not result["need_confirm"] or auto_confirm:
-            memory_id = await self.create(result["memory_data"])
-            result["memory_id"] = memory_id
-        
-        return result
     
     async def create(self, memory_data: MemoryCreate) -> str:
         """
@@ -544,7 +518,7 @@ class MemoryService:
             status=row.get('status', 'active')
         )
     
-    async def create_memory_with_graph(
+    async def create_memory_with_graph_v2(
         self,
         content: str,
         user_id: str,
@@ -552,7 +526,13 @@ class MemoryService:
         enable_confirmation: bool = False
     ) -> Dict[str, Any]:
         """
-        创建记忆（并发处理向量存储和图谱构建）
+        创建记忆（Function Calling 方式 - 新版本）
+        
+        流程：
+        1. 使用 Function Calling 提取记忆
+        2. 存储记忆到 memories 表
+        3. 存储实体到 entities 表
+        4. 存储关系到 relations 表
         
         Args:
             content: 记忆内容
@@ -564,54 +544,491 @@ class MemoryService:
             创建结果，包含：
             - memory_id: 记忆 ID
             - graph: 图谱信息（如果启用）
+            - extracted: 提取的结构化信息
         """
-        # 并发任务列表
-        tasks = []
+        # 确保用户存在
+        await db.init_user(user_id)
         
-        # 任务 1: 向量存储（生成 embedding + 存储 memories 表）
-        async def store_vector():
-            embedding = await self._generate_embedding(content)
+        # 设置当前用户 schema
+        db.set_current_user(user_id)
+        
+        # 检查文本长度，决定是否需要分块
+        content_chars = len(content)
+        MAX_CHARS_PER_CHUNK = 5000
+        
+        if content_chars > MAX_CHARS_PER_CHUNK:
+            print(f"⚠️ 文本过长（{content_chars} 字符），启动分块策略")
+            return await self._create_with_chunks(content, user_id, enable_graph)
+        
+        print(f"⚡ 启动处理：Function Calling 提取 + 向量生成")
+        
+        # ⚡ 并行执行：记忆提取 + 向量生成
+        extraction_task = self._extract_memories_v2(content)
+        embedding_task = self._generate_embedding(content)
+        
+        # 等待并行任务完成
+        extraction_result, embedding = await asyncio.gather(
+            extraction_task, 
+            embedding_task,
+            return_exceptions=True
+        )
+        
+        # ⚠️ 检查是否为异常
+        if isinstance(extraction_result, Exception):
+            print(f"⚠️ 记忆提取失败: {extraction_result}")
+            extraction_result = None
+        if isinstance(embedding, Exception):
+            print(f"⚠️ 向量生成失败: {embedding}")
+            embedding = None
+        
+        # ⚠️ 检查提取结果
+        if not extraction_result or not extraction_result.get("success"):
+            # 提取失败，降级为简单存储
+            print(f"⚠️ 记忆提取失败，降级为简单存储")
+            if embedding is None:
+                embedding = await self._generate_embedding(content)
             memory_id = await self._store_memory(content, embedding, user_id)
-            return {"type": "vector", "memory_id": memory_id}
+            return {
+                "memory_id": memory_id,
+                "graph": None,
+                "extracted": None
+            }
         
-        tasks.append(store_vector())
+        memories = extraction_result.get("memories", [])
         
-        # 任务 2: 图谱构建（提取实体 + 关系）
-        if enable_graph:
-            graph_builder = get_graph_builder_service()
-            
-            async def build_graph():
-                result = await graph_builder.build_graph(
-                    content=content,
-                    user_id=user_id,
-                    enable_confirmation=enable_confirmation
-                )
-                return {"type": "graph", **result}
-            
-            tasks.append(build_graph())
+        if not memories:
+            # 没有提取到记忆，降级为简单存储
+            print(f"⚠️ 未提取到记忆，降级为简单存储")
+            if embedding is None:
+                embedding = await self._generate_embedding(content)
+            memory_id = await self._store_memory(content, embedding, user_id)
+            return {
+                "memory_id": memory_id,
+                "graph": None,
+                "extracted": None
+            }
         
-        # 并发执行
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        print(f"✅ 记忆提取成功：{len(memories)} 条记忆")
         
-        # 整合结果
-        memory_id = None
-        graph_result = None
+        # 2. 存储每条记忆
+        memory_ids = []
+        graph_results = []
         
-        for result in results:
-            if isinstance(result, Exception):
-                # 记录错误但继续处理
-                print(f"Task failed: {result}")
+        for memory in memories:
+            memory_content = memory.get("content", "")
+            if not memory_content.strip():
                 continue
             
-            if result["type"] == "vector":
-                memory_id = result["memory_id"]
-            elif result["type"] == "graph":
-                graph_result = result
+            # 提取结构化信息
+            time_info = memory.get("time", {})
+            location_info = memory.get("location", {})
+            people = memory.get("people", [])
+            entities = memory.get("entities", [])
+            relations = memory.get("relations", [])
+            tags = memory.get("tags", [])
+            emotion = memory.get("emotion", {})
+            importance = memory.get("importance", 0.5)
+            
+            # 提取时间
+            time_value = time_info.get("value") if isinstance(time_info, dict) else None
+            time_original = time_info.get("original_text") if isinstance(time_info, dict) else None
+            
+            # 转换字符串时间为 datetime 对象
+            time_value = self._parse_time_value_v2(time_value)
+            
+            # 提取地点
+            location_name = location_info.get("name") if isinstance(location_info, dict) else None
+            
+            # 存储记忆
+            memory_id = str(uuid.uuid4())
+            now = datetime.utcnow()
+            
+            await db.execute("""
+                INSERT INTO memories (
+                    id, content, input_type, created_at,
+                    time_value, time_original_text, location_name, people,
+                    tags, emotion, importance_score,
+                    embedding, status
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+            """,
+                memory_id,
+                memory_content,
+                "text",
+                now,
+                time_value,
+                time_original,
+                location_name,
+                json.dumps(people) if people else None,
+                json.dumps(tags) if tags else None,
+                json.dumps(emotion) if emotion else None,
+                importance,
+                "[" + ",".join(map(str, embedding)) + "]" if embedding else None,
+                "active"
+            )
+            
+            memory_ids.append(memory_id)
+            
+            # 为每条记忆分别存储图谱
+            if enable_graph and (entities or relations):
+                # 去重当前记忆的实体和关系
+                unique_entities = self._deduplicate_entities_v2(entities)
+                unique_relations = self._deduplicate_relations_v2(relations)
+                
+                # 存储实体和关系，关联到当前记忆
+                graph_result = await self._store_graph_v2(
+                    entities=unique_entities,
+                    relations=unique_relations,
+                    user_id=user_id,
+                    memory_id=memory_id
+                )
+                graph_results.append(graph_result)
+        
+        # 返回结果
+        return {
+            "memory_id": memory_ids[0] if memory_ids else None,
+            "graph": graph_results[0] if graph_results else None,
+            "extracted": {
+                "memories": len(memories),
+                "memory_ids": memory_ids
+            }
+        }
+    
+    async def _extract_memories_v2(self, content: str) -> Dict[str, Any]:
+        """
+        提取记忆（调用记忆提取服务）
+        
+        Args:
+            content: 输入文本
+        
+        Returns:
+            提取结果
+        """
+        extraction_service = get_memory_extraction_service()
+        return await extraction_service.extract_memories(content)
+    
+    async def _store_graph_v2(
+        self,
+        entities: List[Dict[str, Any]],
+        relations: List[Dict[str, Any]],
+        user_id: str,
+        memory_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        存储图谱（新版本）
+        
+        Args:
+            entities: 实体列表
+            relations: 关系列表
+            user_id: 用户 ID
+            memory_id: 记忆 ID
+        
+        Returns:
+            图谱结果
+        """
+        if not entities:
+            return {
+                "entities": [],
+                "relations": [],
+                "entity_count": 0,
+                "relation_count": 0,
+                "status": "no_entities"
+            }
+        
+        # 存储实体
+        entity_ids = {}
+        for entity in entities:
+            entity_name = entity.get("name")
+            entity_type = entity.get("type", "unknown")
+            confidence = entity.get("confidence", 0.8)
+            
+            # ⚠️ 不存储"我"实体
+            if entity_name == "我":
+                continue
+            
+            entity_id = await self._upsert_entity_v2(
+                name=entity_name,
+                entity_type=entity_type,
+                user_id=user_id,
+                confidence=confidence
+            )
+            
+            if entity_id:
+                entity_ids[entity_name] = entity_id
+                
+                # 创建记忆-实体关联
+                if memory_id:
+                    try:
+                        # 检查是否已存在
+                        existing = await db.fetchrow(
+                            """
+                            SELECT id FROM memory_entities 
+                            WHERE memory_id = $1 AND entity_id = $2
+                            """,
+                            memory_id, entity_id
+                        )
+                        
+                        if not existing:
+                            await db.execute(
+                                """
+                                INSERT INTO memory_entities (memory_id, entity_id, mention_context)
+                                VALUES ($1, $2, $3)
+                                """,
+                                memory_id, entity_id, None
+                            )
+                    except Exception as e:
+                        print(f"创建记忆-实体关联失败: {e}")
+        
+        # 存储关系
+        stored_relations = []
+        for relation in relations:
+            source = relation.get("source")
+            target = relation.get("target")
+            relation_type = relation.get("relation_type")
+            confidence = relation.get("confidence", 0.8)
+            
+            # ⚠️ 检查 target 不能是"我"
+            if target == "我":
+                continue
+            
+            success = await self._upsert_relation_v2(
+                source=source,
+                target=target,
+                relation_type=relation_type,
+                confidence=confidence,
+                user_id=user_id,
+                entity_ids=entity_ids
+            )
+            
+            if success:
+                stored_relations.append(relation)
         
         return {
-            "memory_id": memory_id,
-            "graph": graph_result
+            "entities": entities,
+            "relations": stored_relations,
+            "entity_count": len(entities),
+            "relation_count": len(stored_relations),
+            "status": "success"
         }
+    
+    async def _upsert_entity_v2(
+        self,
+        name: str,
+        entity_type: str,
+        user_id: str,
+        confidence: float = 0.8
+    ) -> Optional[str]:
+        """
+        存储或更新实体
+        
+        Args:
+            name: 实体名称
+            entity_type: 实体类型
+            user_id: 用户 ID
+            confidence: 置信度
+        
+        Returns:
+            实体 ID
+        """
+        try:
+            # 检查实体是否存在
+            existing = await db.fetchrow(
+                """
+                SELECT id FROM entities 
+                WHERE name = $1 AND type = $2 AND user_id = $3
+                """,
+                name, entity_type, user_id
+            )
+            
+            if existing:
+                # 更新提及次数和置信度
+                await db.execute(
+                    """
+                    UPDATE entities 
+                    SET confidence = GREATEST(confidence, $1),
+                        mention_count = mention_count + 1,
+                        last_mentioned_at = NOW(),
+                        updated_at = NOW()
+                    WHERE id = $2
+                    """,
+                    confidence, str(existing["id"])
+                )
+                return str(existing["id"])
+            else:
+                # 创建新实体
+                result = await db.fetchrow(
+                    """
+                    INSERT INTO entities (name, type, confidence, user_id)
+                    VALUES ($1, $2, $3, $4)
+                    RETURNING id
+                    """,
+                    name, entity_type, confidence, user_id
+                )
+                return str(result["id"]) if result else None
+                
+        except Exception as e:
+            print(f"存储实体失败: {e}")
+            return None
+    
+    async def _upsert_relation_v2(
+        self,
+        source: str,
+        target: str,
+        relation_type: str,
+        confidence: float,
+        user_id: str,
+        entity_ids: Dict[str, str]
+    ) -> bool:
+        """
+        存储或更新关系（新版本）
+        
+        Args:
+            source: 源实体名称（可以是"我"）
+            target: 目标实体名称（不能是"我"）
+            relation_type: 关系类型
+            confidence: 置信度
+            user_id: 用户 ID
+            entity_ids: 实体 ID 映射
+        
+        Returns:
+            是否成功
+        """
+        try:
+            # 获取实体 ID
+            # ⚠️ 如果 source == "我"，使用特殊标识（NULL 或 user_id）
+            if source == "我":
+                source_id = None  # 使用 NULL 表示"我"（记忆所有者）
+            else:
+                source_id = entity_ids.get(source)
+                if not source_id:
+                    # 实体不存在，先创建
+                    source_id = await self._upsert_entity_v2(
+                        name=source,
+                        entity_type="unknown",  # 从关系推断类型
+                        user_id=user_id,
+                        confidence=confidence
+                    )
+            
+            # target 必须是有效实体
+            target_id = entity_ids.get(target)
+            if not target_id:
+                # 实体不存在，先创建
+                target_id = await self._upsert_entity_v2(
+                    name=target,
+                    entity_type="unknown",
+                    user_id=user_id,
+                    confidence=confidence
+                )
+            
+            if not target_id:
+                return False
+            
+            # 检查关系是否存在
+            if source_id:
+                existing = await db.fetchrow(
+                    """
+                    SELECT id FROM relations 
+                    WHERE from_entity_id = $1 AND to_entity_id = $2 AND relation_type = $3
+                    """,
+                    str(source_id), str(target_id), relation_type
+                )
+            else:
+                # source 是"我"（NULL）
+                existing = await db.fetchrow(
+                    """
+                    SELECT id FROM relations 
+                    WHERE from_entity_id IS NULL AND to_entity_id = $1 AND relation_type = $2
+                    """,
+                    str(target_id), relation_type
+                )
+            
+            if existing:
+                # 更新权重
+                await db.execute(
+                    """
+                    UPDATE relations 
+                    SET weight = LEAST(weight + 0.1, 1.0),
+                        confidence = GREATEST(confidence, $1),
+                        updated_at = NOW()
+                    WHERE id = $2
+                    """,
+                    confidence, str(existing["id"])
+                )
+            else:
+                # 创建新关系
+                await db.execute(
+                    """
+                    INSERT INTO relations (from_entity_id, to_entity_id, relation_type, weight, confidence, user_id)
+                    VALUES ($1, $2, $3, $4, $5, $6)
+                    """,
+                    str(source_id) if source_id else None,
+                    str(target_id),
+                    relation_type,
+                    confidence,
+                    confidence,
+                    user_id
+                )
+            
+            return True
+            
+        except Exception as e:
+            print(f"存储关系失败: {e}")
+            return False
+    
+    def _parse_time_value_v2(self, time_value: Any) -> Optional[datetime]:
+        """
+        解析时间值
+        
+        Args:
+            time_value: 时间值（字符串或 None）
+        
+        Returns:
+            datetime 对象或 None（带 UTC 时区）
+        """
+        if not time_value:
+            return None
+        
+        if isinstance(time_value, str):
+            time_value = time_value.strip()
+            if not time_value:
+                return None
+            
+            try:
+                # 解析时间字符串
+                dt = datetime.fromisoformat(time_value.replace('Z', '+00:00'))
+                
+                # 如果没有时区，添加 UTC 时区
+                # 这样 PostgreSQL 就不会把它当作本地时间转换
+                if dt.tzinfo is None:
+                    from datetime import timezone
+                    dt = dt.replace(tzinfo=timezone.utc)
+                
+                return dt
+            except (ValueError, AttributeError):
+                return None
+        
+        return None
+    
+    def _deduplicate_entities_v2(self, entities: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """实体去重"""
+        seen = {}
+        result = []
+        for entity in entities:
+            key = f"{entity.get('name')}_{entity.get('type')}"
+            if key not in seen:
+                seen[key] = entity
+                result.append(entity)
+        return result
+    
+    def _deduplicate_relations_v2(self, relations: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """关系去重"""
+        seen = {}
+        result = []
+        for relation in relations:
+            key = f"{relation.get('source')}_{relation.get('relation_type')}_{relation.get('target')}"
+            if key not in seen:
+                seen[key] = relation
+                result.append(relation)
+        return result
     
     async def _generate_embedding(self, content: str) -> Optional[List[float]]:
         """
@@ -770,3 +1187,11 @@ class MemoryService:
 
 # 全局记忆服务实例
 memory_service = MemoryService()
+
+# ⚠️ Monkey patch：添加分块处理方法到 MemoryService 类
+MemoryService._create_with_chunks = _create_with_chunks
+MemoryService._split_into_chunks = _split_into_chunks
+MemoryService._deduplicate_memories = _deduplicate_memories
+MemoryService._deduplicate_memories_by_content = _deduplicate_memories_by_content
+MemoryService._extract_keywords = _extract_keywords
+MemoryService._calculate_keyword_similarity = _calculate_keyword_similarity
