@@ -616,78 +616,80 @@ class MemoryService:
         
         print(f"✅ 记忆提取成功：{len(memories)} 条记忆")
         
-        # 2. 存储每条记忆
+        # 2. 使用事务存储所有记忆（减少数据库连接开销）
         memory_ids = []
         graph_results = []
         
-        for memory in memories:
-            memory_content = memory.get("content", "")
-            if not memory_content.strip():
-                continue
-            
-            # 提取结构化信息
-            time_info = memory.get("time", {})
-            location_info = memory.get("location", {})
-            people = memory.get("people", [])
-            entities = memory.get("entities", [])
-            relations = memory.get("relations", [])
-            tags = memory.get("tags", [])
-            emotion = memory.get("emotion", {})
-            importance = memory.get("importance", 0.5)
-            
-            # 提取时间
-            time_value = time_info.get("value") if isinstance(time_info, dict) else None
-            time_original = time_info.get("original_text") if isinstance(time_info, dict) else None
-            
-            # 转换字符串时间为 datetime 对象
-            time_value = self._parse_time_value_v2(time_value)
-            
-            # 提取地点
-            location_name = location_info.get("name") if isinstance(location_info, dict) else None
-            
-            # 存储记忆
-            memory_id = str(uuid.uuid4())
-            now = datetime.utcnow()
-            
-            await db.execute("""
-                INSERT INTO memories (
-                    id, content, input_type, created_at,
-                    time_value, time_original_text, location_name, people,
-                    tags, emotion, importance_score,
-                    embedding, status
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-            """,
-                memory_id,
-                memory_content,
-                "text",
-                now,
-                time_value,
-                time_original,
-                location_name,
-                json.dumps(people) if people else None,
-                json.dumps(tags) if tags else None,
-                json.dumps(emotion) if emotion else None,
-                importance,
-                "[" + ",".join(map(str, embedding)) + "]" if embedding else None,
-                "active"
-            )
-            
-            memory_ids.append(memory_id)
-            
-            # 为每条记忆分别存储图谱
-            if enable_graph and (entities or relations):
-                # 去重当前记忆的实体和关系
-                unique_entities = self._deduplicate_entities_v2(entities)
-                unique_relations = self._deduplicate_relations_v2(relations)
+        async with db.transaction(user_id) as conn:
+            for memory in memories:
+                memory_content = memory.get("content", "")
+                if not memory_content.strip():
+                    continue
                 
-                # 存储实体和关系，关联到当前记忆
-                graph_result = await self._store_graph_v2(
-                    entities=unique_entities,
-                    relations=unique_relations,
-                    user_id=user_id,
-                    memory_id=memory_id
+                # 提取结构化信息
+                time_info = memory.get("time", {})
+                location_info = memory.get("location", {})
+                people = memory.get("people", [])
+                entities = memory.get("entities", [])
+                relations = memory.get("relations", [])
+                tags = memory.get("tags", [])
+                emotion = memory.get("emotion", {})
+                importance = memory.get("importance", 0.5)
+                
+                # 提取时间
+                time_value = time_info.get("value") if isinstance(time_info, dict) else None
+                time_original = time_info.get("original_text") if isinstance(time_info, dict) else None
+                
+                # 转换字符串时间为 datetime 对象
+                time_value = self._parse_time_value_v2(time_value)
+                
+                # 提取地点
+                location_name = location_info.get("name") if isinstance(location_info, dict) else None
+                
+                # 存储记忆
+                memory_id = str(uuid.uuid4())
+                now = datetime.utcnow()
+                
+                await conn.execute("""
+                    INSERT INTO memories (
+                        id, content, input_type, created_at,
+                        time_value, time_original_text, location_name, people,
+                        tags, emotion, importance_score,
+                        embedding, status
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+                """,
+                    memory_id,
+                    memory_content,
+                    "text",
+                    now,
+                    time_value,
+                    time_original,
+                    location_name,
+                    json.dumps(people) if people else None,
+                    json.dumps(tags) if tags else None,
+                    json.dumps(emotion) if emotion else None,
+                    importance,
+                    "[" + ",".join(map(str, embedding)) + "]" if embedding else None,
+                    "active"
                 )
-                graph_results.append(graph_result)
+                
+                memory_ids.append(memory_id)
+                
+                # 为每条记忆分别存储图谱
+                if enable_graph and (entities or relations):
+                    # 去重当前记忆的实体和关系
+                    unique_entities = self._deduplicate_entities_v2(entities)
+                    unique_relations = self._deduplicate_relations_v2(relations)
+                    
+                    # 存储实体和关系，关联到当前记忆
+                    graph_result = await self._store_graph_v2(
+                        entities=unique_entities,
+                        relations=unique_relations,
+                        user_id=user_id,
+                        memory_id=memory_id,
+                        conn=conn
+                    )
+                    graph_results.append(graph_result)
         
         # 返回结果
         return {
@@ -717,7 +719,8 @@ class MemoryService:
         entities: List[Dict[str, Any]],
         relations: List[Dict[str, Any]],
         user_id: str,
-        memory_id: Optional[str] = None
+        memory_id: Optional[str] = None,
+        conn=None
     ) -> Dict[str, Any]:
         """
         存储图谱（新版本）
@@ -727,6 +730,7 @@ class MemoryService:
             relations: 关系列表
             user_id: 用户 ID
             memory_id: 记忆 ID
+            conn: 数据库连接（事务中复用）
         
         Returns:
             图谱结果
@@ -755,7 +759,8 @@ class MemoryService:
                 name=entity_name,
                 entity_type=entity_type,
                 user_id=user_id,
-                confidence=confidence
+                confidence=confidence,
+                conn=conn
             )
             
             if entity_id:
@@ -765,22 +770,40 @@ class MemoryService:
                 if memory_id:
                     try:
                         # 检查是否已存在
-                        existing = await db.fetchrow(
-                            """
-                            SELECT id FROM memory_entities 
-                            WHERE memory_id = $1 AND entity_id = $2
-                            """,
-                            memory_id, entity_id
-                        )
+                        if conn:
+                            existing = await conn.fetchrow(
+                                """
+                                SELECT id FROM memory_entities 
+                                WHERE memory_id = $1 AND entity_id = $2
+                                """,
+                                memory_id, entity_id
+                            )
+                        else:
+                            existing = await db.fetchrow(
+                                """
+                                SELECT id FROM memory_entities 
+                                WHERE memory_id = $1 AND entity_id = $2
+                                """,
+                                memory_id, entity_id
+                            )
                         
                         if not existing:
-                            await db.execute(
-                                """
-                                INSERT INTO memory_entities (memory_id, entity_id, mention_context)
-                                VALUES ($1, $2, $3)
-                                """,
-                                memory_id, entity_id, None
-                            )
+                            if conn:
+                                await conn.execute(
+                                    """
+                                    INSERT INTO memory_entities (memory_id, entity_id, mention_context)
+                                    VALUES ($1, $2, $3)
+                                    """,
+                                    memory_id, entity_id, None
+                                )
+                            else:
+                                await db.execute(
+                                    """
+                                    INSERT INTO memory_entities (memory_id, entity_id, mention_context)
+                                    VALUES ($1, $2, $3)
+                                    """,
+                                    memory_id, entity_id, None
+                                )
                     except Exception as e:
                         print(f"创建记忆-实体关联失败: {e}")
         
@@ -802,7 +825,8 @@ class MemoryService:
                 relation_type=relation_type,
                 confidence=confidence,
                 user_id=user_id,
-                entity_ids=entity_ids
+                entity_ids=entity_ids,
+                conn=conn
             )
             
             if success:
@@ -821,7 +845,8 @@ class MemoryService:
         name: str,
         entity_type: str,
         user_id: str,
-        confidence: float = 0.8
+        confidence: float = 0.8,
+        conn=None
     ) -> Optional[str]:
         """
         存储或更新实体
@@ -831,44 +856,77 @@ class MemoryService:
             entity_type: 实体类型
             user_id: 用户 ID
             confidence: 置信度
+            conn: 数据库连接（事务中复用）
         
         Returns:
             实体 ID
         """
         try:
             # 检查实体是否存在
-            existing = await db.fetchrow(
-                """
-                SELECT id FROM entities 
-                WHERE name = $1 AND type = $2 AND user_id = $3
-                """,
-                name, entity_type, user_id
-            )
+            if conn:
+                existing = await conn.fetchrow(
+                    """
+                    SELECT id FROM entities 
+                    WHERE name = $1 AND type = $2 AND user_id = $3
+                    """,
+                    name, entity_type, user_id
+                )
+            else:
+                existing = await db.fetchrow(
+                    """
+                    SELECT id FROM entities 
+                    WHERE name = $1 AND type = $2 AND user_id = $3
+                    """,
+                    name, entity_type, user_id
+                )
             
             if existing:
                 # 更新提及次数和置信度
-                await db.execute(
-                    """
-                    UPDATE entities 
-                    SET confidence = GREATEST(confidence, $1),
-                        mention_count = mention_count + 1,
-                        last_mentioned_at = NOW(),
-                        updated_at = NOW()
-                    WHERE id = $2
-                    """,
-                    confidence, str(existing["id"])
-                )
+                if conn:
+                    await conn.execute(
+                        """
+                        UPDATE entities 
+                        SET confidence = GREATEST(confidence, $1),
+                            mention_count = mention_count + 1,
+                            last_mentioned_at = NOW(),
+                            updated_at = NOW()
+                        WHERE id = $2
+                        """,
+                        confidence, str(existing["id"])
+                    )
+                else:
+                    await db.execute(
+                        """
+                        UPDATE entities 
+                        SET confidence = GREATEST(confidence, $1),
+                            mention_count = mention_count + 1,
+                            last_mentioned_at = NOW(),
+                            updated_at = NOW()
+                        WHERE id = $2
+                        """,
+                        confidence, str(existing["id"])
+                    )
                 return str(existing["id"])
             else:
                 # 创建新实体
-                result = await db.fetchrow(
-                    """
-                    INSERT INTO entities (name, type, confidence, user_id)
-                    VALUES ($1, $2, $3, $4)
-                    RETURNING id
-                    """,
-                    name, entity_type, confidence, user_id
-                )
+                if conn:
+                    result = await conn.fetchrow(
+                        """
+                        INSERT INTO entities (name, type, confidence, user_id)
+                        VALUES ($1, $2, $3, $4)
+                        RETURNING id
+                        """,
+                        name, entity_type, confidence, user_id
+                    )
+                else:
+                    result = await db.fetchrow(
+                        """
+                        INSERT INTO entities (name, type, confidence, user_id)
+                        VALUES ($1, $2, $3, $4)
+                        RETURNING id
+                        """,
+                        name, entity_type, confidence, user_id
+                    )
                 return str(result["id"]) if result else None
                 
         except Exception as e:
@@ -882,7 +940,8 @@ class MemoryService:
         relation_type: str,
         confidence: float,
         user_id: str,
-        entity_ids: Dict[str, str]
+        entity_ids: Dict[str, str],
+        conn=None
     ) -> bool:
         """
         存储或更新关系（新版本）
@@ -894,6 +953,7 @@ class MemoryService:
             confidence: 置信度
             user_id: 用户 ID
             entity_ids: 实体 ID 映射
+            conn: 数据库连接（事务中复用）
         
         Returns:
             是否成功
@@ -911,7 +971,8 @@ class MemoryService:
                         name=source,
                         entity_type="unknown",  # 从关系推断类型
                         user_id=user_id,
-                        confidence=confidence
+                        confidence=confidence,
+                        conn=conn
                     )
             
             # target 必须是有效实体
@@ -922,7 +983,8 @@ class MemoryService:
                     name=target,
                     entity_type="unknown",
                     user_id=user_id,
-                    confidence=confidence
+                    confidence=confidence,
+                    conn=conn
                 )
             
             if not target_id:
@@ -930,49 +992,93 @@ class MemoryService:
             
             # 检查关系是否存在
             if source_id:
-                existing = await db.fetchrow(
-                    """
-                    SELECT id FROM relations 
-                    WHERE from_entity_id = $1 AND to_entity_id = $2 AND relation_type = $3
-                    """,
-                    str(source_id), str(target_id), relation_type
-                )
+                if conn:
+                    existing = await conn.fetchrow(
+                        """
+                        SELECT id FROM relations 
+                        WHERE from_entity_id = $1 AND to_entity_id = $2 AND relation_type = $3
+                        """,
+                        str(source_id), str(target_id), relation_type
+                    )
+                else:
+                    existing = await db.fetchrow(
+                        """
+                        SELECT id FROM relations 
+                        WHERE from_entity_id = $1 AND to_entity_id = $2 AND relation_type = $3
+                        """,
+                        str(source_id), str(target_id), relation_type
+                    )
             else:
                 # source 是"我"（NULL）
-                existing = await db.fetchrow(
-                    """
-                    SELECT id FROM relations 
-                    WHERE from_entity_id IS NULL AND to_entity_id = $1 AND relation_type = $2
-                    """,
-                    str(target_id), relation_type
-                )
+                if conn:
+                    existing = await conn.fetchrow(
+                        """
+                        SELECT id FROM relations 
+                        WHERE from_entity_id IS NULL AND to_entity_id = $1 AND relation_type = $2
+                        """,
+                        str(target_id), relation_type
+                    )
+                else:
+                    existing = await db.fetchrow(
+                        """
+                        SELECT id FROM relations 
+                        WHERE from_entity_id IS NULL AND to_entity_id = $1 AND relation_type = $2
+                        """,
+                        str(target_id), relation_type
+                    )
             
             if existing:
                 # 更新权重
-                await db.execute(
-                    """
-                    UPDATE relations 
-                    SET weight = LEAST(weight + 0.1, 1.0),
-                        confidence = GREATEST(confidence, $1),
-                        updated_at = NOW()
-                    WHERE id = $2
-                    """,
-                    confidence, str(existing["id"])
-                )
+                if conn:
+                    await conn.execute(
+                        """
+                        UPDATE relations 
+                        SET weight = LEAST(weight + 0.1, 1.0),
+                            confidence = GREATEST(confidence, $1),
+                            updated_at = NOW()
+                        WHERE id = $2
+                        """,
+                        confidence, str(existing["id"])
+                    )
+                else:
+                    await db.execute(
+                        """
+                        UPDATE relations 
+                        SET weight = LEAST(weight + 0.1, 1.0),
+                            confidence = GREATEST(confidence, $1),
+                            updated_at = NOW()
+                        WHERE id = $2
+                        """,
+                        confidence, str(existing["id"])
+                    )
             else:
                 # 创建新关系
-                await db.execute(
-                    """
-                    INSERT INTO relations (from_entity_id, to_entity_id, relation_type, weight, confidence, user_id)
-                    VALUES ($1, $2, $3, $4, $5, $6)
-                    """,
-                    str(source_id) if source_id else None,
-                    str(target_id),
-                    relation_type,
-                    confidence,
-                    confidence,
-                    user_id
-                )
+                if conn:
+                    await conn.execute(
+                        """
+                        INSERT INTO relations (from_entity_id, to_entity_id, relation_type, weight, confidence, user_id)
+                        VALUES ($1, $2, $3, $4, $5, $6)
+                        """,
+                        str(source_id) if source_id else None,
+                        str(target_id),
+                        relation_type,
+                        confidence,
+                        confidence,
+                        user_id
+                    )
+                else:
+                    await db.execute(
+                        """
+                        INSERT INTO relations (from_entity_id, to_entity_id, relation_type, weight, confidence, user_id)
+                        VALUES ($1, $2, $3, $4, $5, $6)
+                        """,
+                        str(source_id) if source_id else None,
+                        str(target_id),
+                        relation_type,
+                        confidence,
+                        confidence,
+                        user_id
+                    )
             
             return True
             
