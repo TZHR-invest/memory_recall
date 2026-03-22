@@ -24,9 +24,9 @@ BEGIN
     -- 在 schema 下创建 memories 表
     EXECUTE format('
         CREATE TABLE IF NOT EXISTS %I.memories (
-            id VARCHAR(24) PRIMARY KEY,
+            id VARCHAR(36) PRIMARY KEY,
             content TEXT NOT NULL,
-            input_type VARCHAR(10) NOT NULL CHECK (input_type IN (''text'', ''image'', ''audio'', ''file'')),
+            input_type VARCHAR(10) NOT NULL CHECK (input_type IN (''text'', ''image'', ''audio'', ''file'', ''memory_point'', ''segment'')),
 
             -- 时间字段
             time_value TIMESTAMP WITH TIME ZONE,

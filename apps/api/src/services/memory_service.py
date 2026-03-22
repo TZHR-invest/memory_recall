@@ -554,7 +554,7 @@ class MemoryService:
         
         # 检查文本长度，决定是否需要分块
         content_chars = len(content)
-        MAX_CHARS_PER_CHUNK = 5000
+        MAX_CHARS_PER_CHUNK = 2500  # 降低阈值，避免 LLM 输出被截断
         
         if content_chars > MAX_CHARS_PER_CHUNK:
             print(f"⚠️ 文本过长（{content_chars} 字符），启动分块策略")
