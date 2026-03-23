@@ -2,7 +2,7 @@
 数据库连接模块
 """
 import asyncpg
-from typing import Optional
+from typing import Optional, List
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from .config import settings
@@ -29,6 +29,14 @@ class Database:
                 min_size=5,
                 max_size=20
             )
+            
+            # 注册向量类型编码器
+            await self._register_vector_codec()
+    
+    async def _register_vector_codec(self):
+        """注册向量类型编码器（暂时跳过）"""
+        print("⚠️ 跳过向量编码器注册，使用字符串格式存储")
+        pass
     
     async def disconnect(self):
         """关闭数据库连接池"""

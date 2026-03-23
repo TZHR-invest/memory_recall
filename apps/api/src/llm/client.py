@@ -38,7 +38,7 @@ class LLMClient:
         messages: List[Dict[str, str]],
         temperature: float = 0.7,
         max_tokens: int = 2000,
-        use_cache: bool = True,
+        use_cache: bool = False,  # ⚠️ 临时禁用缓存用于稳定性测试
         **kwargs
     ) -> str:
         """
@@ -171,7 +171,7 @@ class LLMClient:
         tool_choice: str = "auto",
         temperature: float = 0.7,
         max_tokens: int = 2000,
-        use_cache: bool = True
+        use_cache: bool = False  # ⚠️ 临时禁用缓存用于稳定性测试
     ) -> Dict[str, Any]:
         """
         使用 Function Calling 调用 LLM

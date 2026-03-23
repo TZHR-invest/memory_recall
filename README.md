@@ -1,8 +1,8 @@
 # Memory Recall - 通用记忆召回系统
 
-**版本**：v0.2.0  
+**版本**：v0.3.0  
 **状态**：生产可用  
-**最后更新**：2026-03-22
+**最后更新**：2026-03-24
 
 ---
 
@@ -14,11 +14,13 @@
 
 **核心特性**：
 - ✅ Function Calling 方式提取记忆（稳定、高效）
-- ✅ 自动提取实体和关系（构建知识图谱）
+- ✅ 智能实体提取（分级策略，过滤低价值实体）
+- ✅ 自动构建知识图谱（实体+关系）
 - ✅ 多用户 Schema 隔离（数据安全）
 - ✅ 长文本自动分段（突破 LLM 上下文限制）
 - ✅ 文件上传支持（txt、md、log）
 - ✅ Web 前端界面
+- ✅ 低温度提取（temperature=0.1，提高稳定性）
 
 ---
 
@@ -40,10 +42,21 @@
 ### Function Calling 方式
 
 使用 LLM Function Calling 一次性提取：
-- **记忆内容**（可多条独立记忆）
-- **结构化信息**（时间、地点、人物）
-- **实体**（人物、地点、事件、主题等）
+- **记忆内容**（可多条独立记忆，自动精炼）
+- **时间信息**（标准化为 ISO 8601 格式）
+- **实体**（分级提取，只保留高召回价值实体）
 - **关系**（实体之间的语义关系）
+
+### 实体提取分级策略
+
+| 类型 | 提取策略 | 示例 |
+|------|---------|------|
+| person | ✅ 必须提取 | 张三、爸爸、妈妈 |
+| location | ✅ 必须提取 | 星巴克、公司、家 |
+| event | ✅ 只提取重要事件 | 面试、数学课、生日会 |
+| topic | ⚠️ 有条件提取 | 新项目、旅行计划 |
+| object | ⚠️ 只提取重要物品 | 钱包、钥匙、合同 |
+| 日常行为 | ❌ 不提取 | 吃饭、睡觉、看书、散步 |
 
 ### 关键设计决策
 
@@ -53,6 +66,8 @@
 | "我"关系 | ✅ 用 NULL 表示 | relations 表中"我"用 NULL 表示 |
 | 时间标准化 | 只精确到日期 | 避免 LLM 推断具体时间 |
 | 长文本处理 | 自动分段 | 超过 5000 字符自动分段 |
+| temperature | 0.1 | 低温度提高提取稳定性 |
+| 日常行为 | ❌ 不提取 | 吃饭、睡觉等无召回价值 |
 
 ---
 
@@ -64,13 +79,26 @@ memory_recall/
 │   ├── main.py              # API 主入口
 │   ├── requirements.txt     # Python 依赖
 │   ├── migrations/          # 数据库迁移
+│   ├── scripts/             # 实用脚本
 │   ├── src/
 │   │   ├── routes/          # API 路由
+│   │   │   ├── files.py     # 文件上传
+│   │   │   ├── graph.py     # 图谱查询
+│   │   │   ├── memories.py  # 记忆 CRUD
+│   │   │   └── upload.py    # 上传接口
 │   │   ├── services/        # 核心服务
+│   │   │   ├── memory_service.py           # 记忆服务
+│   │   │   ├── memory_extraction_service.py # 记忆提取
+│   │   │   ├── graph_builder_service.py    # 图谱构建
+│   │   │   ├── graph_recall_service.py     # 图谱召回
+│   │   │   └── llm_recall_service.py       # LLM 召回
 │   │   ├── tools/           # Function Calling 工具
+│   │   │   └── extract_memories_tool.py    # 记忆提取工具
 │   │   ├── models/          # 数据模型
-│   │   └── database.py      # 数据库连接
-│   └── tests/               # 测试文件
+│   │   ├── llm/             # LLM 客户端
+│   │   ├── embedding/       # 向量编码
+│   │   └── cache/           # 缓存
+│   └── tests/               # 单元测试
 ├── web/
 │   └── index.html           # Web 前端
 ├── docs/                    # 设计文档
@@ -157,8 +185,16 @@ Content-Type: application/json
   "success": true,
   "memory_id": "xxx-xxx-xxx",
   "graph": {
-    "entities": 3,
-    "relations": 3
+    "entities": [
+      {"name": "张三", "type": "person"},
+      {"name": "星巴克", "type": "location"},
+      {"name": "新项目", "type": "topic"}
+    ],
+    "relations": [
+      {"source": "我", "target": "星巴克", "relation_type": "at"},
+      {"source": "我", "target": "张三", "relation_type": "met"},
+      {"source": "我", "target": "新项目", "relation_type": "discussed"}
+    ]
   }
 }
 ```
@@ -188,14 +224,20 @@ Content-Type: application/json
 }
 ```
 
+### 查询图谱
+
+```bash
+GET /api/v1/graph/entities?user_id=test&limit=100
+```
+
 ---
 
 ## 核心功能
 
 ### 1. 文本输入
 
-- ✅ 自动提取记忆内容
-- ✅ 自动提取实体（人物、地点、事件、主题）
+- ✅ 自动提取记忆内容（精炼到 30-60 字）
+- ✅ 自动提取实体（分级策略）
 - ✅ 自动提取关系
 - ✅ 时间标准化（只精确到日期）
 
@@ -228,9 +270,11 @@ Content-Type: application/json
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | id | UUID | 主键 |
-| content | TEXT | 记忆内容 |
+| content | TEXT | 记忆内容（精炼后） |
 | input_type | VARCHAR | 输入类型（text/file） |
 | time_value | TIMESTAMP | 时间值 |
+| location_name | TEXT | 地点名称 |
+| people | JSONB | 人物列表 |
 | file_name | TEXT | 文件名（文件上传时） |
 
 ### 实体表（entities）
@@ -268,10 +312,31 @@ pytest tests/
 - [API 文档](docs/API_DOCUMENTATION.md)
 - [用户指南](docs/USER_GUIDE.md)
 - [多用户指南](docs/MULTI_USER_GUIDE.md)
+- [部署指南](docs/DEPLOYMENT.md)
 
 ---
 
 ## 更新日志
+
+### v0.3.0 (2026-03-24)
+
+**核心变更**：
+- 实现实体提取分级策略（过滤低价值实体）
+- 降低 temperature 到 0.1（提高提取稳定性）
+- 优化记忆内容精炼规则（30-60 字）
+- 添加更多关系类型（used, experienced）
+- 修复关系查询的 JOIN 问题
+
+**改进**：
+- 只提取有召回价值的实体（过滤日常行为）
+- 过滤日常物品和泛化概念
+- 记忆内容自动精炼
+- 优化 prompt 结构（添加示例）
+
+**清理**：
+- 删除调试脚本和临时测试文件
+- 删除过时设计文档
+- 删除测试报告和缓存文件
 
 ### v0.2.0 (2026-03-22)
 
@@ -307,4 +372,4 @@ MIT License
 
 *创建者：颓弟*  
 *创建时间：2026-03-19*  
-*最后更新：2026-03-22*
+*最后更新：2026-03-24*
