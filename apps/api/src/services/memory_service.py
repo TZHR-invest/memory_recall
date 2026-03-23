@@ -429,9 +429,9 @@ class MemoryService:
         if row.get("time_value"):
             time_info = TimeInfo(
                 value=row["time_value"],
+                period=row.get("time_period"),
                 source=row.get("time_source"),
                 confidence=row.get("time_confidence"),
-                original_text=row.get("time_original_text"),
             )
 
         # 构建位置信息
@@ -443,7 +443,6 @@ class MemoryService:
                 latitude=row.get("location_latitude"),
                 longitude=row.get("location_longitude"),
                 need_confirm=row.get("location_need_confirm", False),
-                original_text=row.get("location_original_text"),
             )
 
         return Memory(
@@ -583,17 +582,12 @@ class MemoryService:
                 emotion = memory.get("emotion", {})
                 importance = memory.get("importance", 0.5)
 
-                print(f"🔍 DEBUG entities: {entities}")
-                print(f"🔍 DEBUG relations: {relations}")
-
                 # 提取时间
                 time_value = (
                     time_info.get("value") if isinstance(time_info, dict) else None
                 )
-                time_original = (
-                    time_info.get("original_text")
-                    if isinstance(time_info, dict)
-                    else None
+                time_period = (
+                    time_info.get("period") if isinstance(time_info, dict) else None
                 )
 
                 # 转换字符串时间为 datetime 对象
@@ -616,7 +610,7 @@ class MemoryService:
                     """
                     INSERT INTO memories (
                         id, content, input_type, created_at,
-                        time_value, time_original_text, location_name, people,
+                        time_value, time_period, location_name, people,
                         tags, emotion, importance_score,
                         embedding, status
                     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::vector, $13)
@@ -626,7 +620,7 @@ class MemoryService:
                     "text",
                     now,
                     time_value,
-                    time_original,
+                    time_period,
                     location_name,
                     json.dumps(people) if people else None,
                     json.dumps(tags) if tags else None,
@@ -1376,7 +1370,7 @@ class MemoryService:
             "memory_count": len(memory_ids),
             "graph": result.get("graph"),
             "elapsed": elapsed,
-     }
+        }
 
 
 # 全局记忆服务实例
