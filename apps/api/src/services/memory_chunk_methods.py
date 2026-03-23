@@ -78,9 +78,7 @@ async def _create_with_chunks(
         # 提取结构化信息
         time_info = memory.get("time", {})
         time_value = time_info.get("value") if isinstance(time_info, dict) else None
-        time_original = (
-            time_info.get("original_text") if isinstance(time_info, dict) else None
-        )
+        time_period = time_info.get("period") if isinstance(time_info, dict) else None
 
         # 使用新的时间标准化（带时区）
         time_value = self._parse_time_value_v2(time_value)
@@ -113,7 +111,7 @@ async def _create_with_chunks(
             """
             INSERT INTO memories (
                 id, content, input_type, created_at,
-                time_value, time_original_text, location_name, people,
+                time_value, time_period, location_name, people,
                 tags, emotion, importance_score,
                 embedding, status
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
@@ -123,7 +121,7 @@ async def _create_with_chunks(
             "text",
             now,
             time_value,
-            time_original,
+            time_period,
             location_name,
             json.dumps(people) if people else None,
             json.dumps(tags) if tags else None,

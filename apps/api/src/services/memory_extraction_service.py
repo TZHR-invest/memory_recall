@@ -199,12 +199,10 @@ class MemoryExtractionService:
 
         # 确保 time 字段
         if "time" not in memory:
-            memory["time"] = {"value": None, "original_text": ""}
+            memory["time"] = {"value": None}
         elif isinstance(memory["time"], dict):
             if "value" not in memory["time"]:
                 memory["time"]["value"] = None
-            if "original_text" not in memory["time"]:
-                memory["time"]["original_text"] = ""
 
         # 确保 entities 字段
         if "entities" not in memory:
