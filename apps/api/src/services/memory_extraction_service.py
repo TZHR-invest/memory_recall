@@ -262,6 +262,7 @@ class MemoryExtractionService:
             "详情",
             "的动态",
             "动态",
+            "优化",  # 数据库查询性能优化 -> 数据库查询性能
         ]
 
         for suffix in suffixes_to_remove:
