@@ -4,8 +4,15 @@
 """
 from typing import List, Optional, Dict, Any
 import requests
-from ..config import settings
-from ..cache.manager import cache_manager
+
+# 修改导入方式
+try:
+    from ..config import settings
+    from ..cache.manager import cache_manager
+except ImportError:
+    # 如果相对导入失败，尝试绝对导入
+    from config import settings
+    from cache.manager import cache_manager
 
 
 class EmbeddingClient:
