@@ -230,6 +230,46 @@ class MemoryExtractionService:
             if "confidence" not in relation:
                 relation["confidence"] = 0.8
 
+    def _normalize_entity_name(self, name: str, entity_type: str) -> str:
+        """
+        标准化实体名称
+
+        主要是 topic/project 类型，去掉状态词后缀
+
+        Args:
+            name: 实体名称
+            entity_type: 实体类型
+
+        Returns:
+            标准化后的名称
+        """
+        if entity_type not in ("topic", "project"):
+            return name
+
+        # 需要移除的状态词后缀（按优先级排序）
+        suffixes_to_remove = [
+            "的进展",
+            "进展",
+            "的情况",
+            "情况",
+            "的状态",
+            "状态",
+            "的过程",
+            "过程",
+            "的结果",
+            "结果",
+            "的详情",
+            "详情",
+            "的动态",
+            "动态",
+        ]
+
+        for suffix in suffixes_to_remove:
+            if name.endswith(suffix) and len(name) > len(suffix):
+                return name[: -len(suffix)]
+
+        return name
+
     def _post_process_memories(
         self, memories: List[Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
@@ -237,8 +277,9 @@ class MemoryExtractionService:
         后处理记忆
 
         主要任务：
-        1. 过滤"我"实体
-        2. 验证关系
+        1. 标准化实体名称
+        2. 过滤"我"实体
+        3. 验证关系
 
         Args:
             memories: 记忆列表
@@ -266,6 +307,13 @@ class MemoryExtractionService:
         for memory in memories:
             # 过滤实体（不包含"我"）
             entities = memory.get("entities", [])
+
+            # 标准化实体名称
+            for entity in entities:
+                entity["name"] = self._normalize_entity_name(
+                    entity.get("name", ""), entity.get("type", "")
+                )
+
             filtered_entities = [
                 e for e in entities if e.get("name") not in first_person_pronouns
             ]
@@ -282,6 +330,15 @@ class MemoryExtractionService:
                 source = relation.get("source")
                 target = relation.get("target")
 
+                # 标准化关系中的实体名称
+                # 注意：source 可能是"我"，不需要标准化
+                if target in valid_entity_names:
+                    # 找到对应的实体并标准化
+                    for e in filtered_entities:
+                        if e.get("name") == target:
+                            target = e.get("name")
+                            break
+
                 # source 可以是"我"或有效实体
                 # target 必须是有效实体（不能是"我"）
                 if (
@@ -289,6 +346,8 @@ class MemoryExtractionService:
                     and target in valid_entity_names
                     and target != "我"
                 ):
+                    # 更新 relation 中的 target
+                    relation["target"] = target
                     filtered_relations.append(relation)
 
             memory["relations"] = filtered_relations
