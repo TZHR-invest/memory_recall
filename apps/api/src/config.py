@@ -26,7 +26,12 @@ class Settings(BaseSettings):
     # 火山引擎 API 配置
     VOLC_API_KEY: Optional[str] = None
     VOLC_API_BASE: str = "https://ark.cn-beijing.volces.com/api/v3"
-    VOLC_LLM_MODEL: str = "doubao-seed-2-0-pro-260215"
+    
+    # LLM 模型配置（支持动态切换）
+    VOLC_LLM_MODEL_PRO: str = "doubao-seed-2-0-pro-260215"
+    VOLC_LLM_MODEL_MINI: str = "doubao-seed-2-0-mini"
+    VOLC_LLM_MODEL: str = "doubao-seed-2-0-pro-260215"  # 默认使用 pro 模型
+    
     VOLC_EMBEDDING_MODEL: str = "doubao-embedding-vision-251215"
     
     # 文件存储
