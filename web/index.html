@@ -980,10 +980,14 @@
                 
                 if (!displayTime && memory.created_at) {
                     try {
-                        const utcTime = memory.created_at.endsWith('Z') 
-                            ? memory.created_at 
-                            : memory.created_at + 'Z';
-                        const date = new Date(utcTime);
+                        // 处理 +00:00 和 Z 两种时区格式
+                        let timeString = memory.created_at;
+                        if (timeString.includes('+00:00')) {
+                            timeString = timeString.replace('+00:00', 'Z');
+                        } else if (!timeString.endsWith('Z')) {
+                            timeString = timeString + 'Z';
+                        }
+                        const date = new Date(timeString);
                         if (!isNaN(date.getTime())) {
                             displayTime = date.toLocaleDateString('zh-CN');
                         }
@@ -1162,6 +1166,9 @@
                     html += '<h3>📚 相关记忆</h3>';
                     html += '<div class="memory-list">';
                     data.used_memories.forEach(memory => {
+                        // 调试输出
+                        console.log('Memory:', memory.content?.substring(0, 30), 'time_value:', memory.time_value, 'created_at:', memory.created_at);
+                        
                         // 优先使用 time_value，其次使用 created_at
                         let timeStr = '';
                         const timeValue = memory.time_value || memory.time?.value;
@@ -1171,6 +1178,7 @@
                                 const date = new Date(timeValue);
                                 if (!isNaN(date.getTime())) {
                                     timeStr = date.toLocaleDateString('zh-CN');
+                                    console.log('Using time_value:', timeStr);
                                 }
                             } catch (e) {
                                 console.warn('Invalid time_value:', timeValue);
@@ -1179,17 +1187,24 @@
                         
                         if (!timeStr && memory.created_at) {
                             try {
-                                const utcTime = memory.created_at.endsWith('Z') 
-                                    ? memory.created_at 
-                                    : memory.created_at + 'Z';
-                                const date = new Date(utcTime);
+                                // 处理 +00:00 和 Z 两种时区格式
+                                let timeString = memory.created_at;
+                                if (timeString.includes('+00:00')) {
+                                    timeString = timeString.replace('+00:00', 'Z');
+                                } else if (!timeString.endsWith('Z')) {
+                                    timeString = timeString + 'Z';
+                                }
+                                const date = new Date(timeString);
                                 if (!isNaN(date.getTime())) {
                                     timeStr = date.toLocaleDateString('zh-CN');
+                                    console.log('Using created_at:', timeStr);
                                 }
                             } catch (e) {
                                 console.warn('Invalid created_at:', memory.created_at);
                             }
                         }
+                        
+                        console.log('Final timeStr:', timeStr);
                         
                         // 截取前 100 字符显示
                         const fullContent = memory.content || memory.summary || '';
