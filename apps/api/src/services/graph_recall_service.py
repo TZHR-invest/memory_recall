@@ -893,6 +893,7 @@ class GraphEnhancedRecallService:
 
         memory_scores = {}
         memory_data = {}
+        memory_recall_types = {}  # 保存所有召回类型
 
         # 向量结果
         for item in vector_results:
@@ -903,8 +904,10 @@ class GraphEnhancedRecallService:
             score = similarity * weights["vector"]
             if memory_id in memory_scores:
                 memory_scores[memory_id] += score
+                memory_recall_types[memory_id].append("vector")
             else:
                 memory_scores[memory_id] = score
+                memory_recall_types[memory_id] = ["vector"]
             memory_data[memory_id] = item
 
         # 关键词结果
@@ -916,8 +919,10 @@ class GraphEnhancedRecallService:
             score = similarity * weights["keyword"]
             if memory_id in memory_scores:
                 memory_scores[memory_id] += score
+                memory_recall_types[memory_id].append("keyword")
             else:
                 memory_scores[memory_id] = score
+                memory_recall_types[memory_id] = ["keyword"]
             memory_data[memory_id] = item
 
         # 图谱结果
@@ -926,11 +931,14 @@ class GraphEnhancedRecallService:
             if not memory_id:
                 continue
             similarity = item.get("similarity", 0.5)
+            recall_type = item.get("recall_type", "graph_entity")
             score = similarity * weights["graph"]
             if memory_id in memory_scores:
                 memory_scores[memory_id] += score
+                memory_recall_types[memory_id].append(recall_type)
             else:
                 memory_scores[memory_id] = score
+                memory_recall_types[memory_id] = [recall_type]
             memory_data[memory_id] = item
 
         # 排序
@@ -943,6 +951,8 @@ class GraphEnhancedRecallService:
         for mid in sorted_ids:
             item = memory_data[mid].copy()
             item["similarity"] = memory_scores[mid]
+            # 保存所有召回类型（去重）
+            item["recall_types"] = list(set(memory_recall_types[mid]))
             results.append(item)
 
         return results
