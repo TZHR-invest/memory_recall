@@ -123,27 +123,22 @@ class LLMRecallService:
         if not memory_results or len(memory_results) == 0:
             return {"answer": "未找到相关记忆", "used_memories": [], "memory_count": 0}
 
-        # 构建记忆上下文（简化版，不包含图谱关系）
-        memory_context = self._build_simple_memory_context(memory_results[:5])
+        # 构建记忆上下文（简化版，最多 3 条）
+        memory_context = self._build_simple_memory_context(memory_results[:3])
 
-        # 构建系统提示
-        system_prompt = self._build_system_prompt(detail_level)
+        # 简化系统提示
+        system_prompt = "直接回答用户问题，不要说'根据记忆'。只陈述事实，不要推断。"
 
-        # 构建用户提示
-        user_prompt = f"""用户问题：{query}
-
-相关记忆：
-{memory_context}
-
-直接回答问题，不要说"根据记忆"。只陈述明确记载的事实，不要推断。"""
+        # 简化用户提示
+        user_prompt = f"问题：{query}\n\n记忆：\n{memory_context}\n\n直接回答："
 
         # 调用 LLM
         try:
             answer = self.llm_client.chat_with_system(
                 system_prompt=system_prompt,
                 user_message=user_prompt,
-                temperature=0.3,
-                max_tokens=500,  # 减少输出长度
+                temperature=0.1,  # 更低的温度
+                max_tokens=200,  # 更短的输出
             )
 
             # 标记使用的记忆
