@@ -333,32 +333,69 @@ class LLMRecallService:
         self, answer: str, memories: List[Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
         """
-        识别回答中使用的记忆
+        识别回答中使用的记忆，并按重要性排序
 
         Args:
             answer: LLM 生成的回答
             memories: 候选记忆列表
 
         Returns:
-            被使用的记忆列表
+            排序后的被使用记忆列表（最多 5 条，已去重）
         """
-        used = []
+        used_with_scores = []
+        seen_contents = set()
 
         for mem in memories:
             content = mem.get("content", "")
-            # 如果回答中包含记忆内容的关键部分
-            if content and len(content) > 10:
-                # 检查是否有显著的重叠
-                if any(
-                    phrase in answer
-                    for phrase in content.split()[:5]
-                    if len(phrase) > 2
-                ):
-                    used.append(mem)
+            if not content or len(content) < 5:
+                continue
 
-        # 如果没有识别到，返回前 3 条（假设 LLM 使用了最相关的记忆）
+            if content in seen_contents:
+                continue
+            seen_contents.add(content)
+
+            # 提取关键实体/短语（人名、地名、事件等）
+            # 使用滑动窗口提取 2-4 字符的片段
+            key_phrases = []
+            for window in [4, 3, 2]:
+                for i in range(len(content) - window + 1):
+                    phrase = content[i : i + window]
+                    # 过滤掉全是标点或纯虚词的片段
+                    if any(c.isalnum() for c in phrase):
+                        key_phrases.append(phrase)
+
+            if not key_phrases:
+                continue
+
+            # 统计在回答中出现的片段数
+            matched = sum(1 for phrase in key_phrases if phrase in answer)
+            match_ratio = matched / len(key_phrases) if key_phrases else 0
+
+            # 匹配度超过 15% 认为被使用
+            if match_ratio > 0.15:
+                similarity = mem.get("similarity", 0.5)
+                score = match_ratio * 0.6 + similarity * 0.4
+                used_with_scores.append((mem, score))
+
+        # 按分数降序排序，最多返回 5 条
+        used_with_scores.sort(key=lambda x: x[1], reverse=True)
+        used = [item[0] for item in used_with_scores[:5]]
+
+        # 如果没有识别到，按 similarity 排序返回前 3 条
         if not used and memories:
-            return memories[: min(3, len(memories))]
+            seen = set()
+            unique_memories = []
+            for m in memories:
+                c = m.get("content", "")
+                if c not in seen:
+                    seen.add(c)
+                    unique_memories.append(m)
+
+            sorted_memories = sorted(
+                unique_memories,
+                key=lambda m: -m.get("similarity", 0),
+            )
+            return sorted_memories[:3]
 
         return used
 
