@@ -1234,22 +1234,31 @@
                             ? fullContent.substring(0, 100) + '...' 
                             : fullContent;
                         
-                        // 根据召回类型显示不同标签
-                        let recallLabel = '';
-                        const recallType = memory.recall_type;
-                        if (recallType === 'vector') {
-                            recallLabel = `<span class="recall-tag vector">语义匹配</span>`;
-                        } else if (recallType === 'keyword') {
-                            recallLabel = `<span class="recall-tag keyword">关键词匹配</span>`;
-                        } else if (recallType === 'graph_entity') {
-                            recallLabel = `<span class="recall-tag graph">实体关联</span>`;
-                        } else if (recallType === 'graph_relation') {
-                            recallLabel = `<span class="recall-tag graph">关系关联</span>`;
-                        } else if (recallType === 'time') {
-                            recallLabel = `<span class="recall-tag time">时间匹配</span>`;
+                        // 根据召回类型显示不同标签（支持多标签）
+                        let recallLabels = '';
+                        const recallTypes = memory.recall_types || (memory.recall_type ? [memory.recall_type] : []);
+                        
+                        // 标签映射
+                        const labelMap = {
+                            'vector': { text: '语义匹配', class: 'vector' },
+                            'keyword': { text: '关键词匹配', class: 'keyword' },
+                            'graph_entity': { text: '实体关联', class: 'graph' },
+                            'graph_relation': { text: '关系关联', class: 'graph' },
+                            'time': { text: '时间匹配', class: 'time' }
+                        };
+                        
+                        // 生成所有标签
+                        if (recallTypes.length > 0) {
+                            recallLabels = recallTypes.map(type => {
+                                const label = labelMap[type];
+                                if (label) {
+                                    return `<span class="recall-tag ${label.class}">${label.text}</span>`;
+                                }
+                                return '';
+                            }).join('');
                         } else if (memory.similarity) {
                             // 兜底：显示百分比
-                            recallLabel = `<span class="recall-tag">相关度 ${(memory.similarity * 100).toFixed(0)}%</span>`;
+                            recallLabels = `<span class="recall-tag">相关度 ${(memory.similarity * 100).toFixed(0)}%</span>`;
                         }
                         
                         html += `
@@ -1257,7 +1266,7 @@
                                 <div class="content">${preview}</div>
                                 <div class="meta">
                                     ${timeStr ? `<span>📅 ${timeStr}</span>` : ''}
-                                    ${recallLabel}
+                                    ${recallLabels}
                                 </div>
                             </div>
                         `;
