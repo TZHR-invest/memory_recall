@@ -964,15 +964,32 @@
                 const preview = content.length > 100 ? content.substring(0, 100) + '...' : content;
                 
                 // 格式化时间（只显示日期）
-                const timeValue = memory.time?.value || memory.time_value;
+                const timeValue = memory.time_value || memory.time?.value;
                 let displayTime = '';
+                
                 if (timeValue) {
-                    displayTime = new Date(timeValue).toLocaleDateString('zh-CN');
-                } else if (memory.created_at) {
-                    const utcTime = memory.created_at.endsWith('Z') 
-                        ? memory.created_at 
-                        : memory.created_at + 'Z';
-                    displayTime = new Date(utcTime).toLocaleDateString('zh-CN');
+                    try {
+                        const date = new Date(timeValue);
+                        if (!isNaN(date.getTime())) {
+                            displayTime = date.toLocaleDateString('zh-CN');
+                        }
+                    } catch (e) {
+                        console.warn('Invalid time_value:', timeValue);
+                    }
+                }
+                
+                if (!displayTime && memory.created_at) {
+                    try {
+                        const utcTime = memory.created_at.endsWith('Z') 
+                            ? memory.created_at 
+                            : memory.created_at + 'Z';
+                        const date = new Date(utcTime);
+                        if (!isNaN(date.getTime())) {
+                            displayTime = date.toLocaleDateString('zh-CN');
+                        }
+                    } catch (e) {
+                        console.warn('Invalid created_at:', memory.created_at);
+                    }
                 }
                 
                 // 构建标签 HTML
@@ -1145,16 +1162,33 @@
                     html += '<h3>📚 相关记忆</h3>';
                     html += '<div class="memory-list">';
                     data.used_memories.forEach(memory => {
-                        const timeValue = memory.time?.value || memory.time_value;
-                        
+                        // 优先使用 time_value，其次使用 created_at
                         let timeStr = '';
+                        const timeValue = memory.time_value || memory.time?.value;
+                        
                         if (timeValue) {
-                            timeStr = new Date(timeValue).toLocaleDateString('zh-CN');
-                        } else if (memory.created_at) {
-                            const utcTime = memory.created_at.endsWith('Z') 
-                                ? memory.created_at 
-                                : memory.created_at + 'Z';
-                            timeStr = new Date(utcTime).toLocaleDateString('zh-CN');
+                            try {
+                                const date = new Date(timeValue);
+                                if (!isNaN(date.getTime())) {
+                                    timeStr = date.toLocaleDateString('zh-CN');
+                                }
+                            } catch (e) {
+                                console.warn('Invalid time_value:', timeValue);
+                            }
+                        }
+                        
+                        if (!timeStr && memory.created_at) {
+                            try {
+                                const utcTime = memory.created_at.endsWith('Z') 
+                                    ? memory.created_at 
+                                    : memory.created_at + 'Z';
+                                const date = new Date(utcTime);
+                                if (!isNaN(date.getTime())) {
+                                    timeStr = date.toLocaleDateString('zh-CN');
+                                }
+                            } catch (e) {
+                                console.warn('Invalid created_at:', memory.created_at);
+                            }
                         }
                         
                         // 截取前 100 字符显示
