@@ -177,8 +177,12 @@ class LLMRecallService:
             content = mem.get("content", "")
             # 只保留内容和时间
             time_str = ""
-            if mem.get("time_value"):
-                time_str = f"（{mem.get('time_value', '')[:10]}）"
+            time_value = mem.get("time_value")
+            if time_value:
+                if isinstance(time_value, str):
+                    time_str = f"（{time_value[:10]}）"
+                elif hasattr(time_value, "strftime"):
+                    time_str = f"（{time_value.strftime('%Y-%m-%d')}）"
             context_parts.append(f"{i}. {content}{time_str}")
 
         return "\n".join(context_parts)
