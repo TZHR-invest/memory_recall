@@ -225,8 +225,8 @@ class LLMRecallService:
             matched = sum(1 for phrase in key_phrases if phrase in answer)
             match_ratio = matched / len(key_phrases) if key_phrases else 0
 
-            # 匹配度超过 10% 才认为相关
-            if match_ratio < 0.1:
+            # 匹配度超过 15% 才认为相关
+            if match_ratio < 0.15:
                 continue
 
             # 计算综合得分
