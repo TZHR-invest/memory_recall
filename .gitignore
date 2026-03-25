@@ -56,3 +56,14 @@ Thumbs.db
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Linter
+.ruff_cache/
+
+# Temporary files
+*.tmp
+*.temp
+日记.txt
+
+# Test results
+apps/api/tests/extraction_results/
