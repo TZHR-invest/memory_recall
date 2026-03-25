@@ -289,30 +289,44 @@ class SmartRecallService:
         """
         # 使用规则快速判断（无需 LLM 调用）
         query_lower = query.lower()
-        
+
         # 时间关键词
-        time_keywords = ["昨天", "前天", "上周", "上周", "本月", "最近", "今天", "明天", "后天"]
+        time_keywords = [
+            "昨天",
+            "前天",
+            "上周",
+            "上周",
+            "本月",
+            "最近",
+            "今天",
+            "明天",
+            "后天",
+        ]
         has_time = any(kw in query for kw in time_keywords)
-        
+
         # 实体关系关键词
         relation_patterns = ["的朋友", "的同事", "的同学", "的家人", "认识", "关系"]
         has_relation = any(pattern in query for pattern in relation_patterns)
-        
+
         # 明确关键词（人名、地点等）
         from .jieba_service import extract_keywords, extract_person, extract_location
+
         keywords = extract_keywords(query)
         person = extract_person(query)
         location = extract_location(query)
-        
+
         # 判断策略
         if has_relation and person:
             # 实体关系查询 → 图谱召回
             return {
                 "strategy": "graph_recall",
                 "reason": "检测到实体关系查询，使用图谱召回",
-                "params": {"entity_name": person, "relation_type": self._extract_relation_type(query)},
+                "params": {
+                    "entity_name": person,
+                    "relation_type": self._extract_relation_type(query),
+                },
             }
-        
+
         if has_time and not has_relation:
             # 时间查询 → 混合召回（带时间过滤）
             return {
@@ -320,7 +334,7 @@ class SmartRecallService:
                 "reason": "检测到时间关键词，使用混合召回",
                 "params": {"query": query, "time_keywords": query},
             }
-        
+
         if person or location:
             # 包含明确实体 → 关键词召回
             return {
@@ -328,7 +342,7 @@ class SmartRecallService:
                 "reason": f"检测到明确关键词：{person or location}，使用关键词召回",
                 "params": {"keywords": keywords, "limit": 10},
             }
-        
+
         if len(keywords) <= 2 and keywords:
             # 简短查询 → 关键词召回
             return {
@@ -336,7 +350,7 @@ class SmartRecallService:
                 "reason": "查询简短，使用关键词召回",
                 "params": {"keywords": keywords, "limit": 10},
             }
-        
+
         # 默认 → 向量召回（语义匹配）
         return {
             "strategy": "vector_recall",
@@ -356,74 +370,6 @@ class SmartRecallService:
             if pattern in query:
                 return rel_type
         return None
-        """
-        system_prompt = """你是一个智能记忆召回路由助手。
-
-你的任务是根据用户查询，选择最合适的召回策略。
-
-**召回策略说明：**
-1. **vector_recall**：向量相似度召回
-   - 适合：语义化查询，如"开心的事情"、"关于项目的记忆"
-   - 优点：理解语义相似性
-
-2. **keyword_recall**：关键词召回
-   - 适合：明确关键词，如"咖啡店"、"张三"
-   - 优点：精确匹配，召回率高
-
-3. **graph_recall**：图谱召回
-   - 适合：实体关系查询，如"张三的朋友"、"在咖啡店见的人"
-   - 优点：利用关系网络
-
-4. **time_recall**：时间召回
-   - 适合：时间明确的查询，如"上周"、"最近3天"
-   - 优点：精确时间过滤
-
-5. **hybrid_recall**：混合召回（推荐）
-   - 适合：复杂查询、不确定查询意图
-   - 优点：综合多种方式，效果最佳
-
-**选择原则：**
-- 时间明确的查询 → time_recall
-- 明确关键词 → keyword_recall
-- 实体关系查询 → graph_recall
-- 语义化查询 → vector_recall
-- 复杂/不确定查询 → hybrid_recall
-
-请选择最合适的策略并调用对应的函数。"""
-
-        user_prompt = f"用户查询：{query}\n\n请选择最合适的召回策略。"
-
-        try:
-            response = await self._call_llm_with_tools(
-                system_prompt=system_prompt,
-                user_prompt=user_prompt,
-                tools=ALL_RECALL_TOOLS,
-            )
-
-            if response.get("tool_calls"):
-                tool_call = response["tool_calls"][0]
-                strategy = tool_call["function"]["name"]
-                params = tool_call["function"]["arguments"]
-                reason = params.pop("reason", "未提供原因")
-
-                return {"strategy": strategy, "reason": reason, "params": params}
-
-            # 如果 LLM 没有调用工具，降级到混合召回
-            logger.warning("LLM 未调用工具，降级到混合召回")
-            return {
-                "strategy": "hybrid_recall",
-                "reason": "LLM 未做出决策，使用默认混合召回",
-                "params": {"query": query},
-            }
-
-        except Exception as e:
-            logger.error(f"选择召回策略失败: {e}")
-            # 降级到混合召回
-            return {
-                "strategy": "hybrid_recall",
-                "reason": f"决策失败: {str(e)}，使用默认混合召回",
-                "params": {"query": query},
-            }
 
     async def _call_llm_with_tools(
         self, system_prompt: str, user_prompt: str, tools: List[Dict]
