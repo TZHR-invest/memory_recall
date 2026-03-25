@@ -172,16 +172,26 @@ class RecallService:
         params = [embedding_str]
         param_count = 1
 
-        # 添加时间过滤
+        # 添加时间过滤（优先使用 time_value，备选使用 created_at）
         if time_range:
-            if time_range.get("start_time"):
+            if time_range.get("start_time") and time_range.get("end_time"):
+                sql += " AND ((time_value >= $"
                 param_count += 1
-                sql += f" AND time_value >= ${param_count}"
+                sql += f"{param_count}"
                 params.append(time_range["start_time"])
-            if time_range.get("end_time"):
+                sql += " AND time_value <= $"
                 param_count += 1
-                sql += f" AND time_value <= ${param_count}"
+                sql += f"{param_count}"
                 params.append(time_range["end_time"])
+                sql += ") OR (time_value IS NULL AND created_at >= $"
+                param_count += 1
+                sql += f"{param_count}"
+                params.append(time_range["start_time"])
+                sql += " AND created_at <= $"
+                param_count += 1
+                sql += f"{param_count}"
+                params.append(time_range["end_time"])
+                sql += "))"
 
         # 添加地点过滤
         if location_filter:
@@ -261,16 +271,26 @@ class RecallService:
         params = [like_patterns]
         param_count = 1
 
-        # 添加时间过滤
+        # 添加时间过滤（优先使用 time_value，备选使用 created_at）
         if time_range:
-            if time_range.get("start_time"):
+            if time_range.get("start_time") and time_range.get("end_time"):
+                sql += " AND ((time_value >= $"
                 param_count += 1
-                sql += f" AND time_value >= ${param_count}"
+                sql += f"{param_count}"
                 params.append(time_range["start_time"])
-            if time_range.get("end_time"):
+                sql += " AND time_value <= $"
                 param_count += 1
-                sql += f" AND time_value <= ${param_count}"
+                sql += f"{param_count}"
                 params.append(time_range["end_time"])
+                sql += ") OR (time_value IS NULL AND created_at >= $"
+                param_count += 1
+                sql += f"{param_count}"
+                params.append(time_range["start_time"])
+                sql += " AND created_at <= $"
+                param_count += 1
+                sql += f"{param_count}"
+                params.append(time_range["end_time"])
+                sql += "))"
 
         # 添加地点过滤
         if location_filter:
