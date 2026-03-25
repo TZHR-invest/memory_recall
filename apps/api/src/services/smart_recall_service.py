@@ -40,9 +40,17 @@ class SmartRecallService:
 
         logger.info(f"[Smart Recall] 查询: {query}")
 
+        # 提取时间关键词（用于时间过滤）
+        from .jieba_service import extract_time_keywords
+
+        time_result = extract_time_keywords(query)
+        time_keywords = query if time_result else None
+
         # 直接使用混合召回（最快）
         memories = await self._execute_hybrid_recall(
-            {"query": query, "limit": limit}, user_id, limit
+            {"query": query, "limit": limit, "time_keywords": time_keywords},
+            user_id,
+            limit,
         )
 
         # 生成回答
