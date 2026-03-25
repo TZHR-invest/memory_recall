@@ -123,8 +123,11 @@ class LLMRecallService:
         if not memory_results or len(memory_results) == 0:
             return {"answer": "未找到相关记忆", "used_memories": [], "memory_count": 0}
 
-        # 构建记忆上下文（简化版，最多 3 条）
-        memory_context = self._build_simple_memory_context(memory_results[:3])
+        # 构建记忆上下文（默认最多 5 条）
+        max_memories = min(5, len(memory_results))
+        memory_context = self._build_simple_memory_context(
+            memory_results[:max_memories]
+        )
 
         # 简化系统提示
         system_prompt = "直接回答用户问题，不要说'根据记忆'。只陈述事实，不要推断。"
