@@ -235,7 +235,13 @@ class LLMRecallService:
 
         # 按分数降序排序，最多返回 5 条
         used_with_scores.sort(key=lambda x: x[1], reverse=True)
-        used = [item[0] for item in used_with_scores[:5]]
+
+        # 更新 similarity 为综合分数
+        used = []
+        for mem, score in used_with_scores[:5]:
+            mem_copy = mem.copy()
+            mem_copy["similarity"] = score
+            used.append(mem_copy)
 
         # 如果没有识别到，按 similarity 排序返回前 3 条
         if not used and memories:
