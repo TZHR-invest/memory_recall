@@ -278,14 +278,84 @@ class SmartRecallService:
 
     async def _select_recall_strategy(self, query: str) -> Dict[str, Any]:
         """
-        让 LLM 选择召回策略
+        选择召回策略（基于规则，无需 LLM）
 
         Returns:
             {
                 "strategy": "vector_recall" | "keyword_recall" | ...,
                 "reason": "选择原因",
-                "params": {...}  # 调用参数
+                "params": {...}
             }
+        """
+        # 使用规则快速判断（无需 LLM 调用）
+        query_lower = query.lower()
+        
+        # 时间关键词
+        time_keywords = ["昨天", "前天", "上周", "上周", "本月", "最近", "今天", "明天", "后天"]
+        has_time = any(kw in query for kw in time_keywords)
+        
+        # 实体关系关键词
+        relation_patterns = ["的朋友", "的同事", "的同学", "的家人", "认识", "关系"]
+        has_relation = any(pattern in query for pattern in relation_patterns)
+        
+        # 明确关键词（人名、地点等）
+        from .jieba_service import extract_keywords, extract_person, extract_location
+        keywords = extract_keywords(query)
+        person = extract_person(query)
+        location = extract_location(query)
+        
+        # 判断策略
+        if has_relation and person:
+            # 实体关系查询 → 图谱召回
+            return {
+                "strategy": "graph_recall",
+                "reason": "检测到实体关系查询，使用图谱召回",
+                "params": {"entity_name": person, "relation_type": self._extract_relation_type(query)},
+            }
+        
+        if has_time and not has_relation:
+            # 时间查询 → 混合召回（带时间过滤）
+            return {
+                "strategy": "hybrid_recall",
+                "reason": "检测到时间关键词，使用混合召回",
+                "params": {"query": query, "time_keywords": query},
+            }
+        
+        if person or location:
+            # 包含明确实体 → 关键词召回
+            return {
+                "strategy": "keyword_recall",
+                "reason": f"检测到明确关键词：{person or location}，使用关键词召回",
+                "params": {"keywords": keywords, "limit": 10},
+            }
+        
+        if len(keywords) <= 2 and keywords:
+            # 简短查询 → 关键词召回
+            return {
+                "strategy": "keyword_recall",
+                "reason": "查询简短，使用关键词召回",
+                "params": {"keywords": keywords, "limit": 10},
+            }
+        
+        # 默认 → 向量召回（语义匹配）
+        return {
+            "strategy": "vector_recall",
+            "reason": "语义化查询，使用向量召回",
+            "params": {"query": query, "min_similarity": 0.1},
+        }
+
+    def _extract_relation_type(self, query: str) -> Optional[str]:
+        """从查询中提取关系类型"""
+        relation_map = {
+            "的朋友": "friend",
+            "的同事": "colleague",
+            "的同学": "classmate",
+            "的家人": "family",
+        }
+        for pattern, rel_type in relation_map.items():
+            if pattern in query:
+                return rel_type
+        return None
         """
         system_prompt = """你是一个智能记忆召回路由助手。
 
