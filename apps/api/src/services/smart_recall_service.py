@@ -22,7 +22,7 @@ class SmartRecallService:
         self.llm_client = get_llm_client()
 
     async def smart_recall(
-        self, query: str, user_id: str, limit: int = 10, detail_level: str = "medium"
+        self, query: str, user_id: str, limit: int = 20, detail_level: str = "medium"
     ) -> Dict[str, Any]:
         """
         智能召回：直接使用混合召回（向量+关键词+图谱）

@@ -123,10 +123,10 @@ class LLMRecallService:
         if not memory_results or len(memory_results) == 0:
             return {"answer": "未找到相关记忆", "used_memories": [], "memory_count": 0}
 
-        # 构建记忆上下文（默认最多 5 条）
-        max_memories = min(5, len(memory_results))
+        # 构建记忆上下文（LLM 最多使用 10 条）
+        max_memories_for_llm = min(10, len(memory_results))
         memory_context = self._build_simple_memory_context(
-            memory_results[:max_memories]
+            memory_results[:max_memories_for_llm]
         )
 
         # 简化系统提示
@@ -196,7 +196,7 @@ class LLMRecallService:
             memories: 候选记忆列表
 
         Returns:
-            排序后的被使用记忆列表（最多 5 条，已去重）
+            排序后的被使用记忆列表（最多 20 条，已去重）
         """
         used_with_scores = []
         seen_contents = set()
@@ -233,17 +233,17 @@ class LLMRecallService:
                 score = match_ratio * 0.6 + similarity * 0.4
                 used_with_scores.append((mem, score))
 
-        # 按分数降序排序，最多返回 5 条
+        # 按分数降序排序，最多返回 20 条
         used_with_scores.sort(key=lambda x: x[1], reverse=True)
 
         # 更新 similarity 为综合分数
         used = []
-        for mem, score in used_with_scores[:5]:
+        for mem, score in used_with_scores[:20]:
             mem_copy = mem.copy()
             mem_copy["similarity"] = score
             used.append(mem_copy)
 
-        # 如果没有识别到，按 similarity 排序返回前 3 条
+        # 如果没有识别到，按 similarity 排序返回前 10 条
         if not used and memories:
             seen = set()
             unique_memories = []
@@ -257,7 +257,7 @@ class LLMRecallService:
                 unique_memories,
                 key=lambda m: -m.get("similarity", 0),
             )
-            return sorted_memories[:3]
+            return sorted_memories[:10]
 
         return used
 
