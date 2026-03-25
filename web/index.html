@@ -562,6 +562,35 @@
                 padding: 20px;
             }
         }
+
+        /* 召回类型标签样式 */
+        .recall-tag {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+
+        .recall-tag.vector {
+            background: #e3f2fd;
+            color: #1565c0;
+        }
+
+        .recall-tag.keyword {
+            background: #fff3e0;
+            color: #e65100;
+        }
+
+        .recall-tag.graph {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+
+        .recall-tag.time {
+            background: #fce4ec;
+            color: #c2185b;
+        }
     </style>
 </head>
 <body>
@@ -1205,12 +1234,30 @@
                             ? fullContent.substring(0, 100) + '...' 
                             : fullContent;
                         
+                        // 根据召回类型显示不同标签
+                        let recallLabel = '';
+                        const recallType = memory.recall_type;
+                        if (recallType === 'vector') {
+                            recallLabel = `<span class="recall-tag vector">语义匹配</span>`;
+                        } else if (recallType === 'keyword') {
+                            recallLabel = `<span class="recall-tag keyword">关键词匹配</span>`;
+                        } else if (recallType === 'graph_entity') {
+                            recallLabel = `<span class="recall-tag graph">实体关联</span>`;
+                        } else if (recallType === 'graph_relation') {
+                            recallLabel = `<span class="recall-tag graph">关系关联</span>`;
+                        } else if (recallType === 'time') {
+                            recallLabel = `<span class="recall-tag time">时间匹配</span>`;
+                        } else if (memory.similarity) {
+                            // 兜底：显示百分比
+                            recallLabel = `<span class="recall-tag">相关度 ${(memory.similarity * 100).toFixed(0)}%</span>`;
+                        }
+                        
                         html += `
                             <div class="memory-item" style="cursor: pointer;" onclick="alert(\`${fullContent.replace(/`/g, '\\`').replace(/\n/g, '\\n')}\`)">
                                 <div class="content">${preview}</div>
                                 <div class="meta">
                                     ${timeStr ? `<span>📅 ${timeStr}</span>` : ''}
-                                    ${memory.similarity ? `<span>相关度: ${(memory.similarity * 100).toFixed(1)}%</span>` : ''}
+                                    ${recallLabel}
                                 </div>
                             </div>
                         `;
