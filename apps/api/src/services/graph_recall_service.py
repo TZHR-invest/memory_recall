@@ -815,6 +815,9 @@ class GraphEnhancedRecallService:
                     "created_at": r["created_at"].isoformat()
                     if r.get("created_at")
                     else None,
+                    "time_value": r.get("time_value").isoformat()
+                    if r.get("time_value")
+                    else None,
                     "location": r.get("location_name"),
                     "people": r.get("people"),
                     "similarity": r.get("similarity", 0.0),
@@ -858,6 +861,9 @@ class GraphEnhancedRecallService:
                     "content": r["content"],
                     "created_at": r["created_at"].isoformat()
                     if r.get("created_at")
+                    else None,
+                    "time_value": r.get("time_value").isoformat()
+                    if r.get("time_value")
                     else None,
                     "location": r.get("location_name"),
                     "people": r.get("people"),
