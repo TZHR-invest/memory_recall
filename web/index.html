@@ -563,8 +563,8 @@
             }
         }
 
-        /* 召回类型标签样式 */
-        .recall-tag {
+        /* 相关度得分标签样式 */
+        .score-tag {
             display: inline-block;
             padding: 2px 8px;
             border-radius: 4px;
@@ -572,24 +572,19 @@
             font-weight: 500;
         }
 
-        .recall-tag.vector {
-            background: #e3f2fd;
-            color: #1565c0;
-        }
-
-        .recall-tag.keyword {
-            background: #fff3e0;
-            color: #e65100;
-        }
-
-        .recall-tag.graph {
+        .score-tag.high {
             background: #e8f5e9;
             color: #2e7d32;
         }
 
-        .recall-tag.time {
-            background: #fce4ec;
-            color: #c2185b;
+        .score-tag.medium {
+            background: #fff3e0;
+            color: #e65100;
+        }
+
+        .score-tag.low {
+            background: #fafafa;
+            color: #757575;
         }
     </style>
 </head>
@@ -1234,31 +1229,12 @@
                             ? fullContent.substring(0, 100) + '...' 
                             : fullContent;
                         
-                        // 根据召回类型显示不同标签（支持多标签）
-                        let recallLabels = '';
-                        const recallTypes = memory.recall_types || (memory.recall_type ? [memory.recall_type] : []);
-                        
-                        // 标签映射
-                        const labelMap = {
-                            'vector': { text: '语义匹配', class: 'vector' },
-                            'keyword': { text: '关键词匹配', class: 'keyword' },
-                            'graph_entity': { text: '实体关联', class: 'graph' },
-                            'graph_relation': { text: '关系关联', class: 'graph' },
-                            'time': { text: '时间匹配', class: 'time' }
-                        };
-                        
-                        // 生成所有标签
-                        if (recallTypes.length > 0) {
-                            recallLabels = recallTypes.map(type => {
-                                const label = labelMap[type];
-                                if (label) {
-                                    return `<span class="recall-tag ${label.class}">${label.text}</span>`;
-                                }
-                                return '';
-                            }).join('');
-                        } else if (memory.similarity) {
-                            // 兜底：显示百分比
-                            recallLabels = `<span class="recall-tag">相关度 ${(memory.similarity * 100).toFixed(0)}%</span>`;
+                        // 显示综合相关度得分
+                        let scoreLabel = '';
+                        if (memory.similarity) {
+                            const score = (memory.similarity * 100).toFixed(0);
+                            const scoreClass = score >= 80 ? 'high' : score >= 50 ? 'medium' : 'low';
+                            scoreLabel = `<span class="score-tag ${scoreClass}">相关度 ${score}%</span>`;
                         }
                         
                         html += `
@@ -1266,7 +1242,7 @@
                                 <div class="content">${preview}</div>
                                 <div class="meta">
                                     ${timeStr ? `<span>📅 ${timeStr}</span>` : ''}
-                                    ${recallLabels}
+                                    ${scoreLabel}
                                 </div>
                             </div>
                         `;
