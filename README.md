@@ -1,8 +1,8 @@
 # Memory Recall - 通用记忆召回系统
 
-**版本**：v0.3.0  
+**版本**：v0.3.1  
 **状态**：生产可用  
-**最后更新**：2026-03-24
+**最后更新**：2026-03-26
 
 ---
 
@@ -211,18 +211,68 @@ user_id: test
 
 **支持格式**：txt、md、log（最大 10MB）
 
-### 召回记忆
+### 召回记忆（智能召回）
 
 ```bash
 POST /api/v1/memories/recall
 Content-Type: application/json
 
 {
-  "query": "最近见过的朋友",
+  "query": "张三的朋友",
   "user_id": "test",
   "limit": 10
 }
 ```
+
+**默认使用智能召回**：
+- ✅ LLM 自动选择最佳召回策略（向量/关键词/图谱/时间/混合）
+- ✅ 透明决策过程（返回策略选择原因）
+- ✅ 图谱召回失败自动降级
+
+**响应**：
+```json
+{
+  "code": 200,
+  "data": {
+    "answer": "张三的朋友包括李四和王五...",
+    "used_memories": [...],
+    "memory_count": 2,
+    "route_decision": {
+      "strategy": "graph_recall",
+      "reason": "查询涉及人物关系，适合图谱召回",
+      "params": {"entity_name": "张三"}
+    },
+    "recall_mode": "smart_recall"
+  }
+}
+```
+
+**禁用智能召回**（使用混合召回）：
+```json
+{
+  "query": "张三的朋友",
+  "user_id": "test",
+  "limit": 10,
+  "use_smart_recall": false
+}
+```
+
+### 智能召回（专用端点）
+
+```bash
+POST /api/v1/memories/smart-recall
+Content-Type: application/json
+
+{
+  "query": "张三的朋友",
+  "user_id": "test",
+  "limit": 10
+}
+```
+
+**与 `/recall` 的区别**：
+- `/recall`: 通用端点，默认智能召回，可禁用
+- `/smart-recall`: 专用端点，强制智能召回
 
 ### 查询图谱
 
@@ -260,6 +310,13 @@ GET /api/v1/graph/entities?user_id=test&limit=100
 - ✅ 每个用户独立 Schema
 - ✅ 数据完全隔离
 - ✅ 自动创建用户 Schema
+
+### 5. 智能召回（新功能）
+
+- ✅ LLM 自动选择召回策略（Function Calling）
+- ✅ 5 种召回方式：向量、关键词、图谱、时间、混合
+- ✅ 透明决策过程
+- ✅ 自动降级机制
 
 ---
 
@@ -318,6 +375,28 @@ pytest tests/
 
 ## 更新日志
 
+### v0.3.1 (2026-03-26)
+
+**核心变更**：
+- 添加 `classmate` 关系类型（正确识别同学关系）
+- 修复关系提取问题（使用正确的 Function Calling 工具）
+- 删除未使用的代码，精简项目结构
+
+**修复**：
+- 修复 `classmate` 关系提取问题（之前被错误识别为 `friend`）
+- 更新 `EXTRACT_MEMORIES_TOOL` 添加 `classmate` 关系类型
+- 添加同学关系提取示例
+
+**清理**：
+- 删除 `graph_builder_service.py` 中未使用的方法：
+  - `build_graph`、`extract_entities`、`infer_relations`
+  - `_extract_entities`、`_extract_relations`、`_find_similar_entities`
+  - `_create_memory_entity_link`、`_parse_entities_from_json`、`_parse_relations_from_json`
+  - `_get_existing_entities`、`_get_existing_relations`
+- 删除 `memory_service.py` 中未使用的 `batch_create_memories` 方法
+- 删除 `prompts.py` 中未使用的 `RELATION_EXTRACTION_PROMPT`
+- 删除 `graph_tools.py` 中未使用的 `ESTABLISH_RELATIONS_TOOL`
+
 ### v0.3.0 (2026-03-24)
 
 **核心变更**：
@@ -372,4 +451,4 @@ MIT License
 
 *创建者：颓弟*  
 *创建时间：2026-03-19*  
-*最后更新：2026-03-24*
+*最后更新：2026-03-26*
