@@ -317,7 +317,7 @@ EXTRACT_MEMORIES_TOOL: Dict[str, Any] = {
 
 | 实体类型 | 关系类型 | 示例 |
 |---------|---------|------|
-| person | met, with, friend, colleague, classmate | 我 met 张三 |
+| person | met, with, friend, colleague, classmate, same_as | 我 met 张三 |
 | event | participated, organized | 我 participated 会议 |
 | organization | at, from | 我 at 腾讯 |
 | project | participated, discussed | 我 participated ABC项目 |
@@ -329,6 +329,7 @@ EXTRACT_MEMORIES_TOOL: Dict[str, Any] = {
 - **friend（朋友）**：明确提到"朋友"、"好友"、"老朋友"等社交关系
 - **colleague（同事）**：明确提到"同事"、"工作伙伴"等职场关系
 - **met（见面）**：只提到见面，未明确关系类型
+- **same_as（同一实体）**：不同名称指同一人/物，如"老张就是张三"、"小王也叫王总"
 - 不要推测关系，根据文本明确描述选择
 
 【提取示例】
@@ -435,6 +436,23 @@ EXTRACT_MEMORIES_TOOL: Dict[str, Any] = {
   "tags": ["社交", "校园"]
 }
 说明：明确提到"同学"，使用 classmate 关系类型
+
+示例8 - 实体别称（same_as）：
+输入："老张就是我的大学室友张三，我们十年没见了"
+输出：
+{
+  "content": "老张就是我的大学室友张三，我们十年没见了",
+  "entities": [
+    {"name": "老张", "type": "person"},
+    {"name": "张三", "type": "person"}
+  ],
+  "relations": [
+    {"source": "老张", "target": "张三", "relation_type": "same_as"},
+    {"source": "我", "target": "张三", "relation_type": "classmate"}
+  ],
+  "tags": ["社交"]
+}
+说明："老张就是张三"表示同一人，使用 same_as 关系类型
 """,
         "parameters": {
             "type": "object",
@@ -538,6 +556,7 @@ EXTRACT_MEMORIES_TOOL: Dict[str, Any] = {
                                                 "friend",
                                                 "colleague",
                                                 "classmate",
+                                                "same_as",
                                                 "participated",
                                                 "organized",
                                                 "discussed",
