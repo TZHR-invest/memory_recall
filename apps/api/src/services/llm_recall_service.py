@@ -225,16 +225,19 @@ class LLMRecallService:
             matched = sum(1 for phrase in key_phrases if phrase in answer)
             match_ratio = matched / len(key_phrases) if key_phrases else 0
 
+            # 匹配度超过 10% 才认为相关
+            if match_ratio < 0.1:
+                continue
+
             # 计算综合得分
             similarity = mem.get("similarity", 0.5)
-            # 匹配度权重 0.6，原始相似度权重 0.4
             score = match_ratio * 0.6 + similarity * 0.4
             scored_memories.append((mem, score))
 
         # 按分数降序排序
         scored_memories.sort(key=lambda x: x[1], reverse=True)
 
-        # 返回得分最高的 20 条
+        # 返回得分最高的记忆（最多 20 条）
         used = []
         for mem, score in scored_memories[:20]:
             mem_copy = mem.copy()
