@@ -123,10 +123,8 @@ class LLMRecallService:
         if not memory_results or len(memory_results) == 0:
             return {"answer": "未找到相关记忆", "used_memories": [], "memory_count": 0}
 
-        # 构建记忆上下文（包含图谱关系）
-        memory_context = await self._build_memory_context(
-            memory_results, detail_level, include_relations=True, user_id=user_id
-        )
+        # 构建记忆上下文（简化版，不包含图谱关系）
+        memory_context = self._build_simple_memory_context(memory_results[:5])
 
         # 构建系统提示
         system_prompt = self._build_system_prompt(detail_level)
@@ -137,13 +135,7 @@ class LLMRecallService:
 相关记忆：
 {memory_context}
 
-请回答用户的问题。注意：
-1. **直接回答**，不要说"根据记忆"、"根据提供的记忆"等开头
-2. **不要引用来源**，不要提及"相关记忆：1、5、6"等
-3. **只陈述明确记载的事实**，不要推断或臆测
-4. 如果没有明确记录，可以说"没有记录"
-5. 如果与问题无关，说明"没有找到相关信息"
-6. **禁止**使用"哈哈"、"嗯嗯"、"呀"等口语化表达"""
+直接回答问题，不要说"根据记忆"。只陈述明确记载的事实，不要推断。"""
 
         # 调用 LLM
         try:
@@ -151,7 +143,7 @@ class LLMRecallService:
                 system_prompt=system_prompt,
                 user_message=user_prompt,
                 temperature=0.3,
-                max_tokens=1000,
+                max_tokens=500,  # 减少输出长度
             )
 
             # 标记使用的记忆
@@ -169,6 +161,27 @@ class LLMRecallService:
                 "used_memories": memory_results[:3],
                 "memory_count": min(3, len(memory_results)),
             }
+
+    def _build_simple_memory_context(self, memories: List[Dict[str, Any]]) -> str:
+        """
+        构建简化的记忆上下文（快速版）
+
+        Args:
+            memories: 记忆列表
+
+        Returns:
+            格式化的记忆文本
+        """
+        context_parts = []
+        for i, mem in enumerate(memories, 1):
+            content = mem.get("content", "")
+            # 只保留内容和时间
+            time_str = ""
+            if mem.get("time_value"):
+                time_str = f"（{mem.get('time_value', '')[:10]}）"
+            context_parts.append(f"{i}. {content}{time_str}")
+
+        return "\n".join(context_parts)
 
     async def _build_memory_context(
         self,
