@@ -99,7 +99,7 @@ EXTRACT_MEMORIES_TOOL: Dict[str, Any] = {
 - 核心感受（简洁）
 
 ❌ 必须删除：
-- 具体日期（"2026年3月20日"、"今天"、"昨天"等）→ 已在 time 字段
+- 具体日期（"2026年3月20日"）→ 已在 time 字段
 - 重复的描述
 - 无关的场景细节
 
@@ -317,12 +317,19 @@ EXTRACT_MEMORIES_TOOL: Dict[str, Any] = {
 
 | 实体类型 | 关系类型 | 示例 |
 |---------|---------|------|
-| person | met, with, friend, colleague | 我 met 张三 |
+| person | met, with, friend, colleague, classmate | 我 met 张三 |
 | event | participated, organized | 我 participated 会议 |
 | organization | at, from | 我 at 腾讯 |
 | project | participated, discussed | 我 participated ABC项目 |
 | topic | discussed, mentioned | 我 discussed 新项目 |
 | object | used, mentioned | 我 used 钥匙 |
+
+⚠️ 关系类型选择原则：
+- **classmate（同学）**：明确提到"同学"、"同班"、"校友"等校园关系
+- **friend（朋友）**：明确提到"朋友"、"好友"、"老朋友"等社交关系
+- **colleague（同事）**：明确提到"同事"、"工作伙伴"等职场关系
+- **met（见面）**：只提到见面，未明确关系类型
+- 不要推测关系，根据文本明确描述选择
 
 【提取示例】
 
@@ -408,6 +415,26 @@ EXTRACT_MEMORIES_TOOL: Dict[str, Any] = {
   ],
   "tags": ["重要"]
 }
+
+示例7 - 同学关系：
+输入："我和小明小红都是大学同学"
+输出：
+{
+  "content": "我和小明小红都是大学同学",
+  "entities": [
+    {"name": "小明", "type": "person"},
+    {"name": "小红", "type": "person"},
+    {"name": "大学", "type": "organization"}
+  ],
+  "relations": [
+    {"source": "我", "target": "小明", "relation_type": "classmate"},
+    {"source": "我", "target": "小红", "relation_type": "classmate"},
+    {"source": "小明", "target": "小红", "relation_type": "classmate"},
+    {"source": "我", "target": "大学", "relation_type": "at"}
+  ],
+  "tags": ["社交", "校园"]
+}
+说明：明确提到"同学"，使用 classmate 关系类型
 """,
         "parameters": {
             "type": "object",
@@ -510,6 +537,7 @@ EXTRACT_MEMORIES_TOOL: Dict[str, Any] = {
                                                 "met",
                                                 "friend",
                                                 "colleague",
+                                                "classmate",
                                                 "participated",
                                                 "organized",
                                                 "discussed",
