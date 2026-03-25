@@ -123,8 +123,8 @@ class LLMRecallService:
         if not memory_results or len(memory_results) == 0:
             return {"answer": "未找到相关记忆", "used_memories": [], "memory_count": 0}
 
-        # 构建记忆上下文（LLM 最多使用 10 条）
-        max_memories_for_llm = min(10, len(memory_results))
+        # 构建记忆上下文（LLM 最多使用 20 条）
+        max_memories_for_llm = min(20, len(memory_results))
         memory_context = self._build_simple_memory_context(
             memory_results[:max_memories_for_llm]
         )
@@ -198,8 +198,8 @@ class LLMRecallService:
         Returns:
             排序后的被使用记忆列表（最多 20 条，已去重）
         """
-        used_with_scores = []
         seen_contents = set()
+        scored_memories = []
 
         for mem in memories:
             content = mem.get("content", "")
@@ -210,13 +210,11 @@ class LLMRecallService:
                 continue
             seen_contents.add(content)
 
-            # 提取关键实体/短语（人名、地名、事件等）
-            # 使用滑动窗口提取 2-4 字符的片段
+            # 提取关键实体/短语
             key_phrases = []
             for window in [4, 3, 2]:
                 for i in range(len(content) - window + 1):
                     phrase = content[i : i + window]
-                    # 过滤掉全是标点或纯虚词的片段
                     if any(c.isalnum() for c in phrase):
                         key_phrases.append(phrase)
 
@@ -227,37 +225,21 @@ class LLMRecallService:
             matched = sum(1 for phrase in key_phrases if phrase in answer)
             match_ratio = matched / len(key_phrases) if key_phrases else 0
 
-            # 匹配度超过 15% 认为被使用
-            if match_ratio > 0.15:
-                similarity = mem.get("similarity", 0.5)
-                score = match_ratio * 0.6 + similarity * 0.4
-                used_with_scores.append((mem, score))
+            # 计算综合得分
+            similarity = mem.get("similarity", 0.5)
+            # 匹配度权重 0.6，原始相似度权重 0.4
+            score = match_ratio * 0.6 + similarity * 0.4
+            scored_memories.append((mem, score))
 
-        # 按分数降序排序，最多返回 20 条
-        used_with_scores.sort(key=lambda x: x[1], reverse=True)
+        # 按分数降序排序
+        scored_memories.sort(key=lambda x: x[1], reverse=True)
 
-        # 更新 similarity 为综合分数
+        # 返回得分最高的 20 条
         used = []
-        for mem, score in used_with_scores[:20]:
+        for mem, score in scored_memories[:20]:
             mem_copy = mem.copy()
             mem_copy["similarity"] = score
             used.append(mem_copy)
-
-        # 如果没有识别到，按 similarity 排序返回前 10 条
-        if not used and memories:
-            seen = set()
-            unique_memories = []
-            for m in memories:
-                c = m.get("content", "")
-                if c not in seen:
-                    seen.add(c)
-                    unique_memories.append(m)
-
-            sorted_memories = sorted(
-                unique_memories,
-                key=lambda m: -m.get("similarity", 0),
-            )
-            return sorted_memories[:10]
 
         return used
 
