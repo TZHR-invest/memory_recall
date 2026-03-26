@@ -12,6 +12,7 @@ from ..services.memory_service import memory_service
 from ..services.recall_service import get_recall_service
 from ..services.query_parser import query_parser
 from ..services.llm_recall_service import get_llm_recall_service
+from ..services.unified_memory_service import unified_memory_service
 from ..database import db
 
 router = APIRouter(prefix="/memories", tags=["记忆管理"])
@@ -88,7 +89,7 @@ class SmartRecallRequest(BaseModel):
     "",
     response_model=dict,
     summary="创建记忆",
-    description="创建一条新的记忆记录",
+    description="创建一条新的记忆记录（使用统一 DAG 架构）",
     responses={
         200: {
             "description": "创建成功",
@@ -98,9 +99,10 @@ class SmartRecallRequest(BaseModel):
                         "code": 200,
                         "message": "success",
                         "data": {
-                            "id": "mem_abc123def456",
+                            "id": "raw_abc123def456",
                             "content": "今天和老同学在咖啡店见面聊天",
-                            "input_type": "text",
+                            "memory_type": "preference",
+                            "source": "manual",
                             "created_at": "2024-01-01T12:00:00",
                         },
                     }
@@ -114,7 +116,7 @@ async def create_memory(
     memory: MemoryCreate, user_id: str = Query(..., description="用户 ID")
 ):
     """
-    创建记忆
+    创建记忆（统一 DAG 架构）
 
     - **content**: 记忆内容（必填）
     - **input_type**: 输入类型（text/image/audio），默认 text
@@ -125,38 +127,48 @@ async def create_memory(
     - **tags**: 标签列表（可选）
     - **user_id**: 用户 ID（必填）
     """
-    # 设置当前用户，后续数据库操作会自动使用该用户的 schema
     db.set_current_user(user_id)
 
     try:
-        # 如果是文本输入且没有提供结构化数据，使用 Function Calling 提取
-        if memory.input_type == "text" and not any(
-            [memory.time, memory.location, memory.people, memory.emotion, memory.tags]
-        ):
-            result = await memory_service.create_memory_with_graph_v2(
-                content=memory.content,
-                user_id=user_id,
-                enable_graph=True,
-                enable_confirmation=False,
-            )
-            memory_id = result.get("memory_id")
-            if memory_id:
-                created_memory = await memory_service.get(memory_id)
-                return {
-                    "code": 200,
-                    "message": "success",
-                    "data": created_memory.model_dump(),
-                }
-            else:
-                raise HTTPException(status_code=500, detail="记忆创建失败")
+        metadata = {}
+        if memory.location:
+            metadata["location_name"] = memory.location.name
+            metadata["location_address"] = memory.location.address
+            metadata["location_latitude"] = memory.location.latitude
+            metadata["location_longitude"] = memory.location.longitude
+        if memory.people:
+            metadata["people"] = [p.model_dump() for p in memory.people]
+        if memory.emotion:
+            metadata["emotion"] = memory.emotion.model_dump()
+        if memory.tags:
+            metadata["tags"] = memory.tags
+        if memory.time:
+            metadata["time_value"] = memory.time.value
 
-        # 否则直接创建
-        memory_id = await memory_service.create(memory)
+        result = await unified_memory_service.store(
+            user_id=user_id,
+            content=memory.content,
+            source="manual",
+            memory_type="preference",
+            metadata=metadata,
+        )
 
-        # 获取创建的记忆
-        created_memory = await memory_service.get(memory_id)
+        memory_data = await unified_memory_service.get_memory_by_id(
+            result["raw_message_id"]
+        )
 
-        return {"code": 200, "message": "success", "data": created_memory.model_dump()}
+        return {
+            "code": 200,
+            "message": "success",
+            "data": {
+                "id": result["raw_message_id"],
+                "content": memory.content,
+                "memory_type": result["memory_type"],
+                "source": result["source"],
+                "tags": memory_data.get("tags", []) if memory_data else [],
+                "created_at": memory_data.get("created_at") if memory_data else None,
+            },
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

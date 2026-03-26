@@ -1,8 +1,8 @@
 # Memory Recall - 通用记忆召回系统
 
-**版本**：v0.3.2  
+**版本**：v3.0.0  
 **状态**：生产可用  
-**最后更新**：2026-03-26
+**最后更新**：2026-03-27
 
 ---
 
@@ -13,6 +13,9 @@
 2. **其次服务 AI Agent**（解决上下文窗口有限、模型注意力分散问题）
 
 **核心特性**：
+- ✅ 统一 DAG 记忆架构（raw_messages + summaries）
+- ✅ 混合召回（向量 + 关键词 + 图谱三路并发）
+- ✅ OpenClaw ContextEngine 插件集成
 - ✅ Function Calling 方式提取记忆（稳定、高效）
 - ✅ 智能实体提取（分级策略，过滤低价值实体）
 - ✅ 自动构建知识图谱（实体+关系）
@@ -20,7 +23,6 @@
 - ✅ 长文本自动分段（突破 LLM 上下文限制）
 - ✅ 文件上传支持（txt、md、log）
 - ✅ Web 前端界面
-- ✅ 低温度提取（temperature=0.1，提高稳定性）
 
 ---
 
@@ -37,7 +39,44 @@
 
 ---
 
-## 核心设计
+## 核心架构
+
+### DAG 记忆架构（v3.0）
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    DAG 记忆架构                              │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  raw_messages (Layer 1)                                     │
+│  ├─ 用户手动输入 (agent_id = NULL)                          │
+│  └─ Agent 对话 (agent_id = "agent_xxx")                     │
+│           │                                                 │
+│           ↓ DAG 压缩（三阶段：normal → aggressive → fallback)│
+│           │                                                 │
+│  summaries (Layer 2-3)                                      │
+│  ├─ Leaf summaries（原始消息摘要）                           │
+│  └─ Parent summaries（摘要的摘要）                           │
+│           │                                                 │
+│           ↓ 组装                                            │
+│           │                                                 │
+│  context_items (Layer 4)                                    │
+│  └─ 有序上下文序列（fresh tail + summaries）                 │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### ContextEngine 接口
+
+```python
+class MemoryRecallEngine:
+    async def bootstrap(params) -> Dict      # 初始化会话
+    async def ingest(params) -> Dict         # 存储消息
+    async def assemble(params) -> Dict       # 组装上下文
+    async def compact(params) -> Dict        # DAG 压缩
+    async def recall(query, user_id) -> List # 混合召回
+    async def expand(summary_id) -> List     # DAG 展开
+```
 
 ### Function Calling 方式
 
@@ -62,12 +101,15 @@
 
 | 设计项 | 决策 | 说明 |
 |--------|------|------|
+| 统一存储 | raw_messages 表 | 用户手动输入和 Agent 对话统一存储 |
+| agent_id 区分 | NULL=用户手动，非NULL=Agent | 区分消息来源 |
 | "我"实体 | ❌ 不存储 | entities 表不存储"我"，避免冗余 |
 | "我"关系 | ✅ 用 NULL 表示 | relations 表中"我"用 NULL 表示 |
 | 时间标准化 | 只精确到日期 | 避免 LLM 推断具体时间 |
 | 长文本处理 | 自动分段 | 超过 5000 字符自动分段 |
 | temperature | 0.1 | 低温度提高提取稳定性 |
-| 日常行为 | ❌ 不提取 | 吃饭、睡觉等无召回价值 |
+| Fresh Tail | 保护最近 8 条 | 压缩时保护最近消息 |
+| 三阶段压缩 | normal → aggressive → fallback | 渐进式压缩策略 |
 
 ---
 
@@ -79,7 +121,10 @@ memory_recall/
 │   ├── main.py              # API 主入口
 │   ├── requirements.txt     # Python 依赖
 │   ├── migrations/          # 数据库迁移
+│   │   ├── 015_create_lossless_tables.sql  # DAG 架构表
+│   │   └── 016_unify_memory_architecture.sql
 │   ├── scripts/             # 实用脚本
+│   │   └── migrate_memories_to_raw_messages.py
 │   ├── src/
 │   │   ├── routes/          # API 路由
 │   │   │   ├── files.py     # 文件上传
@@ -87,21 +132,38 @@ memory_recall/
 │   │   │   ├── memories.py  # 记忆 CRUD
 │   │   │   └── upload.py    # 上传接口
 │   │   ├── services/        # 核心服务
-│   │   │   ├── memory_service.py           # 记忆服务
-│   │   │   ├── memory_extraction_service.py # 记忆提取
-│   │   │   ├── graph_builder_service.py    # 图谱构建
-│   │   │   ├── graph_recall_service.py     # 图谱召回
-│   │   │   └── llm_recall_service.py       # LLM 召回
+│   │   │   ├── lossless/    # DAG 架构服务（v3.0 核心）
+│   │   │   │   ├── raw_message_store.py      # 原始消息存储
+│   │   │   │   ├── summary_store.py          # 摘要节点管理
+│   │   │   │   ├── context_store.py          # 上下文序列
+│   │   │   │   ├── compaction_engine.py      # 三阶段压缩
+│   │   │   │   ├── memory_recall_engine.py   # ContextEngine 接口
+│   │   │   │   ├── lossless_recall_service.py # 混合召回
+│   │   │   │   └── dag_expand_service.py     # DAG 展开
+│   │   │   ├── unified_memory_service.py     # 统一入口（v3.0）
+│   │   │   ├── memory_service.py             # 传统记忆服务
+│   │   │   ├── memory_extraction_service.py  # 记忆提取
+│   │   │   ├── graph_builder_service.py      # 图谱构建
+│   │   │   ├── graph_recall_service.py       # 图谱召回
+│   │   │   └── llm_recall_service.py         # LLM 召回
 │   │   ├── tools/           # Function Calling 工具
-│   │   │   └── extract_memories_tool.py    # 记忆提取工具
+│   │   │   └── extract_memories_tool.py      # 记忆提取工具
 │   │   ├── models/          # 数据模型
+│   │   │   ├── memory.py    # 传统记忆模型
+│   │   │   └── lossless.py  # DAG 架构模型
 │   │   ├── llm/             # LLM 客户端
 │   │   ├── embedding/       # 向量编码
+│   │   ├── openclaw_plugin/ # OpenClaw 插件
+│   │   │   ├── openclaw.plugin.json  # 插件清单
+│   │   │   └── context_engine.py     # ContextEngine 实现
 │   │   └── cache/           # 缓存
 │   └── tests/               # 单元测试
+│       ├── test_lossless/   # DAG 架构测试
+│       └── test_unified_memory_service.py
 ├── web/
 │   └── index.html           # Web 前端
 ├── docs/                    # 设计文档
+├── AGENTS.md                # AI Agent 开发指南
 ├── README.md
 └── DESIGN.md
 ```
@@ -166,35 +228,28 @@ cd web
 
 ## API 接口
 
-### 创建记忆
+### 创建记忆（统一 DAG 架构）
 
 ```bash
-POST /api/v1/memories/with-graph
+POST /memories?user_id=user_001
 Content-Type: application/json
 
 {
-  "content": "今天下午在星巴克见了张三，聊了新项目。",
-  "user_id": "test",
-  "enable_graph": true
+  "content": "今天下午在星巴克见了张三，聊了新项目。"
 }
 ```
 
 **返回**：
 ```json
 {
-  "success": true,
-  "memory_id": "xxx-xxx-xxx",
-  "graph": {
-    "entities": [
-      {"name": "张三", "type": "person"},
-      {"name": "星巴克", "type": "location"},
-      {"name": "新项目", "type": "topic"}
-    ],
-    "relations": [
-      {"source": "我", "target": "星巴克", "relation_type": "at"},
-      {"source": "我", "target": "张三", "relation_type": "met"},
-      {"source": "我", "target": "新项目", "relation_type": "discussed"}
-    ]
+  "code": 200,
+  "message": "success",
+  "data": {
+    "id": "raw_abc123def456",
+    "content": "今天下午在星巴克见了张三，聊了新项目。",
+    "memory_type": "preference",
+    "source": "manual",
+    "created_at": "2026-03-27T12:00:00"
   }
 }
 ```
@@ -214,7 +269,7 @@ user_id: test
 ### 召回记忆（自然语言召回）
 
 ```bash
-POST /api/v1/memories/recall
+POST /memories/smart-recall
 Content-Type: application/json
 
 {
@@ -268,34 +323,40 @@ GET /api/v1/graph/entities?user_id=test&limit=100
 
 ## 核心功能
 
-### 1. 文本输入
+### 1. 统一 DAG 存储
+
+- ✅ 用户手动输入和 Agent 对话统一存储
+- ✅ agent_id 区分来源（NULL=手动，非NULL=Agent）
+- ✅ 支持向量嵌入自动生成
+
+### 2. 文本输入
 
 - ✅ 自动提取记忆内容（精炼到 30-60 字）
 - ✅ 自动提取实体（分级策略）
 - ✅ 自动提取关系
 - ✅ 时间标准化（只精确到日期）
 
-### 2. 文件上传
+### 3. 文件上传
 
 - ✅ 支持 txt、md、log 格式
 - ✅ 最大 10MB
 - ✅ 自动分段处理（>5000 字符）
 - ✅ 支持连续上传
 
-### 3. 长文本处理
+### 4. 长文本处理
 
 - ✅ 自动检测文本长度
 - ✅ 超过 5000 字符自动分段
 - ✅ 每段独立调用 LLM
 - ✅ 去重后存储
 
-### 4. 多用户支持
+### 5. 多用户支持
 
 - ✅ 每个用户独立 Schema
 - ✅ 数据完全隔离
 - ✅ 自动创建用户 Schema
 
-### 5. 自然语言召回
+### 6. 自然语言召回
 
 - ✅ 混合召回（向量+关键词+图谱三路并发）
 - ✅ AI 生成自然语言回答
@@ -304,21 +365,47 @@ GET /api/v1/graph/entities?user_id=test&limit=100
 - ✅ 返回最多 20 条相关记忆
 - ✅ 响应时间 1.5-4 秒
 
+### 7. DAG 压缩与展开
+
+- ✅ 三阶段压缩（normal → aggressive → fallback）
+- ✅ Fresh Tail 保护（最近 8 条消息）
+- ✅ DAG 展开（摘要→原始消息）
+
 ---
 
 ## 数据模型
 
-### 记忆表（memories）
+### 原始消息表（raw_messages）
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | id | UUID | 主键 |
-| content | TEXT | 记忆内容（精炼后） |
-| input_type | VARCHAR | 输入类型（text/file） |
-| time_value | TIMESTAMP | 时间值 |
-| location_name | TEXT | 地点名称 |
-| people | JSONB | 人物列表 |
-| file_name | TEXT | 文件名（文件上传时） |
+| content | TEXT | 消息内容 |
+| agent_id | VARCHAR | Agent ID（NULL=用户手动） |
+| session_id | VARCHAR | 会话 ID |
+| memory_type | VARCHAR | 记忆类型 |
+| embedding | VECTOR | 向量嵌入 |
+| created_at | TIMESTAMP | 创建时间 |
+
+### 摘要表（summaries）
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | UUID | 主键 |
+| content | TEXT | 摘要内容 |
+| level | INT | 层级（1=leaf, 2+=parent） |
+| token_count | INT | Token 数 |
+| agent_id | VARCHAR | Agent ID |
+| created_at | TIMESTAMP | 创建时间 |
+
+### 上下文序列表（context_items）
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| session_id | VARCHAR | 会话 ID |
+| ordinal | INT | 序号 |
+| item_type | VARCHAR | 类型（message/summary） |
+| item_id | UUID | 关联 ID |
 
 ### 实体表（entities）
 
@@ -344,13 +431,19 @@ GET /api/v1/graph/entities?user_id=test&limit=100
 
 ```bash
 cd apps/api
-pytest tests/
+
+# 运行所有测试
+pytest tests/ -v
+
+# 运行 DAG 架构测试
+pytest tests/test_lossless/ -v
 ```
 
 ---
 
 ## 文档
 
+- [AI Agent 开发指南](AGENTS.md)
 - [设计文档](DESIGN.md)
 - [API 文档](docs/API_DOCUMENTATION.md)
 - [用户指南](docs/USER_GUIDE.md)
@@ -360,6 +453,43 @@ pytest tests/
 ---
 
 ## 更新日志
+
+### v3.0.0 (2026-03-27)
+
+**核心变更**：
+- 🎉 统一 DAG 记忆架构（raw_messages + summaries）
+- 🎉 OpenClaw ContextEngine 插件集成
+- 🎉 混合召回服务（向量 + 关键词 + 图谱）
+- 🎉 三阶段压缩引擎（normal → aggressive → fallback）
+- 🎉 DAG 展开服务（摘要→原始消息）
+
+**新增模块**：
+- `RawMessageStore` - 原始消息存储
+- `SummaryStore` - 摘要节点管理
+- `ContextStore` - 上下文序列
+- `CompactionEngine` - 三阶段压缩
+- `MemoryRecallEngine` - ContextEngine 接口
+- `LosslessRecallService` - 混合召回
+- `DAGExpandService` - DAG 展开
+- `UnifiedMemoryService` - 统一入口
+
+**API 变更**：
+- `POST /memories` 迁移到 DAG 架构
+- `POST /files/upload` 迁移到 DAG 架构
+- 返回 `raw_xxx` 格式的 ID
+
+**数据库变更**：
+- 新增 `raw_messages` 表
+- 新增 `summaries` 表
+- 新增 `summary_messages` 表
+- 新增 `summary_parents` 表
+- 新增 `summary_entities` 表
+- 新增 `context_items` 表
+
+**待完成功能**：
+- 实体提取集成到 DAG 架构
+- 召回返回片段（snippet）
+- 暴露 expand/assemble/compact API
 
 ### v0.3.2 (2026-03-26)
 
@@ -400,11 +530,7 @@ pytest tests/
 - 添加同学关系提取示例
 
 **清理**：
-- 删除 `graph_builder_service.py` 中未使用的方法：
-  - `build_graph`、`extract_entities`、`infer_relations`
-  - `_extract_entities`、`_extract_relations`、`_find_similar_entities`
-  - `_create_memory_entity_link`、`_parse_entities_from_json`、`_parse_relations_from_json`
-  - `_get_existing_entities`、`_get_existing_relations`
+- 删除 `graph_builder_service.py` 中未使用的方法
 - 删除 `memory_service.py` 中未使用的 `batch_create_memories` 方法
 - 删除 `prompts.py` 中未使用的 `RELATION_EXTRACTION_PROMPT`
 - 删除 `graph_tools.py` 中未使用的 `ESTABLISH_RELATIONS_TOOL`
@@ -463,4 +589,4 @@ MIT License
 
 *创建者：颓弟*  
 *创建时间：2026-03-19*  
-*最后更新：2026-03-26*
+*最后更新：2026-03-27*
