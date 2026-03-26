@@ -256,6 +256,9 @@ CREATE TABLE summaries (
     content TEXT NOT NULL,
     token_count INTEGER NOT NULL DEFAULT 0,
     
+    -- 向量嵌入（用于语义召回）
+    embedding VECTOR(1024),
+    
     -- 统计字段（Lossless-Claw 最佳实践）
     earliest_at TIMESTAMP WITH TIME ZONE,           -- 最早消息时间
     latest_at TIMESTAMP WITH TIME ZONE,             -- 最新消息时间
@@ -283,17 +286,50 @@ CREATE INDEX idx_summaries_kind_depth
 CREATE INDEX idx_summaries_earliest 
     ON summaries(earliest_at);
 
+-- 向量索引（用于摘要的语义召回）
+CREATE INDEX idx_summaries_embedding 
+    ON summaries USING ivfflat (embedding vector_cosine_ops)
+    WITH (lists = 100);
+
 COMMENT ON TABLE summaries IS '摘要节点表：存储 leaf 和 condensed 摘要';
 COMMENT ON COLUMN summaries.kind IS '节点类型：leaf（叶级摘要）或 condensed（高层摘要）';
 COMMENT ON COLUMN summaries.depth IS 'DAG 深度：0=leaf, >0=condensed';
 COMMENT ON COLUMN summaries.descendant_count IS '后代节点数量（condensed 节点的子节点数）';
 COMMENT ON COLUMN summaries.descendant_token_count IS '所有后代节点的 token 总数';
 COMMENT ON COLUMN summaries.source_message_token_count IS '原始源消息的 token 总数（用于计算压缩比）';
+COMMENT ON COLUMN summaries.embedding IS '摘要内容的向量嵌入（用于语义召回）';
 ```
 
 ---
 
-### 3.3 summary_messages 表（新增，独立关系表）
+### 3.3 summary_entities 表（新增，摘要-实体关联）
+
+```sql
+-- summary_entities 表：存储摘要与实体的关联
+-- 用于图谱召回时发现相关摘要
+CREATE TABLE summary_entities (
+    summary_id VARCHAR(24) NOT NULL REFERENCES summaries(summary_id) ON DELETE CASCADE,
+    entity_id UUID NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+    
+    -- 实体在摘要中的角色
+    role VARCHAR(50),  -- 'mentioned', 'primary', 'context'
+    confidence FLOAT DEFAULT 0.8,
+    
+    PRIMARY KEY (summary_id, entity_id)
+);
+
+CREATE INDEX idx_summary_entities_summary 
+    ON summary_entities(summary_id);
+CREATE INDEX idx_summary_entities_entity 
+    ON summary_entities(entity_id);
+
+COMMENT ON TABLE summary_entities IS '摘要-实体关联表：用于图谱召回发现相关摘要';
+COMMENT ON COLUMN summary_entities.role IS '实体在摘要中的角色：mentioned(提及)/primary(主要)/context(上下文)';
+```
+
+---
+
+### 3.4 summary_messages 表（新增，独立关系表）
 
 ```sql
 -- summary_messages 表：存储 summary 与 raw message 的关系
@@ -2301,7 +2337,589 @@ class ContextAssembler:
 
 ---
 
-## 六、性能优化方案
+## 六、混合召回与图谱整合设计
+
+> **核心问题**：如何将现有的混合召回（向量+关键词+图谱）与 DAG 压缩/展开机制整合？
+
+### 6.1 整合架构
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                        混合召回架构（扩展）                           │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  ┌─────────────────────────────────────────────────────────────┐   │
+│  │                      召回请求                                 │   │
+│  │            query: "张三的项目进展"                            │   │
+│  └─────────────────────────────────────────────────────────────┘   │
+│                              │                                      │
+│                              ↓                                      │
+│  ┌─────────────────────────────────────────────────────────────┐   │
+│  │                   并行三路召回                                │   │
+│  ├─────────────────────────────────────────────────────────────┤   │
+│  │                                                              │   │
+│  │  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐        │   │
+│  │  │ 向量召回      │ │ 关键词召回    │ │ 图谱召回      │        │   │
+│  │  │ (HNSW)       │ │ (FTS)        │ │ (Graph)      │        │   │
+│  │  └──────────────┘ └──────────────┘ └──────────────┘        │   │
+│  │        │                │                │                  │   │
+│  │        ↓                ↓                ↓                  │   │
+│  │  ┌──────────────────────────────────────────────────┐      │   │
+│  │  │ 同时搜索：                                         │      │   │
+│  │  │ 1. raw_messages 表（原始消息）                      │      │   │
+│  │  │ 2. summaries 表（摘要节点）★新增★                  │      │   │
+│  │  │ 3. memories 表（传统记忆）                          │      │   │
+│  │  └──────────────────────────────────────────────────┘      │   │
+│  │                                                              │   │
+│  └─────────────────────────────────────────────────────────────┘   │
+│                              │                                      │
+│                              ↓                                      │
+│  ┌─────────────────────────────────────────────────────────────┐   │
+│  │                    结果融合与排序                             │   │
+│  ├─────────────────────────────────────────────────────────────┤   │
+│  │  来源类型：                                                   │   │
+│  │  - raw_message: 原始消息（最新鲜，优先级高）                    │   │
+│  │  - summary: 压缩摘要（信息密度高，可展开）                      │   │
+│  │  - memory: 传统记忆（兼容旧数据）                              │   │
+│  │                                                              │   │
+│  │  排序因子：                                                   │   │
+│  │  - 相似度得分                                                 │   │
+│  │  - 时间相关性                                                 │   │
+│  │  - 来源类型权重                                               │   │
+│  │  - 重要性评分                                                 │   │
+│  └─────────────────────────────────────────────────────────────┘   │
+│                              │                                      │
+│                              ↓                                      │
+│  ┌─────────────────────────────────────────────────────────────┐   │
+│  │                    返回结果                                   │   │
+│  │  [                                                           │   │
+│  │    { type: "raw_message", id: "msg_001", ... },              │   │
+│  │    { type: "summary", id: "sum_001", expandable: true },     │   │
+│  │    { type: "summary", id: "sum_002", expandable: true },     │   │
+│  │    ...                                                       │   │
+│  │  ]                                                           │   │
+│  └─────────────────────────────────────────────────────────────┘   │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### 6.2 三路召回整合实现
+
+#### 6.2.1 向量召回（扩展）
+
+```python
+# services/agent/hybrid_recall_service.py
+
+class HybridRecallService:
+    """混合召回服务（扩展支持摘要）"""
+    
+    def __init__(self):
+        self.embedding_service = get_embedding_service()
+        self.vector_store = VectorStore()
+    
+    async def vector_recall(
+        self,
+        query: str,
+        agent_id: str,
+        limit: int = 20,
+        include_summaries: bool = True
+    ) -> List[Dict[str, Any]]:
+        """
+        向量召回（同时搜索原始消息和摘要）
+        
+        对比原实现：
+        - 原：只搜索 memories 表
+        - 新：同时搜索 raw_messages, summaries, memories 三张表
+        """
+        # 1. 获取查询向量
+        query_embedding = await self.embedding_service.embed(query)
+        
+        results = []
+        
+        # 2. 搜索原始消息（如果有 embedding）
+        raw_results = await self.vector_store.search(
+            table="raw_messages",
+            embedding=query_embedding,
+            filters={"agent_id": agent_id},
+            limit=limit // 3
+        )
+        for r in raw_results:
+            results.append({
+                "type": "raw_message",
+                "id": r["id"],
+                "content": r["content"],
+                "similarity": r["similarity"],
+                "created_at": r["created_at"],
+                "source": "vector"
+            })
+        
+        # 3. 搜索摘要节点（★新增★）
+        if include_summaries:
+            summary_results = await self.vector_store.search(
+                table="summaries",
+                embedding=query_embedding,
+                filters={"agent_id": agent_id},
+                limit=limit // 3
+            )
+            for r in summary_results:
+                results.append({
+                    "type": "summary",
+                    "id": r["summary_id"],
+                    "content": r["content"],
+                    "kind": r["kind"],
+                    "depth": r["depth"],
+                    "similarity": r["similarity"],
+                    "created_at": r["created_at"],
+                    "expandable": True,  # 可展开
+                    "source": "vector"
+                })
+        
+        # 4. 搜索传统记忆（兼容）
+        memory_results = await self.vector_store.search(
+            table="memories",
+            embedding=query_embedding,
+            filters={"agent_id": agent_id},
+            limit=limit // 3
+        )
+        for r in memory_results:
+            results.append({
+                "type": "memory",
+                "id": r["id"],
+                "content": r["content"],
+                "similarity": r["similarity"],
+                "created_at": r["created_at"],
+                "source": "vector"
+            })
+        
+        # 5. 统一排序
+        results.sort(key=lambda x: x["similarity"], reverse=True)
+        
+        return results[:limit]
+```
+
+#### 6.2.2 图谱召回（扩展）
+
+```python
+async def graph_recall(
+    self,
+    query: str,
+    agent_id: str,
+    limit: int = 20,
+    include_summaries: bool = True
+) -> List[Dict[str, Any]]:
+    """
+    图谱召回（扩展支持摘要实体）
+    
+    流程：
+    1. 从 query 提取实体
+    2. 查询 entities 表找到相关实体
+    3. 通过 memory_entities 和 summary_entities 双路召回
+    """
+    # 1. 提取查询实体
+    query_entities = await self._extract_query_entities(query)
+    
+    results = []
+    
+    for entity_name in query_entities:
+        # 2. 查找实体
+        entity = await db.fetchrow("""
+            SELECT id, name, type FROM entities 
+            WHERE name ILIKE $1 AND user_id = (
+                SELECT user_id FROM agent_configs WHERE agent_id = $2
+            )
+        """, f"%{entity_name}%", agent_id)
+        
+        if not entity:
+            continue
+        
+        # 3. 通过 memory_entities 召回（原逻辑）
+        memory_results = await db.fetch("""
+            SELECT m.id, m.content, m.created_at, me.confidence
+            FROM memories m
+            JOIN memory_entities me ON me.memory_id = m.id
+            WHERE me.entity_id = $1 AND m.agent_id = $2
+            ORDER BY me.confidence DESC, m.created_at DESC
+            LIMIT $3
+        """, entity["id"], agent_id, limit // 2)
+        
+        for r in memory_results:
+            results.append({
+                "type": "memory",
+                "id": r["id"],
+                "content": r["content"],
+                "entity": entity["name"],
+                "confidence": r["confidence"],
+                "source": "graph"
+            })
+        
+        # 4. 通过 summary_entities 召回（★新增★）
+        if include_summaries:
+            summary_results = await db.fetch("""
+                SELECT s.summary_id, s.content, s.kind, s.depth,
+                       s.earliest_at, se.confidence
+                FROM summaries s
+                JOIN summary_entities se ON se.summary_id = s.summary_id
+                WHERE se.entity_id = $1 AND s.agent_id = $2
+                ORDER BY se.confidence DESC, s.earliest_at DESC
+                LIMIT $3
+            """, entity["id"], agent_id, limit // 2)
+            
+            for r in summary_results:
+                results.append({
+                    "type": "summary",
+                    "id": r["summary_id"],
+                    "content": r["content"],
+                    "kind": r["kind"],
+                    "depth": r["depth"],
+                    "entity": entity["name"],
+                    "confidence": r["confidence"],
+                    "expandable": True,
+                    "source": "graph"
+                })
+    
+    return results
+```
+
+---
+
+### 6.3 压缩时的实体提取
+
+> **关键设计**：压缩时需要提取摘要中的实体，建立 summary_entities 关联
+
+```python
+# services/agent/compaction_engine.py
+
+async def leaf_pass(
+    self,
+    agent_id: str,
+    session_id: str,
+    message_items: List[ContextItem],
+    previous_summary_content: Optional[str] = None
+) -> Optional[LeafPassResult]:
+    """
+    Leaf 压缩（扩展：同时提取实体）
+    """
+    # ... 原有压缩逻辑 ...
+    
+    # 创建 leaf 摘要
+    summary_id = generate_id("sum")
+    
+    # ★新增：提取摘要中的实体★
+    entities = await self._extract_summary_entities(
+        summary_content, 
+        agent_id
+    )
+    
+    # 存储 summary
+    await self.summary_store.insert_summary({
+        "summary_id": summary_id,
+        "agent_id": agent_id,
+        "content": summary_content,
+        "embedding": await self.embedding_service.embed(summary_content),
+        # ... 其他字段 ...
+    })
+    
+    # ★新增：建立实体关联★
+    for entity_info in entities:
+        # 获取或创建实体
+        entity = await self._get_or_create_entity(
+            agent_id, 
+            entity_info["name"], 
+            entity_info["type"]
+        )
+        
+        # 建立关联
+        await db.execute("""
+            INSERT INTO summary_entities (summary_id, entity_id, role, confidence)
+            VALUES ($1, $2, $3, $4)
+        """, summary_id, entity["id"], entity_info["role"], entity_info["confidence"])
+    
+    return LeafPassResult(summary_id=summary_id, ...)
+
+async def _extract_summary_entities(
+    self, 
+    content: str, 
+    agent_id: str
+) -> List[Dict[str, Any]]:
+    """
+    从摘要中提取实体
+    
+    复用现有的实体提取逻辑（Function Calling）
+    """
+    # 复用 extract_memories_tool 的实体提取部分
+    result = await self.llm_client.function_call(
+        model=self.config.summary_model,
+        tools=[EXTRACT_ENTITIES_TOOL],
+        messages=[{
+            "role": "user",
+            "content": f"提取以下摘要中的关键实体：\n\n{content}"
+        }]
+    )
+    
+    entities = []
+    for entity in result.get("entities", []):
+        entities.append({
+            "name": entity["name"],
+            "type": entity["type"],
+            "role": entity.get("role", "mentioned"),
+            "confidence": entity.get("confidence", 0.8)
+        })
+    
+    return entities
+```
+
+---
+
+### 6.4 召回结果融合
+
+```python
+class HybridRecallService:
+    
+    async def recall(
+        self,
+        query: str,
+        agent_id: str,
+        strategy: str = "hybrid",
+        weights: Dict[str, float] = None,
+        limit: int = 20
+    ) -> Dict[str, Any]:
+        """
+        混合召回（向量+关键词+图谱）
+        
+        扩展：支持摘要节点的召回和展开
+        """
+        weights = weights or {"vector": 0.5, "keyword": 0.3, "graph": 0.2}
+        
+        # 并行三路召回
+        vector_results, keyword_results, graph_results = await asyncio.gather(
+            self.vector_recall(query, agent_id, limit),
+            self.keyword_recall(query, agent_id, limit),
+            self.graph_recall(query, agent_id, limit)
+        )
+        
+        # 融合结果
+        merged = self._merge_results(
+            vector_results, 
+            keyword_results, 
+            graph_results,
+            weights
+        )
+        
+        # 按综合得分排序
+        merged.sort(key=lambda x: x["combined_score"], reverse=True)
+        
+        # 返回结果（区分可展开的摘要）
+        return {
+            "results": merged[:limit],
+            "expandable_summaries": [
+                r for r in merged 
+                if r["type"] == "summary"
+            ][:5],  # 最多返回5个可展开摘要
+            "stats": {
+                "vector_count": len(vector_results),
+                "keyword_count": len(keyword_results),
+                "graph_count": len(graph_results),
+                "summary_count": sum(1 for r in merged if r["type"] == "summary")
+            }
+        }
+    
+    def _merge_results(
+        self,
+        vector_results: List,
+        keyword_results: List,
+        graph_results: List,
+        weights: Dict[str, float]
+    ) -> List[Dict]:
+        """
+        融合三路召回结果
+        
+        考虑因素：
+        1. 来源权重（向量/关键词/图谱）
+        2. 类型权重（raw_message > summary > memory）
+        3. 时间衰减
+        """
+        score_map = {}  # id -> result with score
+        
+        # 类型权重
+        type_weights = {
+            "raw_message": 1.0,  # 原始消息最高
+            "summary": 0.85,     # 摘要次高
+            "memory": 0.7        # 传统记忆最低
+        }
+        
+        # 向量结果
+        for r in vector_results:
+            rid = r["id"]
+            if rid not in score_map:
+                score_map[rid] = r
+                score_map[rid]["combined_score"] = 0
+            
+            score_map[rid]["combined_score"] += (
+                r["similarity"] * weights["vector"] * type_weights[r["type"]]
+            )
+        
+        # 关键词结果
+        for r in keyword_results:
+            rid = r["id"]
+            if rid not in score_map:
+                score_map[rid] = r
+                score_map[rid]["combined_score"] = 0
+            
+            score_map[rid]["combined_score"] += (
+                r.get("match_score", 0.5) * weights["keyword"] * type_weights[r["type"]]
+            )
+        
+        # 图谱结果
+        for r in graph_results:
+            rid = r["id"]
+            if rid not in score_map:
+                score_map[rid] = r
+                score_map[rid]["combined_score"] = 0
+            
+            score_map[rid]["combined_score"] += (
+                r.get("confidence", 0.5) * weights["graph"] * type_weights[r["type"]]
+            )
+        
+        return list(score_map.values())
+```
+
+---
+
+### 6.5 召回后展开
+
+> **用户场景**：召回结果包含摘要，用户想要查看详细内容
+
+```python
+async def recall_with_expansion(
+    self,
+    query: str,
+    agent_id: str,
+    expand_summaries: bool = True,
+    max_expansion_tokens: int = 5000
+) -> Dict[str, Any]:
+    """
+    召回 + 展开
+    
+    流程：
+    1. 执行混合召回
+    2. 对召回结果中的摘要，执行 DAG 展开
+    3. 合并返回
+    """
+    # 1. 混合召回
+    recall_result = await self.recall(query, agent_id)
+    
+    if not expand_summaries:
+        return recall_result
+    
+    # 2. 展开摘要
+    expanded_results = []
+    total_expansion_tokens = 0
+    
+    for result in recall_result["results"]:
+        if result["type"] == "summary":
+            # 展开摘要
+            if total_expansion_tokens >= max_expansion_tokens:
+                break
+            
+            expanded = await self.dag_manager.expand_node(
+                summary_id=result["id"],
+                max_tokens=max_expansion_tokens - total_expansion_tokens
+            )
+            
+            total_expansion_tokens += sum(
+                item.get("token_count", 0) for item in expanded
+            )
+            
+            result["expanded"] = expanded
+            result["expansion_token_count"] = sum(
+                item.get("token_count", 0) for item in expanded
+            )
+        
+        expanded_results.append(result)
+    
+    recall_result["results"] = expanded_results
+    recall_result["expansion_stats"] = {
+        "total_tokens": total_expansion_tokens,
+        "expanded_count": sum(1 for r in expanded_results if r.get("expanded"))
+    }
+    
+    return recall_result
+```
+
+---
+
+### 6.6 整合流程图
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                  混合召回 + DAG 整合流程                             │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  用户查询: "张三的项目进展"                                          │
+│                                                                     │
+│  ┌─────────────────────────────────────────────────────────────┐   │
+│  │ Step 1: 并行三路召回                                         │   │
+│  │                                                              │   │
+│  │  向量召回 ──────────────────────────────────────────────────┐│   │
+│  │  │ 搜索: raw_messages.embedding ~ query_embedding          ││   │
+│  │  │ 搜索: summaries.embedding ~ query_embedding ★新增★      ││   │
+│  │  │ 搜索: memories.embedding ~ query_embedding              ││   │
+│  │  └────────────────────────────────────────────────────────┘│   │
+│  │                                                              │   │
+│  │  关键词召回 ────────────────────────────────────────────────┐│   │
+│  │  │ 搜索: raw_messages.content @@ to_tsquery()              ││   │
+│  │  │ 搜索: summaries.content @@ to_tsquery() ★新增★          ││   │
+│  │  │ 搜索: memories.content @@ to_tsquery()                  ││   │
+│  │  └────────────────────────────────────────────────────────┘│   │
+│  │                                                              │   │
+│  │  图谱召回 ──────────────────────────────────────────────────┐│   │
+│  │  │ 提取实体: "张三"                                         ││   │
+│  │  │ 通过 memory_entities 找相关记忆                          ││   │
+│  │  │ 通过 summary_entities 找相关摘要 ★新增★                  ││   │
+│  │  │ 通过 relations 找关联实体                                 ││   │
+│  │  └────────────────────────────────────────────────────────┘│   │
+│  └─────────────────────────────────────────────────────────────┘   │
+│                              │                                      │
+│                              ↓                                      │
+│  ┌─────────────────────────────────────────────────────────────┐   │
+│  │ Step 2: 结果融合                                             │   │
+│  │                                                              │   │
+│  │  去重 + 加权计算综合得分                                      │   │
+│  │  - 来源权重: vector(0.5) + keyword(0.3) + graph(0.2)        │   │
+│  │  - 类型权重: raw_message(1.0) > summary(0.85) > memory(0.7) │   │
+│  └─────────────────────────────────────────────────────────────┘   │
+│                              │                                      │
+│                              ↓                                      │
+│  ┌─────────────────────────────────────────────────────────────┐   │
+│  │ Step 3: 返回结果                                             │   │
+│  │                                                              │   │
+│  │  [                                                          │   │
+│  │    { type: "raw_message", id: "msg_001", content: "..." },  │   │
+│  │    { type: "summary", id: "sum_001", content: "...",        │   │
+│  │      expandable: true, kind: "leaf", depth: 0 },            │   │
+│  │    { type: "summary", id: "sum_002", content: "...",        │   │
+│  │      expandable: true, kind: "condensed", depth: 1 },       │   │
+│  │    ...                                                      │   │
+│  │  ]                                                          │   │
+│  └─────────────────────────────────────────────────────────────┘   │
+│                              │                                      │
+│                              ↓                                      │
+│  ┌─────────────────────────────────────────────────────────────┐   │
+│  │ Step 4: 可选展开                                             │   │
+│  │                                                              │   │
+│  │  用户选择展开 sum_001:                                        │   │
+│  │  → DAG 向上遍历获取原始消息                                   │   │
+│  │  → 返回 msg_1, msg_2, msg_3, ...                            │   │
+│  └─────────────────────────────────────────────────────────────┘   │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 七、性能优化方案
 
 ### 6.1 多级缓存架构
 
@@ -2435,7 +3053,7 @@ async def store_with_large_file_check(
 
 ---
 
-## 七、实施计划（调整后）
+## 八、实施计划（调整后）
 
 ### Phase 1: 基础 Lossless 适配（1-1.5 周）
 
@@ -2532,7 +3150,7 @@ async def store_with_large_file_check(
 
 ---
 
-## 八、测试方案
+## 九、测试方案
 
 ### 8.1 单元测试
 
@@ -2652,7 +3270,7 @@ async def test_context_assembly_latency():
 
 ---
 
-## 九、监控与运维
+## 十、监控与运维
 
 ### 9.1 Prometheus 监控指标
 
@@ -2803,7 +3421,7 @@ async def cleanup_dag():
 
 ---
 
-## 十、风险评估
+## 十一、风险评估
 
 ### 10.1 技术风险
 
@@ -2825,7 +3443,7 @@ async def cleanup_dag():
 
 ---
 
-## 附录
+## 十二、附录
 
 ### A. openclaw.plugin.json
 
