@@ -1,0 +1,49 @@
+{
+  "name": "memory-recall",
+  "version": "3.0.0",
+  "description": "Memory Recall Engine - 统一 DAG 记忆架构",
+  "main": "plugin.py",
+  "author": "Memory Recall Team",
+  "license": "MIT",
+  "engines": {
+    "openclaw": ">=1.0.0"
+  },
+  "provides": {
+    "contextEngine": {
+      "id": "memory-recall",
+      "name": "Memory Recall Engine",
+      "version": "3.0.0",
+      "owns_compaction": true,
+      "factory": "create_memory_recall_engine"
+    }
+  },
+  "capabilities": [
+    "ingest",
+    "assemble",
+    "compact",
+    "recall",
+    "expand"
+  ],
+  "config": {
+    "token_budget": {
+      "type": "number",
+      "default": 100000,
+      "description": "Token 预算上限"
+    },
+    "fresh_tail_count": {
+      "type": "number",
+      "default": 8,
+      "description": "Fresh tail 保护条数"
+    },
+    "context_threshold": {
+      "type": "number",
+      "default": 0.75,
+      "description": "压缩触发阈值（比例）"
+    },
+    "leaf_chunk_tokens": {
+      "type": "number",
+      "default": 20000,
+      "description": "Leaf 压缩块大小"
+    }
+  }
+}
