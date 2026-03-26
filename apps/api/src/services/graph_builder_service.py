@@ -32,35 +32,6 @@ class GraphBuilderService:
         self.confirmation_service = get_confirmation_service()
         self.entity_dict = get_entity_dictionary_service()
 
-        # 地点归一化映射
-        self.location_normalization = {
-            # 咖啡店
-            "星巴克": "咖啡店",
-            "瑞幸": "咖啡店",
-            "costa": "咖啡店",
-            "costa咖啡": "咖啡店",
-            # 餐厅
-            "肯德基": "快餐店",
-            "KFC": "快餐店",
-            "麦当劳": "快餐店",
-            "海底捞": "火锅店",
-            "西贝": "餐厅",
-            # 商场
-            "万达": "商场",
-            "大悦城": "商场",
-            "恒隆": "商场",
-            # 公园
-            "颐和园": "公园",
-            "天坛": "公园",
-            "北海公园": "公园",
-            # 公司
-            "腾讯": "公司",
-            "阿里": "公司",
-            "阿里巴巴": "公司",
-            "字节": "公司",
-            "字节跳动": "公司",
-        }
-
     async def _create_normalization_relation(
         self, source_entity: str, target_entity: str, relation_type: str
     ):
@@ -661,9 +632,6 @@ class GraphBuilderService:
         elif relation_type == "same_as":
             return "person"  # 通常用于人物别名
 
-        # 基于名称特征推断
-        if entity_name in self.location_normalization:
-            return "location"
 
         # 默认类型
         return "unknown"
