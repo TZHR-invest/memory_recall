@@ -1,5 +1,5 @@
 import uuid
-from typing import Optional, List, Dict, Any, Tuple, Callable
+from typing import Optional, List, Dict, Any, Tuple, Callable, TYPE_CHECKING
 from datetime import datetime
 from dataclasses import dataclass
 
@@ -8,6 +8,9 @@ from src.models.lossless import CompactionResult, CompressionLevel
 from src.services.lossless.raw_message_store import RawMessageStore
 from src.services.lossless.summary_store import SummaryStore
 from src.services.lossless.context_store import ContextStore
+
+if TYPE_CHECKING:
+    from src.services.memory_extraction_service import MemoryExtractionService
 
 
 FALLBACK_MAX_CHARS = 512 * 4
@@ -107,6 +110,7 @@ class CompactionEngine:
         token_budget: int = 100000,
         force: bool = False,
         summary_model: Optional[str] = None,
+        entity_extractor: Optional["MemoryExtractionService"] = None,
     ) -> Optional[CompactionResult]:
         tokens_before = await self.context_store.get_token_count(user_id, session_id)
         threshold = int(self._resolve_context_threshold() * token_budget)
@@ -137,6 +141,20 @@ class CompactionEngine:
             level=level,
             model=summary_model,
         )
+
+        # Entity extraction for Agent dialogue (agent_id is not None)
+        if entity_extractor is not None and agent_id is not None:
+            try:
+                await self._extract_entities_for_summary(
+                    summary_content=summary_content,
+                    summary_id=summary_id,
+                    user_id=user_id,
+                    agent_id=agent_id,
+                    entity_extractor=entity_extractor,
+                )
+            except Exception as e:
+                # Log error but don't fail the compaction
+                print(f"Entity extraction failed for summary {summary_id}: {e}")
 
         await self._update_context_items(
             user_id, agent_id, session_id, chunk.ordinals, summary_id
@@ -250,14 +268,14 @@ class CompactionEngine:
         input_tokens = estimate_tokens(source_text)
 
         try:
-            summary = summarize_fn(source_text, aggressive=False)
+            summary = summarize_fn(source_text, False)
             summary = summary.strip() if summary else ""
 
             if summary and estimate_tokens(summary) < input_tokens:
                 return (summary, "normal")
 
             if summary:
-                aggressive_summary = summarize_fn(source_text, aggressive=True)
+                aggressive_summary = summarize_fn(source_text, True)
                 aggressive_summary = (
                     aggressive_summary.strip() if aggressive_summary else ""
                 )
@@ -346,6 +364,70 @@ class CompactionEngine:
         if summary_result:
             return summary_result[0]
         return None
+
+    async def _extract_entities_for_summary(
+        self,
+        summary_content: str,
+        summary_id: str,
+        user_id: str,
+        agent_id: str,
+        entity_extractor: "MemoryExtractionService",
+    ) -> None:
+        from src.services.graph_builder_service import get_graph_builder_service
+
+        graph_builder = get_graph_builder_service()
+
+        extraction_result = await entity_extractor.extract_memories(
+            content=summary_content, user_id=user_id
+        )
+
+        if not extraction_result.get("success"):
+            return
+
+        memories = extraction_result.get("memories", [])
+        if not memories:
+            return
+
+        seen_entities: Dict[str, str] = {}
+
+        for memory in memories:
+            entities = memory.get("entities", [])
+
+            for entity in entities:
+                entity_name = entity.get("name", "")
+                entity_type = entity.get("type", "unknown")
+                confidence = entity.get("confidence", 0.8)
+
+                if not entity_name or entity_name == "我":
+                    continue
+
+                if entity_name in seen_entities:
+                    entity_id = seen_entities[entity_name]
+                else:
+                    entity_id = await graph_builder._upsert_entity(
+                        name=entity_name,
+                        entity_type=entity_type,
+                        user_id=user_id,
+                        agent_id=agent_id,
+                        confidence=confidence,
+                    )
+                    if entity_id:
+                        seen_entities[entity_name] = entity_id
+
+                if not entity_id:
+                    continue
+
+                await db.execute(
+                    """
+                    INSERT INTO summary_entities (summary_id, entity_id, role, confidence)
+                    VALUES ($1, $2, $3, $4)
+                    ON CONFLICT DO NOTHING
+                    """,
+                    summary_id,
+                    entity_id,
+                    "mentioned",
+                    confidence,
+                )
 
 
 compaction_engine = CompactionEngine()
