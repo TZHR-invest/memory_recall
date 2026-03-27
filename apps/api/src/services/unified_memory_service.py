@@ -7,11 +7,17 @@ from datetime import datetime
 
 from src.database import db
 from src.models.lossless import MemoryType
-from src.services.lossless.raw_message_store import RawMessageStore, raw_message_store
-from src.services.lossless.summary_store import SummaryStore, summary_store
+from src.services.lossless.raw_message_store import (
+    RawMessageStore,
+    raw_message_store as default_raw_store,
+)
+from src.services.lossless.summary_store import (
+    SummaryStore,
+    summary_store as default_summary_store,
+)
 from src.services.lossless.lossless_recall_service import (
     LosslessRecallService,
-    lossless_recall_service,
+    lossless_recall_service as default_recall_service,
 )
 from src.embedding.client import get_embedding_client
 
@@ -62,9 +68,9 @@ class UnifiedMemoryService:
         entity_extractor: Optional[Any] = None,
         graph_builder: Optional[Any] = None,
     ):
-        self.raw_store = raw_store or raw_message_store
-        self.summary_store = summary_store or summary_store
-        self.recall_service = recall_service or lossless_recall_service
+        self.raw_store = raw_store or default_raw_store
+        self.summary_store = summary_store or default_summary_store
+        self.recall_service = recall_service or default_recall_service
         self.embedding_client = get_embedding_client()
 
         # Entity extraction services (lazy initialization)
@@ -266,6 +272,7 @@ class UnifiedMemoryService:
         memory_type: MemoryType = "note",
         metadata: Optional[Dict] = None,
         max_chunk_size: int = DEFAULT_CHUNK_SIZE,
+        auto_compress: bool = True,
     ) -> Dict[str, Any]:
         document_id = generate_document_id()
 
@@ -303,10 +310,21 @@ class UnifiedMemoryService:
             chunk_ids.append(raw_id)
             total_tokens += len(chunk_content) // 4
 
+        summary_id = None
+
+        if auto_compress and len(chunks) > 1:
+            summary_id = await self._compress_document_chunks(
+                document_id=document_id,
+                user_id=user_id,
+                chunk_ids=chunk_ids,
+                content=content,
+            )
+
         return {
             "document_id": document_id,
             "chunk_count": len(chunks),
             "chunk_ids": chunk_ids,
+            "summary_id": summary_id,
             "memory_type": memory_type,
             "source": "manual",
             "total_tokens": total_tokens,
@@ -509,6 +527,76 @@ class UnifiedMemoryService:
         except Exception as e:
             logger.warning(f"Entity extraction failed: {e}")
             return {"entities": [], "relations": [], "entities_count": 0}
+
+    async def _compress_document_chunks(
+        self,
+        document_id: str,
+        user_id: str,
+        chunk_ids: List[str],
+        content: str,
+    ) -> Optional[str]:
+        try:
+            from src.llm.client import get_llm_client
+
+            llm_client = get_llm_client()
+
+            max_summary_input = 15000
+            summary_input = content[:max_summary_input]
+            if len(content) > max_summary_input:
+                summary_input += "\n...[内容已截断]"
+
+            prompt = (
+                f"请总结以下文档的主要内容，保留关键信息和要点：\n\n{summary_input}"
+            )
+            summary_content = llm_client.chat([{"role": "user", "content": prompt}])
+
+            if not summary_content or not summary_content.strip():
+                logger.warning(f"Empty summary generated for document {document_id}")
+                return None
+
+            summary_content = summary_content.strip()
+
+            summary_embedding = None
+            try:
+                summary_embedding = self.embedding_client.embed(summary_content)
+            except Exception as e:
+                logger.warning(f"Failed to generate summary embedding: {e}")
+
+            summary_token_count = len(summary_content) // 4
+            source_token_count = len(content) // 4
+
+            summary_id = await self.summary_store.create_summary(
+                user_id=user_id,
+                agent_id=None,
+                content=summary_content,
+                kind="leaf",
+                depth=0,
+                token_count=summary_token_count,
+                document_id=document_id,
+                source_message_token_count=source_token_count,
+                embedding=summary_embedding,
+                model="llm",
+                compression_level="normal",
+            )
+
+            await self.summary_store.link_messages(summary_id, chunk_ids)
+
+            await self._extract_and_store_entities_for_user(
+                content=summary_content,
+                user_id=user_id,
+                memory_id=summary_id,
+            )
+
+            logger.info(
+                f"Document compressed: {document_id} -> {summary_id}, "
+                f"tokens: {source_token_count} -> {summary_token_count}"
+            )
+
+            return summary_id
+
+        except Exception as e:
+            logger.warning(f"Document compression failed for {document_id}: {e}")
+            return None
 
 
 unified_memory_service = UnifiedMemoryService()
