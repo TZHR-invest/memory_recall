@@ -165,6 +165,9 @@ async def create_memory(
                 "content": memory.content,
                 "memory_type": result["memory_type"],
                 "source": result["source"],
+                "is_long_document": result.get("is_long_document", False),
+                "entities": result.get("entities", []),
+                "entities_count": result.get("entities_count", 0),
                 "tags": memory_data.get("tags", []) if memory_data else [],
                 "created_at": memory_data.get("created_at") if memory_data else None,
             },
@@ -784,3 +787,53 @@ async def batch_delete_memories(memory_ids: List[str] = Body(...)):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== DAG 展开端点 ====================
+
+
+class ExpandRequest(BaseModel):
+    """展开摘要请求"""
+
+    summary_id: str = Field(..., description="摘要 ID")
+    user_id: str = Field(..., description="用户 ID")
+    max_tokens: int = Field(5000, ge=100, le=50000, description="最大 token 数")
+
+
+@router.post(
+    "/expand",
+    response_model=dict,
+    summary="展开摘要",
+    description="展开摘要获取原始消息列表",
+)
+async def expand_summary(request: ExpandRequest):
+    """
+    展开摘要
+
+    - **summary_id**: 摘要 ID（必填）
+    - **user_id**: 用户 ID（必填）
+    - **max_tokens**: 最大 token 数（默认 5000）
+    """
+    db.set_current_user(request.user_id)
+
+    try:
+        from src.services.lossless.dag_expand_service import dag_expand_service
+
+        result = await dag_expand_service.expand_to_messages(
+            summary_id=request.summary_id,
+            max_tokens=request.max_tokens,
+        )
+
+        if "error" in result:
+            raise HTTPException(status_code=404, detail=result["error"])
+
+        return {
+            "code": 200,
+            "message": "success",
+            "data": result,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"展开失败：{str(e)}")

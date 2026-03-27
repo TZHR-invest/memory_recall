@@ -1,10 +1,12 @@
 import logging
 import uuid
 import hashlib
-from typing import Optional, List, Dict, Any
+import re
+from typing import Optional, List, Dict, Any, cast
 from datetime import datetime
 
 from src.database import db
+from src.models.lossless import MemoryType
 from src.services.lossless.raw_message_store import RawMessageStore, raw_message_store
 from src.services.lossless.summary_store import SummaryStore, summary_store
 from src.services.lossless.lossless_recall_service import (
@@ -16,6 +18,7 @@ from src.embedding.client import get_embedding_client
 logger = logging.getLogger(__name__)
 
 DEFAULT_CHUNK_SIZE = 5000
+MAX_TOKENS_PER_MESSAGE = 1000  # Long document threshold (~4000 Chinese characters)
 
 
 def generate_document_id() -> str:
@@ -56,11 +59,35 @@ class UnifiedMemoryService:
         raw_store: Optional[RawMessageStore] = None,
         summary_store: Optional[SummaryStore] = None,
         recall_service: Optional[LosslessRecallService] = None,
+        entity_extractor: Optional[Any] = None,
+        graph_builder: Optional[Any] = None,
     ):
         self.raw_store = raw_store or raw_message_store
         self.summary_store = summary_store or summary_store
         self.recall_service = recall_service or lossless_recall_service
         self.embedding_client = get_embedding_client()
+
+        # Entity extraction services (lazy initialization)
+        self._entity_extractor = entity_extractor
+        self._graph_builder = graph_builder
+
+    @property
+    def entity_extractor(self):
+        if self._entity_extractor is None:
+            from src.services.memory_extraction_service import (
+                get_memory_extraction_service,
+            )
+
+            self._entity_extractor = get_memory_extraction_service()
+        return self._entity_extractor
+
+    @property
+    def graph_builder(self):
+        if self._graph_builder is None:
+            from src.services.graph_builder_service import get_graph_builder_service
+
+            self._graph_builder = get_graph_builder_service()
+        return self._graph_builder
 
     async def store(
         self,
@@ -71,10 +98,15 @@ class UnifiedMemoryService:
         session_id: Optional[str] = None,
         memory_type: str = "preference",
         metadata: Optional[Dict] = None,
+        enable_graph: bool = True,
     ) -> Dict[str, Any]:
         actual_agent_id = None if source == "manual" else agent_id
 
-        actual_memory_type = "dialogue" if source == "agent" else memory_type
+        actual_memory_type: MemoryType = (
+            "dialogue" if source == "agent" else cast(MemoryType, memory_type)
+        )
+
+        is_long = self._is_long_document(content, source, metadata or {})
 
         location_name = metadata.get("location_name") if metadata else None
         location_address = metadata.get("location_address") if metadata else None
@@ -113,12 +145,25 @@ class UnifiedMemoryService:
         except Exception as e:
             logger.warning(f"Failed to generate embedding: {e}")
 
+        entities_result = {"entities": [], "entities_count": 0}
+
+        if enable_graph:
+            if source == "manual" and not is_long:
+                entities_result = await self._extract_and_store_entities_for_user(
+                    content=content,
+                    user_id=user_id,
+                    memory_id=raw_id,
+                )
+
         return {
             "raw_message_id": raw_id,
             "memory_type": actual_memory_type,
             "agent_id": actual_agent_id,
             "source": source,
+            "is_long_document": is_long,
             "has_embedding": embedding is not None,
+            "entities": entities_result.get("entities", []),
+            "entities_count": entities_result.get("entities_count", 0),
         }
 
     async def store_agent_message(
@@ -218,7 +263,7 @@ class UnifiedMemoryService:
         self,
         user_id: str,
         content: str,
-        memory_type: str = "note",
+        memory_type: MemoryType = "note",
         metadata: Optional[Dict] = None,
         max_chunk_size: int = DEFAULT_CHUNK_SIZE,
     ) -> Dict[str, Any]:
@@ -348,6 +393,122 @@ class UnifiedMemoryService:
             }
             for row in rows
         ]
+
+    def _is_long_document(self, content: str, source: str, metadata: Dict) -> bool:
+        token_count = len(content) // 4  # Rough estimate
+        if token_count > MAX_TOKENS_PER_MESSAGE:
+            return True
+        if len(content) > 5000:
+            return True
+        if source == "file":
+            return True
+        if metadata.get("is_document"):
+            return True
+        return False
+
+    def _deduplicate_entities(self, entities: List[Dict]) -> List[Dict]:
+        seen = set()
+        unique = []
+        for e in entities:
+            key = (e.get("name"), e.get("type"))
+            if key not in seen:
+                seen.add(key)
+                unique.append(e)
+        return unique
+
+    def _deduplicate_relations(self, relations: List[Dict]) -> List[Dict]:
+        seen = set()
+        unique = []
+        for r in relations:
+            key = (r.get("source"), r.get("target"), r.get("relation_type"))
+            if key not in seen:
+                seen.add(key)
+                unique.append(r)
+        return unique
+
+    async def _link_message_entity(self, message_id: str, entity_id: str):
+        await db.execute(
+            """
+            INSERT INTO memory_entities (memory_id, entity_id)
+            VALUES ($1, $2)
+            ON CONFLICT DO NOTHING
+        """,
+            message_id,
+            entity_id,
+        )
+
+    async def _extract_and_store_entities_for_user(
+        self,
+        content: str,
+        user_id: str,
+        memory_id: str,
+    ) -> Dict[str, Any]:
+        try:
+            extraction_result = await self.entity_extractor.extract_memories(content)
+
+            if not extraction_result or not extraction_result.get("success"):
+                return {"entities": [], "relations": [], "entities_count": 0}
+
+            memories = extraction_result.get("memories", [])
+            all_entities = []
+            all_relations = []
+
+            for memory in memories:
+                entities = memory.get("entities", [])
+                relations = memory.get("relations", [])
+                all_entities.extend(entities)
+                all_relations.extend(relations)
+
+            unique_entities = self._deduplicate_entities(all_entities)
+            unique_relations = self._deduplicate_relations(all_relations)
+
+            entity_ids = {}
+            for entity in unique_entities:
+                entity_name = entity.get("name")
+                entity_type = entity.get("type", "unknown")
+                confidence = entity.get("confidence", 0.8)
+
+                if not entity_name or entity_name == "我":
+                    continue
+
+                entity_id = await self.graph_builder._upsert_entity(
+                    name=entity_name,
+                    entity_type=entity_type,
+                    user_id=user_id,
+                    agent_id=None,
+                    confidence=confidence,
+                )
+
+                if entity_id:
+                    entity_ids[entity_name] = entity_id
+                    await self._link_message_entity(memory_id, entity_id)
+
+            for relation in unique_relations:
+                source = relation.get("source")
+                target = relation.get("target")
+                rel_type = relation.get("relation_type")
+                confidence = relation.get("confidence", 0.8)
+
+                if not source or not target or not rel_type or target == "我":
+                    continue
+
+                await self.graph_builder._upsert_relation(
+                    from_entity=source,
+                    to_entity=target,
+                    relation_type=rel_type,
+                    confidence=confidence,
+                    user_id=user_id,
+                )
+
+            return {
+                "entities": unique_entities,
+                "relations": unique_relations,
+                "entities_count": len(unique_entities),
+            }
+
+        except Exception as e:
+            logger.warning(f"Entity extraction failed: {e}")
+            return {"entities": [], "relations": [], "entities_count": 0}
 
 
 unified_memory_service = UnifiedMemoryService()

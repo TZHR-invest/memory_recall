@@ -2,6 +2,7 @@
 Memory Recall API - 主入口
 个人记忆管理与召回系统的 RESTful API
 """
+
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -18,9 +19,11 @@ from src.routes import upload
 from src.routes import files
 from src.routes import graph
 from src.routes import users
+from src.routes import context
 
 
 # ==================== 应用生命周期管理 ====================
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -29,7 +32,7 @@ async def lifespan(app: FastAPI):
     try:
         await db.connect()
         print("✅ 数据库连接成功")
-        
+
         # 验证数据库扩展
         vector_ext = await db.fetchval(
             "SELECT extname FROM pg_extension WHERE extname = 'vector'"
@@ -41,9 +44,9 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"❌ 数据库连接失败: {e}")
         raise
-    
+
     yield
-    
+
     # 关闭时断开数据库
     try:
         await db.disconnect()
@@ -123,24 +126,27 @@ app.add_middleware(
 
 # ==================== 异常处理 ====================
 
+
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     """请求验证异常处理"""
     errors = []
     for error in exc.errors():
-        errors.append({
-            "loc": error.get("loc", []),
-            "msg": str(error.get("msg", "")),
-            "type": error.get("type", "")
-        })
+        errors.append(
+            {
+                "loc": error.get("loc", []),
+                "msg": str(error.get("msg", "")),
+                "type": error.get("type", ""),
+            }
+        )
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content={
             "code": 422,
             "message": "请求参数验证失败",
             "errors": errors,
-            "body": str(exc.body) if exc.body else None
-        }
+            "body": str(exc.body) if exc.body else None,
+        },
     )
 
 
@@ -150,14 +156,14 @@ async def global_exception_handler(request: Request, exc: Exception):
     # 记录错误日志
     print(f"❌ 未处理的异常: {exc}")
     print(traceback.format_exc())
-    
+
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={
             "code": 500,
             "message": "服务器内部错误",
-            "detail": str(exc) if settings.APP_DEBUG else "Internal server error"
-        }
+            "detail": str(exc) if settings.APP_DEBUG else "Internal server error",
+        },
     )
 
 
@@ -172,9 +178,11 @@ app.include_router(memories.router, prefix="/api/v1", tags=["记忆管理"])
 app.include_router(upload.router, prefix="/api/v1", tags=["图片上传"])
 app.include_router(files.router, prefix="/api/v1", tags=["文件上传"])
 app.include_router(graph.router, tags=["图谱增强召回"])
+app.include_router(context.router, prefix="/api/v1", tags=["上下文管理"])
 
 
 # ==================== 根路径和元数据 ====================
+
 
 @app.get(
     "/",
@@ -195,13 +203,13 @@ app.include_router(graph.router, tags=["图谱增强召回"])
                             "memories": "/api/v1/memories",
                             "search": "/api/v1/memories/search",
                             "recall": "/api/v1/memories/recall",
-                            "stats": "/api/stats"
-                        }
+                            "stats": "/api/stats",
+                        },
                     }
                 }
-            }
+            },
         }
-    }
+    },
 )
 async def root():
     """API 根路径"""
@@ -219,8 +227,8 @@ async def root():
             "timeline_stats": "/api/stats/timeline",
             "tag_stats": "/api/stats/tags",
             "location_stats": "/api/stats/locations",
-            "people_stats": "/api/stats/people"
-        }
+            "people_stats": "/api/stats/people",
+        },
     }
 
 
@@ -228,7 +236,7 @@ async def root():
     "/api",
     summary="API 端点列表",
     description="返回所有可用的 API 端点",
-    tags=["元数据"]
+    tags=["元数据"],
 )
 async def api_info():
     """API 端点列表"""
@@ -247,20 +255,17 @@ async def api_info():
             },
             "search": {
                 "semantic": "POST /api/v1/memories/search",
-                "natural_language": "POST /api/v1/memories/recall"
+                "natural_language": "POST /api/v1/memories/recall",
             },
             "stats": {
                 "overview": "GET /api/stats",
                 "timeline": "GET /api/stats/timeline",
                 "tags": "GET /api/stats/tags",
                 "locations": "GET /api/stats/locations",
-                "people": "GET /api/stats/people"
+                "people": "GET /api/stats/people",
             },
-            "health": {
-                "check": "GET /health",
-                "database": "GET /health/db"
-            }
-        }
+            "health": {"check": "GET /health", "database": "GET /health/db"},
+        },
     }
 
 
@@ -268,7 +273,7 @@ async def api_info():
     "/openapi",
     summary="OpenAPI 规范",
     description="返回 OpenAPI JSON 规范",
-    tags=["元数据"]
+    tags=["元数据"],
 )
 async def openapi_spec():
     """OpenAPI 规范"""
@@ -279,13 +284,13 @@ async def openapi_spec():
 
 if __name__ == "__main__":
     import uvicorn
-    
+
     uvicorn.run(
         "main:app",
         host="0.0.0.0",
         port=8000,
         reload=settings.APP_DEBUG,
         log_level="info",
-        access_log=True
+        access_log=True,
     )
-_level="info",
+_level = ("info",)

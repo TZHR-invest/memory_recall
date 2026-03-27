@@ -34,6 +34,18 @@ class MemoryRecallEngine:
         self.context_store = context_store
         self.compaction_engine = compaction_engine
 
+        self._entity_extractor = None
+
+    @property
+    def entity_extractor(self):
+        if self._entity_extractor is None:
+            from src.services.memory_extraction_service import (
+                get_memory_extraction_service,
+            )
+
+            self._entity_extractor = get_memory_extraction_service()
+        return self._entity_extractor
+
     async def bootstrap(self, params: Dict) -> Dict:
         user_id = params["user_id"]
         agent_id = params.get("agent_id")
@@ -135,6 +147,8 @@ class MemoryRecallEngine:
                 "summary_id": None,
             }
 
+        entity_extractor = self.entity_extractor if agent_id else None
+
         result = await self.compaction_engine.leaf_compact(
             user_id=user_id,
             agent_id=agent_id,
@@ -142,6 +156,7 @@ class MemoryRecallEngine:
             summarize_fn=summarize_fn,
             token_budget=token_budget,
             force=force,
+            entity_extractor=entity_extractor,
         )
 
         if result:

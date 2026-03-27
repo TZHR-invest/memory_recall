@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
@@ -30,7 +31,9 @@ class LosslessRecallService:
         agent_filter = self._build_agent_filter(scope, agent_id)
 
         vector_results, keyword_results, graph_results = await asyncio.gather(
-            self._vector_recall(query_embedding, user_id, agent_filter, limit * 2),
+            self._vector_recall(
+                query, query_embedding, user_id, agent_filter, limit * 2
+            ),
             self._keyword_recall(query, user_id, agent_filter, limit * 2),
             self._graph_recall(query, user_id, agent_id, scope, limit),
         )
@@ -56,6 +59,7 @@ class LosslessRecallService:
 
     async def _vector_recall(
         self,
+        query: str,
         query_embedding: List[float],
         user_id: str,
         agent_filter: str,
@@ -80,16 +84,20 @@ class LosslessRecallService:
         )
 
         for r in raw_results:
+            content = r["content"]
+            snippet_data = self._extract_snippet(content, query)
             results.append(
                 {
                     "type": "raw_message",
                     "id": r["id"],
-                    "content": r["content"],
+                    "content": content,
+                    "snippet": snippet_data["snippet"],
+                    "snippet_highlight": snippet_data["snippet_highlight"],
                     "agent_id": r["agent_id"],
                     "memory_type": r["memory_type"],
                     "similarity": float(r["similarity"]) if r["similarity"] else 0.0,
                     "source": "vector",
-                    "expandable": False,
+                    "expandable": len(content) > 500,
                     "created_at": r["created_at"].isoformat()
                     if r["created_at"]
                     else None,
@@ -112,11 +120,15 @@ class LosslessRecallService:
         )
 
         for r in summary_results:
+            content = r["content"]
+            snippet_data = self._extract_snippet(content, query)
             results.append(
                 {
                     "type": "summary",
                     "id": r["summary_id"],
-                    "content": r["content"],
+                    "content": content,
+                    "snippet": snippet_data["snippet"],
+                    "snippet_highlight": snippet_data["snippet_highlight"],
                     "agent_id": r["agent_id"],
                     "kind": r["kind"],
                     "depth": r["depth"],
@@ -162,16 +174,20 @@ class LosslessRecallService:
         )
 
         for r in raw_results:
+            content = r["content"]
+            snippet_data = self._extract_snippet(content, query)
             results.append(
                 {
                     "type": "raw_message",
                     "id": r["id"],
-                    "content": r["content"],
+                    "content": content,
+                    "snippet": snippet_data["snippet"],
+                    "snippet_highlight": snippet_data["snippet_highlight"],
                     "agent_id": r["agent_id"],
                     "memory_type": r["memory_type"],
                     "similarity": min(1.0, float(r["rank"]) * 5) if r["rank"] else 0.0,
                     "source": "keyword",
-                    "expandable": False,
+                    "expandable": len(content) > 500,
                     "created_at": r["created_at"].isoformat()
                     if r["created_at"]
                     else None,
@@ -194,11 +210,15 @@ class LosslessRecallService:
         )
 
         for r in summary_results:
+            content = r["content"]
+            snippet_data = self._extract_snippet(content, query)
             results.append(
                 {
                     "type": "summary",
                     "id": r["summary_id"],
-                    "content": r["content"],
+                    "content": content,
+                    "snippet": snippet_data["snippet"],
+                    "snippet_highlight": snippet_data["snippet_highlight"],
                     "agent_id": r["agent_id"],
                     "kind": r["kind"],
                     "depth": r["depth"],
@@ -266,17 +286,21 @@ class LosslessRecallService:
             )
 
             for r in message_results:
+                content = r["content"]
+                snippet_data = self._extract_snippet(content, query)
                 results.append(
                     {
                         "type": "raw_message",
                         "id": r["id"],
-                        "content": r["content"],
+                        "content": content,
+                        "snippet": snippet_data["snippet"],
+                        "snippet_highlight": snippet_data["snippet_highlight"],
                         "agent_id": r["agent_id"],
                         "memory_type": r["memory_type"],
                         "entity": entity["name"],
                         "similarity": 0.6,
                         "source": "graph",
-                        "expandable": False,
+                        "expandable": len(content) > 500,
                         "created_at": r["created_at"].isoformat()
                         if r["created_at"]
                         else None,
@@ -296,11 +320,15 @@ class LosslessRecallService:
             )
 
             for r in summary_results:
+                content = r["content"]
+                snippet_data = self._extract_snippet(content, query)
                 results.append(
                     {
                         "type": "summary",
                         "id": r["summary_id"],
-                        "content": r["content"],
+                        "content": content,
+                        "snippet": snippet_data["snippet"],
+                        "snippet_highlight": snippet_data["snippet_highlight"],
                         "agent_id": r["agent_id"],
                         "kind": r["kind"],
                         "depth": r["depth"],
@@ -322,6 +350,112 @@ class LosslessRecallService:
         words = jieba.cut(query)
         keywords = [w for w in words if len(w) >= 2 and w.strip()]
         return list(set(keywords))[:5]
+
+    def _extract_snippet(
+        self,
+        content: str,
+        query: str,
+        max_chars: int = 300,
+        context_chars: int = 100,
+    ) -> Dict[str, str]:
+        """
+        Extract a snippet around the first matching keyword in content.
+
+        Args:
+            content: The full text content
+            query: The search query to extract keywords from
+            max_chars: Maximum snippet length (default 300)
+            context_chars: Characters before/after match (default 100)
+
+        Returns:
+            Dict with 'snippet' and 'snippet_highlight' keys
+        """
+        keywords = self._extract_keywords(query)
+
+        # If no keywords or empty content, return first max_chars
+        if not keywords or not content:
+            snippet = content[:max_chars] if len(content) > max_chars else content
+            return {
+                "snippet": snippet + "..." if len(content) > max_chars else snippet,
+                "snippet_highlight": snippet + "..."
+                if len(content) > max_chars
+                else snippet,
+            }
+
+        # Find first matching keyword position (case-insensitive)
+        match_pos = -1
+        matched_keyword = None
+        content_lower = content.lower()
+
+        for keyword in keywords:
+            pos = content_lower.find(keyword.lower())
+            if pos != -1:
+                match_pos = pos
+                matched_keyword = keyword
+                break
+
+        # If no match found, return first max_chars
+        if match_pos == -1 or matched_keyword is None:
+            snippet = content[:max_chars] if len(content) > max_chars else content
+            return {
+                "snippet": snippet + "..." if len(content) > max_chars else snippet,
+                "snippet_highlight": snippet + "..."
+                if len(content) > max_chars
+                else snippet,
+            }
+
+        # Calculate snippet boundaries
+        start = max(0, match_pos - context_chars)
+        end = min(len(content), match_pos + len(matched_keyword) + context_chars)
+
+        # Adjust to sentence boundaries for cleaner output
+        sentence_endings = "。！？\n"
+        sentence_starters = "。！？\n"
+
+        # Adjust start to sentence boundary
+        if start > 0:
+            # Look backwards for sentence ending
+            for i in range(start, max(0, start - 50), -1):
+                if content[i] in sentence_starters:
+                    start = i + 1
+                    break
+
+        # Adjust end to sentence boundary
+        if end < len(content):
+            # Look forwards for sentence ending
+            for i in range(end, min(len(content), end + 50)):
+                if content[i] in sentence_endings:
+                    end = i + 1
+                    break
+
+        # Ensure snippet doesn't exceed max_chars
+        if end - start > max_chars:
+            end = start + max_chars
+
+        # Extract snippet
+        snippet = content[start:end]
+
+        # Add ellipsis
+        prefix = "..." if start > 0 else ""
+        suffix = "..." if end < len(content) else ""
+        snippet = prefix + snippet + suffix
+
+        # Generate highlighted version
+        snippet_highlight = snippet
+        if matched_keyword:
+            # Use regex for case-insensitive replacement
+            pattern = re.escape(matched_keyword)
+            snippet_highlight = re.sub(
+                f"({pattern})",
+                r"<em>\1</em>",
+                snippet,
+                flags=re.IGNORECASE,
+            )
+
+        return {
+            "snippet": snippet,
+            "snippet_highlight": snippet_highlight,
+        }
 
     def _merge_results(
         self,
