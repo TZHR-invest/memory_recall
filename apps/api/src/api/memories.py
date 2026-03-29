@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 
@@ -6,8 +6,13 @@ from src.services.core.memory_store import memory_store
 from src.services.core.profile_service import profile_service
 from src.services.core.relation_service import relation_service
 from src.services.core.document_store import document_store
+from src.api.auth import (
+    require_permission,
+    check_rate_limit,
+    verify_container_ownership,
+)
 
-router = APIRouter(prefix="/v1", tags=["Memories"])
+router = APIRouter(tags=["Memories"])
 
 
 class CreateMemoryRequest(BaseModel):
@@ -21,6 +26,11 @@ class CreateMemoryRequest(BaseModel):
     )
     metadata: Dict[str, Any] = Field(
         default_factory=dict, description="Additional metadata"
+    )
+    entity_context: Optional[str] = Field(
+        None,
+        description="Per-container context to guide entity extraction (max 1500 chars). Persists for subsequent extractions in this container.",
+        examples=["设计探索对话，关注用户的UI偏好和品牌需求"],
     )
 
 
@@ -76,12 +86,29 @@ class CreateDocumentRequest(BaseModel):
         }
     },
 )
-async def create_memory(request: CreateMemoryRequest):
+async def create_memory(
+    request: CreateMemoryRequest,
+    current_user: Dict = Depends(require_permission("write")),
+    _: Dict = Depends(check_rate_limit),
+):
+    verify_container_ownership(request.container_tag, current_user["user_id"])
+
+    entity_context = request.entity_context
+
+    if entity_context:
+        await profile_service.set_entity_context(
+            container_tag=request.container_tag,
+            entity_context=entity_context,
+        )
+    else:
+        entity_context = await profile_service.get_entity_context(request.container_tag)
+
     memory = await memory_store.create(
         content=request.content,
         container_tag=request.container_tag,
         is_static=request.is_static,
         metadata=request.metadata,
+        entity_context=entity_context,
     )
 
     await profile_service.invalidate_cache(request.container_tag)
@@ -123,7 +150,11 @@ async def create_memory(request: CreateMemoryRequest):
 async def list_memories(
     container_tag: str = Query(..., description="Container tag"),
     limit: int = Query(20, ge=1, le=100, description="Max results"),
+    current_user: Dict = Depends(require_permission("read")),
+    _: Dict = Depends(check_rate_limit),
 ):
+    verify_container_ownership(container_tag, current_user["user_id"])
+
     memories = await memory_store.get_by_container(
         container_tag=container_tag,
         limit=limit,
@@ -152,10 +183,16 @@ async def list_memories(
         404: {"description": "Memory not found"},
     },
 )
-async def get_memory(memory_id: str):
+async def get_memory(
+    memory_id: str,
+    current_user: Dict = Depends(require_permission("read")),
+    _: Dict = Depends(check_rate_limit),
+):
     memory = await memory_store.get_by_id(memory_id)
     if not memory:
         raise HTTPException(status_code=404, detail="Memory not found")
+
+    verify_container_ownership(memory.container_tag, current_user["user_id"])
 
     return {
         "id": memory.id,
@@ -178,10 +215,16 @@ async def get_memory(memory_id: str):
         404: {"description": "Memory not found"},
     },
 )
-async def forget_memory(memory_id: str):
+async def forget_memory(
+    memory_id: str,
+    current_user: Dict = Depends(require_permission("write")),
+    _: Dict = Depends(check_rate_limit),
+):
     memory = await memory_store.get_by_id(memory_id)
     if not memory:
         raise HTTPException(status_code=404, detail="Memory not found")
+
+    verify_container_ownership(memory.container_tag, current_user["user_id"])
 
     success = await memory_store.forget(memory_id)
     if success:
@@ -199,10 +242,16 @@ async def forget_memory(memory_id: str):
         404: {"description": "Memory not found"},
     },
 )
-async def restore_memory(memory_id: str):
+async def restore_memory(
+    memory_id: str,
+    current_user: Dict = Depends(require_permission("write")),
+    _: Dict = Depends(check_rate_limit),
+):
     memory = await memory_store.get_by_id(memory_id)
     if not memory:
         raise HTTPException(status_code=404, detail="Memory not found")
+
+    verify_container_ownership(memory.container_tag, current_user["user_id"])
 
     success = await memory_store.restore(memory_id)
     if success:
@@ -220,10 +269,17 @@ async def restore_memory(memory_id: str):
         404: {"description": "Memory not found"},
     },
 )
-async def update_memory(memory_id: str, request: UpdateMemoryRequest):
+async def update_memory(
+    memory_id: str,
+    request: UpdateMemoryRequest,
+    current_user: Dict = Depends(require_permission("write")),
+    _: Dict = Depends(check_rate_limit),
+):
     old_memory = await memory_store.get_by_id(memory_id)
     if not old_memory:
         raise HTTPException(status_code=404, detail="Memory not found")
+
+    verify_container_ownership(old_memory.container_tag, current_user["user_id"])
 
     new_memory = await memory_store.create_update_version(
         memory_id=memory_id,
@@ -250,10 +306,16 @@ async def update_memory(memory_id: str, request: UpdateMemoryRequest):
         404: {"description": "Memory not found"},
     },
 )
-async def get_memory_history(memory_id: str):
+async def get_memory_history(
+    memory_id: str,
+    current_user: Dict = Depends(require_permission("read")),
+    _: Dict = Depends(check_rate_limit),
+):
     memory = await memory_store.get_by_id(memory_id)
     if not memory:
         raise HTTPException(status_code=404, detail="Memory not found")
+
+    verify_container_ownership(memory.container_tag, current_user["user_id"])
 
     history = await relation_service.get_version_history(memory_id)
 
@@ -290,7 +352,11 @@ async def get_profile(
     max_dynamic: int = Query(
         10, ge=1, le=50, description="Max dynamic facts to return"
     ),
+    current_user: Dict = Depends(require_permission("read")),
+    _: Dict = Depends(check_rate_limit),
 ):
+    verify_container_ownership(container_tag, current_user["user_id"])
+
     profile = await profile_service.get_profile(
         container_tag=container_tag,
         query=query,
@@ -326,7 +392,13 @@ async def get_profile(
         }
     },
 )
-async def search_memories(request: SearchRequest):
+async def search_memories(
+    request: SearchRequest,
+    current_user: Dict = Depends(require_permission("read")),
+    _: Dict = Depends(check_rate_limit),
+):
+    verify_container_ownership(request.container_tag, current_user["user_id"])
+
     results = await memory_store.search(
         query=request.query,
         container_tag=request.container_tag,
@@ -343,7 +415,13 @@ async def search_memories(request: SearchRequest):
     description="Store a document for later processing or reference.",
     responses={200: {"description": "Document created"}},
 )
-async def create_document(request: CreateDocumentRequest):
+async def create_document(
+    request: CreateDocumentRequest,
+    current_user: Dict = Depends(require_permission("write")),
+    _: Dict = Depends(check_rate_limit),
+):
+    verify_container_ownership(request.container_tag, current_user["user_id"])
+
     document = await document_store.create(
         content=request.content,
         container_tag=request.container_tag,
@@ -369,7 +447,11 @@ async def list_documents(
     container_tag: str = Query(..., description="Container tag"),
     limit: int = Query(20, ge=1, le=100, description="Max results"),
     offset: int = Query(0, ge=0, description="Offset for pagination"),
+    current_user: Dict = Depends(require_permission("read")),
+    _: Dict = Depends(check_rate_limit),
 ):
+    verify_container_ownership(container_tag, current_user["user_id"])
+
     documents = await document_store.get_by_container(
         container_tag=container_tag,
         limit=limit,
@@ -405,10 +487,16 @@ async def list_documents(
         404: {"description": "Document not found"},
     },
 )
-async def get_document(document_id: str):
+async def get_document(
+    document_id: str,
+    current_user: Dict = Depends(require_permission("read")),
+    _: Dict = Depends(check_rate_limit),
+):
     document = await document_store.get_by_id(document_id)
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
+
+    verify_container_ownership(document.container_tag, current_user["user_id"])
 
     return {
         "id": document.id,
@@ -429,10 +517,16 @@ async def get_document(document_id: str):
         404: {"description": "Document not found"},
     },
 )
-async def delete_document(document_id: str):
+async def delete_document(
+    document_id: str,
+    current_user: Dict = Depends(require_permission("delete")),
+    _: Dict = Depends(check_rate_limit),
+):
     document = await document_store.get_by_id(document_id)
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
+
+    verify_container_ownership(document.container_tag, current_user["user_id"])
 
     success = await document_store.delete(document_id)
 

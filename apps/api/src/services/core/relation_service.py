@@ -10,6 +10,11 @@ import re
 
 from src.database import db
 from src.services.core.llm_entity_extraction import llm_entity_extractor
+from src.services.core.chinese_entity_types import (
+    has_update_marker,
+    has_extend_marker,
+    has_derive_marker,
+)
 
 
 class RelationType(Enum):
@@ -28,22 +33,52 @@ class MemoryRelation:
     created_at: datetime
 
 
-# Contradiction patterns for Chinese text
+CHINESE_UPDATE_MARKERS = [
+    "现在",
+    "改",
+    "换成",
+    "不再",
+    "已经",
+    "更新",
+    "原来是",
+    "以前是",
+    "之前在",
+    "刚换",
+]
+
+CHINESE_EXTEND_MARKERS = [
+    "而且",
+    "另外",
+    "还有",
+    "同时",
+    "顺便",
+    "具体来说",
+    "比如说",
+    "特别是",
+    "另外还有",
+]
+
+CHINESE_DERIVE_MARKERS = [
+    "所以",
+    "因此",
+    "可以推断",
+    "由此可见",
+    "这说明",
+    "这意味着",
+    "因为",
+    "由于",
+]
+
 CONTRADICTION_PATTERNS = [
-    # 状态变化模式
     (r"现在(.+?)(工作|住|在)", r"以前(.+?)(工作|住|在)"),
     (r"目前在(.+?)", r"之前在(.+?)"),
     (r"目前是(.+?)", r"之前是(.+?)"),
-    # 偏好变化模式
     (r"(不喜欢|不爱)(.+)", r"(喜欢|爱)\2"),
     (r"(喜欢|爱)(.+)", r"(不喜欢|不爱)\2"),
-    # 事实更新模式
     (r"现在(.+?)是(.+)", r"(.+?)是(.+)"),
-    # 数值更新模式
     (r"(\d+)(岁|年|月|天)", r"(\d+)\2"),
 ]
 
-# Topic similarity keywords
 TOPIC_KEYWORDS = {
     "饮食": ["吃", "喝", "食物", "餐", "口味", "喜欢", "不喜欢", "素食", "肉"],
     "工作": ["工作", "公司", "职业", "职位", "项目", "同事", "老板", "上班"],
@@ -58,6 +93,56 @@ class RelationService:
     def __init__(self):
         self.contradiction_patterns = CONTRADICTION_PATTERNS
         self.topic_keywords = TOPIC_KEYWORDS
+        self.update_markers = CHINESE_UPDATE_MARKERS
+        self.extend_markers = CHINESE_EXTEND_MARKERS
+        self.derive_markers = CHINESE_DERIVE_MARKERS
+
+    def detect_relation_type_by_markers(
+        self,
+        new_content: str,
+        existing_content: str,
+    ) -> Tuple[Optional[str], float]:
+        if has_update_marker(new_content):
+            return (RelationType.UPDATES.value, 0.7)
+
+        if has_extend_marker(new_content):
+            return (RelationType.EXTENDS.value, 0.6)
+
+        if has_derive_marker(new_content):
+            return (RelationType.DERIVES.value, 0.6)
+
+        return (None, 0.0)
+
+    def calculate_relation_confidence(
+        self,
+        relation_type: str,
+        new_content: str,
+        existing_content: str,
+    ) -> float:
+        confidence = 0.5
+
+        if relation_type == RelationType.UPDATES.value:
+            if has_update_marker(new_content):
+                confidence += 0.2
+            if any(kw in new_content for kw in ["不再", "换成", "改了"]):
+                confidence += 0.1
+
+        elif relation_type == RelationType.EXTENDS.value:
+            if has_extend_marker(new_content):
+                confidence += 0.2
+            common_entities = self._count_common_entities(new_content, existing_content)
+            confidence += min(common_entities * 0.1, 0.3)
+
+        elif relation_type == RelationType.DERIVES.value:
+            if has_derive_marker(new_content):
+                confidence += 0.2
+
+        return min(confidence, 1.0)
+
+    def _count_common_entities(self, content1: str, content2: str) -> int:
+        words1 = set(content1)
+        words2 = set(content2)
+        return len(words1 & words2)
 
     async def create(
         self,
@@ -80,6 +165,9 @@ class RelationService:
             relation_type,
             confidence,
         )
+
+        if relation_type == RelationType.DERIVES.value:
+            await self._mark_as_inference(from_memory_id)
 
         return self._row_to_relation(row)
 
@@ -320,6 +408,46 @@ class RelationService:
             """,
             memory_id,
         )
+
+    async def _mark_as_inference(self, memory_id: str) -> None:
+        await db.execute(
+            """
+            UPDATE memories 
+            SET is_inference = TRUE, updated_at = NOW()
+            WHERE id = $1
+            """,
+            memory_id,
+        )
+
+    async def create_derived_memory(
+        self,
+        inferred_content: str,
+        source_memory_ids: List[str],
+        container_tag: str,
+        confidence: float = 0.7,
+        is_static: bool = False,
+    ) -> Tuple[str, List[MemoryRelation]]:
+        from src.services.core.memory_store import memory_store
+
+        inferred_memory = await memory_store.create(
+            content=inferred_content,
+            container_tag=container_tag,
+            is_static=is_static,
+            is_inference=True,
+            auto_relations=False,
+        )
+
+        relations = []
+        for source_id in source_memory_ids:
+            relation = await self.create(
+                from_memory_id=inferred_memory.id,
+                to_memory_id=source_id,
+                relation_type=RelationType.DERIVES.value,
+                confidence=confidence,
+            )
+            relations.append(relation)
+
+        return (inferred_memory.id, relations)
 
     async def get_full_history(self, memory_id: str) -> Dict[str, Any]:
         memory = await db.fetchrow(

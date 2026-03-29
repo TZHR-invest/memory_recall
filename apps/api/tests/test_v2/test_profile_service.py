@@ -23,6 +23,7 @@ class TestProfileService:
                     "static_memories": ["fact1", "fact2"],
                     "dynamic_memories": ["recent1"],
                     "last_updated": datetime.now(timezone.utc),
+                    "entity_context": {},
                 }
             )
 
@@ -44,6 +45,7 @@ class TestProfileService:
                     "static_memories": ["fact1"],
                     "dynamic_memories": ["recent1"],
                     "last_updated": datetime.now(timezone.utc),
+                    "entity_context": {},
                 }
             )
 

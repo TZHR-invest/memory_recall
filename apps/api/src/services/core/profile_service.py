@@ -75,6 +75,7 @@ class ProfileService:
                 "dynamic": dynamic,
             },
             "searchResults": search_results,
+            "entityContext": profile.get("entity_context"),
         }
 
     async def get_profile_with_entities(
@@ -176,6 +177,38 @@ class ProfileService:
             container_tag,
         )
 
+    async def set_entity_context(
+        self,
+        container_tag: str,
+        entity_context: str,
+    ) -> bool:
+        if len(entity_context) > 1500:
+            entity_context = entity_context[:1500]
+
+        await db.execute(
+            """
+            INSERT INTO memory_profiles (container_tag, entity_context, last_updated)
+            VALUES ($1, $2, NOW())
+            ON CONFLICT (container_tag)
+            DO UPDATE SET
+                entity_context = EXCLUDED.entity_context,
+                last_updated = NOW()
+            """,
+            container_tag,
+            entity_context,
+        )
+        return True
+
+    async def get_entity_context(self, container_tag: str) -> Optional[str]:
+        row = await db.fetchrow(
+            """
+            SELECT entity_context FROM memory_profiles
+            WHERE container_tag = $1
+            """,
+            container_tag,
+        )
+        return row["entity_context"] if row else None
+
     async def _build_profile(self, container_tag: str) -> Dict[str, Any]:
         static_memories = await memory_store.get_static_memories(
             container_tag=container_tag,
@@ -194,7 +227,7 @@ class ProfileService:
     async def _get_cached_profile(self, container_tag: str) -> Optional[Dict[str, Any]]:
         row = await db.fetchrow(
             """
-            SELECT static_memories, dynamic_memories, last_updated
+            SELECT static_memories, dynamic_memories, last_updated, entity_context
             FROM memory_profiles
             WHERE container_tag = $1
             """,
@@ -208,26 +241,30 @@ class ProfileService:
             "static_memories": row["static_memories"] or [],
             "dynamic_memories": row["dynamic_memories"] or [],
             "last_updated": row["last_updated"],
+            "entity_context": row["entity_context"],
         }
 
     async def _cache_profile(
         self,
         container_tag: str,
         profile: Dict[str, Any],
+        entity_context: Optional[str] = None,
     ) -> None:
         await db.execute(
             """
-            INSERT INTO memory_profiles (container_tag, static_memories, dynamic_memories, last_updated)
-            VALUES ($1, $2, $3, NOW())
+            INSERT INTO memory_profiles (container_tag, static_memories, dynamic_memories, entity_context, last_updated)
+            VALUES ($1, $2, $3, $4, NOW())
             ON CONFLICT (container_tag)
             DO UPDATE SET
                 static_memories = EXCLUDED.static_memories,
                 dynamic_memories = EXCLUDED.dynamic_memories,
+                entity_context = COALESCE(EXCLUDED.entity_context, memory_profiles.entity_context),
                 last_updated = NOW()
             """,
             container_tag,
             json.dumps(profile.get("static_memories", [])),
             json.dumps(profile.get("dynamic_memories", [])),
+            entity_context,
         )
 
     def _is_cache_valid(self, cached: Dict[str, Any], max_age_minutes: int = 5) -> bool:

@@ -8,7 +8,7 @@ Memory Recall 是一个简化的记忆召回系统，支持：
 - **用户画像分离**（static/dynamic）
 - **OpenClaw/OpenCode 插件集成**
 
-**当前版本**: v4.0.0  
+**当前版本**: v5.0.0  
 **工作目录**: `apps/api/`
 
 ---
@@ -93,8 +93,10 @@ apps/api/src/
 │       ├── profile_service.py   # 用户画像
 │       └── entity_extraction.py # 实体提取
 ├── api/
-│   └── v2/
-│       └── memories.py          # 简化 API
+│   ├── auth.py                  # 认证系统
+│   ├── auth_endpoints.py        # API Key 管理
+│   ├── memories.py              # 记忆 API
+│   └── graph.py                 # 知识图谱 API
 ├── background/
 │   └── scheduler.py    # 后台任务调度
 ├── plugins/
@@ -387,16 +389,32 @@ metadata = entity_extractor.extract_to_metadata(content)
 
 ## API 端点
 
-### v2 API（简化架构）
+### 统一 API（v5.0）
+
+所有端点需要 `X-API-Key` header 认证。
 
 | 端点 | 说明 |
 |-----|------|
-| `POST /v2/memories` | 创建记忆 |
-| `GET /v2/profile` | 获取用户画像 |
-| `POST /v2/search` | 搜索记忆 |
-| `POST /v2/memories/{id}/forget` | 遗忘记忆 |
-| `POST /v2/memories/{id}/restore` | 恢复记忆 |
-| `POST /v2/memories/{id}/update` | 创建新版本 |
+| `POST /memories` | 创建记忆 |
+| `GET /memories` | 列出记忆 |
+| `GET /memories/{id}` | 获取记忆 |
+| `POST /memories/{id}/forget` | 遗忘记忆 |
+| `POST /memories/{id}/restore` | 恢复记忆 |
+| `POST /memories/{id}/update` | 创建新版本 |
+| `GET /memories/{id}/history` | 版本历史 |
+| `GET /profile` | 获取用户画像 |
+| `POST /search` | 搜索记忆 |
+| `POST /documents` | 上传文档 |
+| `GET /documents` | 列出文档 |
+| `GET /graph` | 知识图谱 |
+| `POST /auth/keys` | 创建 API Key |
+
+### 认证
+
+- **API Key 格式**: `rk_live_xxx` 或 `rk_test_xxx`
+- **权限级别**: read, write, delete, admin
+- **速率限制**: 100 请求/60秒
+- **容器所有权**: `container_tag` 必须以 `user_id` 开头
 
 ---
 

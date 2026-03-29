@@ -11,7 +11,11 @@ from src.database import db
 from src.embedding.client import get_embedding_client
 from src.services.core.relation_service import relation_service
 from src.services.core.entity_extraction import entity_extractor
-from src.services.core.llm_entity_extraction import llm_entity_extractor
+from src.services.core.llm_entity_extraction import (
+    llm_entity_extractor,
+    LLMEntityExtractor,
+)
+from src.config import settings
 
 
 @dataclass
@@ -37,6 +41,14 @@ class Memory:
 class MemoryStore:
     def __init__(self):
         self.embedding_client = get_embedding_client()
+        self._llm_extractor = None
+
+    def _get_llm_extractor(self) -> LLMEntityExtractor:
+        if self._llm_extractor is None:
+            self._llm_extractor = LLMEntityExtractor(
+                timeout=settings.LLM_EXTRACTION_TIMEOUT
+            )
+        return self._llm_extractor
 
     async def create(
         self,
@@ -47,9 +59,14 @@ class MemoryStore:
         generate_embedding: bool = True,
         auto_relations: bool = True,
         extract_entities: bool = True,
-        use_llm_extraction: bool = False,
+        use_llm_extraction: Optional[bool] = None,
+        entity_context: Optional[str] = None,
         parent_memory_id: Optional[str] = None,
+        is_inference: bool = False,
     ) -> Memory:
+        if use_llm_extraction is None:
+            use_llm_extraction = settings.USE_LLM_EXTRACTION
+
         embedding = None
         if generate_embedding:
             embedding = await self._generate_embedding(content)
@@ -59,7 +76,8 @@ class MemoryStore:
         if extract_entities:
             if use_llm_extraction:
                 try:
-                    llm_fact = await llm_entity_extractor.extract(content)
+                    extractor = self._get_llm_extractor()
+                    llm_fact = await extractor.extract(content, entity_context)
                     if llm_fact.entities:
                         final_metadata["entities"] = llm_fact.entities
                     is_static = llm_fact.is_static
@@ -90,9 +108,9 @@ class MemoryStore:
             """
             INSERT INTO memories (
                 container_tag, content, embedding, is_static, metadata,
-                version, root_memory_id
+                version, root_memory_id, is_inference
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             RETURNING *
             """,
             container_tag,
@@ -102,6 +120,7 @@ class MemoryStore:
             json.dumps(final_metadata),
             version,
             root_memory_id,
+            is_inference,
         )
 
         memory = self._row_to_memory(row)
@@ -174,6 +193,30 @@ class MemoryStore:
         return memory.metadata.get(
             "relations", {"updates": [], "extends": [], "derives": []}
         )
+
+    async def remove_relation(
+        self,
+        memory_id: str,
+        target_id: str,
+        relation_type: str,
+    ) -> bool:
+        memory = await self.get_by_id(memory_id)
+        if not memory:
+            return False
+
+        metadata = memory.metadata.copy()
+        relations_dict = metadata.get(
+            "relations", {"updates": [], "extends": [], "derives": []}
+        )
+
+        if (
+            relation_type in relations_dict
+            and target_id in relations_dict[relation_type]
+        ):
+            relations_dict[relation_type].remove(target_id)
+
+        metadata["relations"] = relations_dict
+        return await self.update_metadata(memory_id, metadata)
 
     async def get_by_id(self, memory_id: str) -> Optional[Memory]:
         row = await db.fetchrow(
