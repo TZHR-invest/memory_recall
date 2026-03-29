@@ -5,6 +5,7 @@ from typing import Optional, List, Dict, Any
 from src.services.core.memory_store import memory_store
 from src.services.core.profile_service import profile_service
 from src.services.core.relation_service import relation_service
+from src.services.core.document_store import document_store
 
 router = APIRouter(prefix="/v1", tags=["Memories"])
 
@@ -177,3 +178,87 @@ async def search_memories(request: SearchRequest):
     )
 
     return {"query": request.query, "results": results, "count": len(results)}
+
+
+class CreateDocumentRequest(BaseModel):
+    content: str = Field(..., description="Document content")
+    container_tag: str = Field(..., description="Container tag for isolation")
+    metadata: Dict[str, Any] = Field(
+        default_factory=dict, description="Additional metadata"
+    )
+
+
+@router.post("/documents")
+async def create_document(request: CreateDocumentRequest):
+    document = await document_store.create(
+        content=request.content,
+        container_tag=request.container_tag,
+        metadata=request.metadata,
+    )
+
+    return {
+        "id": document.id,
+        "content": document.content,
+        "container_tag": document.container_tag,
+        "status": document.status,
+        "created_at": document.created_at.isoformat() if document.created_at else None,
+    }
+
+
+@router.get("/documents")
+async def list_documents(
+    container_tag: str = Query(..., description="Container tag"),
+    limit: int = Query(20, ge=1, le=100, description="Max results"),
+    offset: int = Query(0, ge=0, description="Offset for pagination"),
+):
+    documents = await document_store.get_by_container(
+        container_tag=container_tag,
+        limit=limit,
+        offset=offset,
+    )
+
+    total = await document_store.count(container_tag)
+
+    return {
+        "documents": [
+            {
+                "id": d.id,
+                "content": d.content[:500] + "..."
+                if len(d.content) > 500
+                else d.content,
+                "status": d.status,
+                "created_at": d.created_at.isoformat() if d.created_at else None,
+            }
+            for d in documents
+        ],
+        "count": len(documents),
+        "total": total,
+        "offset": offset,
+    }
+
+
+@router.get("/documents/{document_id}")
+async def get_document(document_id: str):
+    document = await document_store.get_by_id(document_id)
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    return {
+        "id": document.id,
+        "content": document.content,
+        "container_tag": document.container_tag,
+        "metadata": document.metadata,
+        "status": document.status,
+        "created_at": document.created_at.isoformat() if document.created_at else None,
+    }
+
+
+@router.delete("/documents/{document_id}")
+async def delete_document(document_id: str):
+    document = await document_store.get_by_id(document_id)
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    success = await document_store.delete(document_id)
+
+    return {"id": document_id, "deleted": success}
