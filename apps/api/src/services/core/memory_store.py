@@ -9,6 +9,8 @@ import json
 
 from src.database import db
 from src.embedding.client import get_embedding_client
+from src.services.core.relation_service import relation_service
+from src.services.core.entity_extraction import entity_extractor
 
 
 @dataclass
@@ -38,10 +40,22 @@ class MemoryStore:
         is_static: bool = False,
         metadata: Optional[Dict[str, Any]] = None,
         generate_embedding: bool = True,
+        auto_relations: bool = True,
+        extract_entities: bool = True,
     ) -> Memory:
         embedding = None
         if generate_embedding:
             embedding = await self._generate_embedding(content)
+
+        final_metadata = metadata or {}
+
+        if extract_entities:
+            try:
+                entities = entity_extractor.extract_to_metadata(content)
+                if entities:
+                    final_metadata["entities"] = entities
+            except Exception:
+                pass
 
         row = await db.fetchrow(
             """
@@ -53,10 +67,23 @@ class MemoryStore:
             content,
             self._embedding_to_str(embedding) if embedding else None,
             is_static,
-            json.dumps(metadata or {}),
+            json.dumps(final_metadata),
         )
 
-        return self._row_to_memory(row)
+        memory = self._row_to_memory(row)
+
+        if auto_relations:
+            try:
+                await relation_service.auto_create_relations(
+                    new_memory_id=memory.id,
+                    new_content=content,
+                    container_tag=container_tag,
+                    is_static=is_static,
+                )
+            except Exception:
+                pass
+
+        return memory
 
     async def get_by_id(self, memory_id: str) -> Optional[Memory]:
         row = await db.fetchrow(

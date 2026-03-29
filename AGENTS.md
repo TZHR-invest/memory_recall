@@ -2,11 +2,11 @@
 
 ## 项目概述
 
-Memory Recall 是一个通用记忆召回系统，支持：
-- **统一 DAG 记忆架构**（raw_messages + summaries）
-- **混合召回**（向量 + 关键词 + 图谱）
-- **OpenClaw ContextEngine 插件集成**
-- **多用户 Schema 隔离**
+Memory Recall 是一个简化的记忆召回系统，支持：
+- **简化架构**（3 核心表：memories, relations, profiles）
+- **时序语义关系**（updates/extends/derives）
+- **用户画像分离**（static/dynamic）
+- **OpenClaw/OpenCode 插件集成**
 
 **当前版本**: v4.0.0  
 **工作目录**: `apps/api/`
@@ -43,9 +43,8 @@ VOLC_EMBEDDING_MODEL=doubao-embedding-vision-251215
 # 运行所有迁移
 python migrations/run_migrations.py
 
-# 运行单个迁移（DAG 架构表）
-python migrations/run_single_migration.py migrations/015_create_lossless_tables.sql
-python migrations/run_single_migration.py migrations/016_unify_memory_architecture.sql
+# 运行简化架构迁移
+python migrations/run_single_migration.py migrations/018_simplified_memory_schema.sql
 ```
 
 ### 测试
@@ -54,20 +53,11 @@ python migrations/run_single_migration.py migrations/016_unify_memory_architectu
 # 运行所有测试
 pytest tests/ -v
 
-# 运行 DAG 架构测试
-pytest tests/test_lossless/ -v
+# 运行 v2 架构测试
+pytest tests/test_v2/ -v
 
 # 运行单个测试文件
-pytest tests/test_lossless/test_memory_recall_engine.py -v
-
-# 运行单个测试函数
-pytest tests/test_lossless/test_memory_recall_engine.py::test_ingest_user_memory -v
-
-# 运行带详细输出的测试
-pytest tests/test_lossless/ -v --tb=short
-
-# 运行集成测试
-python tests/test_lossless_integration.py
+pytest tests/test_v2/test_memory_store.py -v
 ```
 
 ### 启动服务
@@ -95,51 +85,23 @@ python main.py
 apps/api/src/
 ├── config.py           # 配置管理（pydantic-settings）
 ├── database.py         # 数据库连接（asyncpg）
-├── models/             # 数据模型（Pydantic, dataclass）
-│   ├── memory.py       # 传统记忆模型
-│   └── lossless.py     # DAG 架构模型
-├── services/           # 核心业务逻辑
-│   ├── lossless/       # DAG 架构服务（v3.0 核心）
-│   │   ├── raw_message_store.py      # 原始消息存储
-│   │   ├── summary_store.py          # 摘要节点管理
-│   │   ├── context_store.py          # 上下文序列
-│   │   ├── compaction_engine.py      # 三阶段压缩
-│   │   ├── memory_recall_engine.py   # ContextEngine 接口
-│   │   ├── lossless_recall_service.py # 混合召回
-│   │   └── dag_expand_service.py     # DAG 展开
-│   ├── evolution/      # 记忆进化服务（v4.0 新增）
-│   │   ├── importance_service.py     # 重要性评估
-│   │   ├── fact_extraction_service.py # 事实提取
-│   │   ├── fusion_service.py          # 记忆融合
-│   │   ├── user_profile_service.py    # 用户画像
-│   │   ├── temporal_service.py        # 时间感知
-│   │   ├── chunking_service.py        # 分段服务
-│   │   └── forgetting_service.py      # 遗忘机制
-│   ├── unified_memory_service.py     # 统一入口（v3.0）
-│   ├── memory_service.py             # 传统记忆服务
-│   ├── recall_service.py             # 召回服务
-│   └── graph_recall_service.py       # 图谱召回
-├── api/                # API v1 路由（v4.0 新增）
-│   └── v1/
-│       ├── memories.py       # 记忆 API
-│       ├── recall.py         # 召回 API
-│       ├── profile.py        # 用户画像 API
-│       ├── relations.py      # 关系 API
-│       ├── notifications.py  # 通知 API
-│       ├── containers.py     # 容器 API
-│       └── auth.py           # 认证 API
-├── routes/             # FastAPI 路由（遗留）
-│   ├── memories.py     # 记忆 CRUD（已迁移到 DAG）
-│   ├── files.py        # 文件上传（已迁移到 DAG）
-│   └── graph.py        # 图谱查询
-├── background/         # 后台任务（v4.0 新增）
-│   └── scheduler.py    # 任务调度器
+├── client.py           # 统一客户端接口
+├── services/
+│   └── core/           # 核心服务
+│       ├── memory_store.py      # 记忆存储
+│       ├── relation_service.py  # 关系管理
+│       ├── profile_service.py   # 用户画像
+│       └── entity_extraction.py # 实体提取
+├── api/
+│   └── v2/
+│       └── memories.py          # 简化 API
+├── background/
+│   └── scheduler.py    # 后台任务调度
+├── plugins/
+│   ├── openclaw/       # OpenClaw 插件
+│   └── opencode/       # OpenCode 插件
 ├── llm/                # LLM 客户端
-├── embedding/          # 向量嵌入
-├── tools/              # Function Calling 工具
-└── openclaw_plugin/    # OpenClaw 插件
-    ├── openclaw.plugin.json  # 插件清单
-    └── context_engine.py     # ContextEngine 实现
+└── embedding/          # 向量嵌入
 ```
 
 ### 导入规范
@@ -157,67 +119,48 @@ from pydantic import BaseModel
 # 本地导入 - 使用绝对导入
 from src.database import db
 from src.config import settings
-from src.models.lossless import RawMessage, Summary
-from src.services.lossless.raw_message_store import RawMessageStore
+from src.services.core.memory_store import memory_store
+from src.services.core.relation_service import relation_service
+from src.services.core.profile_service import profile_service
 ```
 
 ### 类型注解
 
 ```python
 # 函数参数和返回值必须有类型注解
-async def store(
-    user_id: str,
+async def create(
     content: str,
-    memory_type: str = "preference",
-    agent_id: Optional[str] = None,
-) -> str:
+    container_tag: str,
+    is_static: bool = False,
+) -> Memory:
     ...
 
 # 使用 Optional 表示可空
-def get_by_id(self, raw_id: str) -> Optional[RawMessage]:
+def get_by_id(self, memory_id: str) -> Optional[Memory]:
     ...
 
 # 使用 List, Dict, Any
-async def recall(
+async def search(
     self,
     query: str,
-    user_id: str,
-    limit: int = 20,
+    container_tag: str,
+    limit: int = 10,
 ) -> List[Dict[str, Any]]:
     ...
-```
-
-### 数据模型
-
-```python
-# 简单模型使用 dataclass
-@dataclass
-class ContextEngineInfo:
-    id: str = "memory-recall"
-    name: str = "Memory Recall Engine"
-    version: str = "3.0.0"
-    owns_compaction: bool = True
-
-# API 请求/响应使用 Pydantic BaseModel
-class SearchRequest(BaseModel):
-    query: str = Field(..., description="搜索查询文本")
-    user_id: str = Field(..., description="用户 ID")
-    limit: int = Field(10, ge=1, le=100)
 ```
 
 ### 异步编程
 
 ```python
 # 所有数据库操作使用 async/await
-async def get_by_id(self, raw_id: str) -> Optional[RawMessage]:
-    row = await db.fetchrow("SELECT * FROM raw_messages WHERE id = $1", raw_id)
+async def get_by_id(self, memory_id: str) -> Optional[Memory]:
+    row = await db.fetchrow("SELECT * FROM memories WHERE id = $1", memory_id)
     ...
 
 # 使用 asyncio.gather 并行执行
 results = await asyncio.gather(
-    self._vector_recall(...),
-    self._keyword_recall(...),
-    self._graph_recall(...),
+    memory_store.search(...),
+    profile_service.get_profile(...),
 )
 ```
 
@@ -226,264 +169,255 @@ results = await asyncio.gather(
 ```python
 # 使用参数化查询（防 SQL 注入）
 await db.execute(
-    "INSERT INTO raw_messages (id, content) VALUES ($1, $2)",
-    raw_id, content
+    "INSERT INTO memories (container_tag, content) VALUES ($1, $2)",
+    container_tag, content
 )
-
-# 使用 user_context 切换 Schema
-async with db.user_context(user_id):
-    # 所有操作在用户 Schema 下执行
-    await db.execute(...)
 
 # 向量嵌入使用字符串格式
 embedding_str = "[" + ",".join(map(str, embedding)) + "]"
-```
-
-### 错误处理
-
-```python
-# API 层使用 HTTPException
-if not memory:
-    raise HTTPException(status_code=404, detail="Memory not found")
-
-# 服务层返回 Optional 或抛出异常
-async def get_by_id(self, id: str) -> Optional[RawMessage]:
-    row = await db.fetchrow(...)
-    if not row:
-        return None
-    return self._row_to_model(row)
 ```
 
 ### 命名约定
 
 ```python
 # 类名：PascalCase
-class RawMessageStore:
-class MemoryRecallEngine:
+class MemoryStore:
+class RelationService:
 
 # 函数/方法：snake_case
-async def get_by_id(self, id: str):
-def estimate_tokens(text: str):
+async def get_by_id(self, memory_id: str):
+async def detect_contradiction(new_content: str, existing_content: str):
 
 # 常量：UPPER_SNAKE_CASE
-FALLBACK_MAX_CHARS = 512 * 4
-DEFAULT_FRESH_TAIL_COUNT = 8
+CONTRADICTION_PATTERNS = [...]
+TOPIC_KEYWORDS = {...}
 
 # 私有方法：_前缀
-async def _summarize_with_escalation(self, source_text: str):
-def _row_to_model(self, row: Dict) -> RawMessage:
+async def _mark_not_latest(self, memory_id: str):
+def _row_to_memory(self, row: Dict) -> Memory:
 
 # 单例实例：模块级变量
-raw_message_store = RawMessageStore()
-memory_recall_engine = MemoryRecallEngine()
+memory_store = MemoryStore()
+relation_service = RelationService()
+profile_service = ProfileService()
 ```
 
 ---
 
 ## 核心架构
 
-### DAG 记忆架构（v3.0）
+### 简化记忆架构（v4.0）
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    DAG 记忆架构                              │
+│                    简化记忆架构                              │
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
-│  raw_messages (Layer 1)                                     │
-│  ├─ 用户手动输入 (agent_id = NULL)                          │
-│  └─ Agent 对话 (agent_id = "agent_xxx")                     │
+│  memories (核心表)                                          │
+│  ├─ is_static: TRUE  → 永久特征（姓名、职业、偏好）         │
+│  └─ is_static: FALSE → 最近活动（项目、兴趣）               │
 │           │                                                 │
-│           ↓ DAG 压缩（三阶段：normal → aggressive → fallback)│
+│           ↓ 三种关系                                        │
 │           │                                                 │
-│  summaries (Layer 2-3)                                      │
-│  ├─ Leaf summaries（原始消息摘要）                           │
-│  └─ Parent summaries（摘要的摘要）                           │
+│  memory_relations                                           │
+│  ├─ updates: 信息更新（"我在 Google" → "我在 Supermemory"）  │
+│  ├─ extends: 信息丰富（添加更多上下文）                      │
+│  └─ derives: 信息推断（从模式推断新知识）                    │
 │           │                                                 │
-│           ↓ 组装                                            │
+│           ↓ 缓存                                            │
 │           │                                                 │
-│  context_items (Layer 4)                                    │
-│  └─ 有序上下文序列（fresh tail + summaries）                 │
+│  memory_profiles                                            │
+│  └─ static + dynamic 缓存（~50ms 获取）                     │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### ContextEngine 接口
+### 核心服务
 
 ```python
-class MemoryRecallEngine:
-    async def bootstrap(params) -> Dict      # 初始化会话
-    async def ingest(params) -> Dict         # 存储消息
-    async def assemble(params) -> Dict       # 组装上下文
-    async def compact(params) -> Dict        # DAG 压缩
-    async def recall(query, user_id) -> List # 混合召回
-    async def expand(summary_id) -> List     # DAG 展开
+# MemoryStore - 记忆存储
+from src.services.core.memory_store import memory_store
+
+# 创建记忆（自动提取实体、自动创建关系）
+memory = await memory_store.create(
+    content="我是素食主义者",
+    container_tag="user_001",
+    is_static=True,
+)
+
+# 搜索记忆
+results = await memory_store.search(
+    query="饮食偏好",
+    container_tag="user_001",
+    limit=10,
+)
+
+# RelationService - 关系管理
+from src.services.core.relation_service import relation_service
+
+# 自动检测矛盾并创建关系
+relations = await relation_service.auto_create_relations(
+    new_memory_id=memory.id,
+    new_content="我现在在 Supermemory 工作",
+    container_tag="user_001",
+)
+
+# 获取版本历史
+history = await relation_service.get_version_history(memory_id)
+
+# ProfileService - 用户画像
+from src.services.core.profile_service import profile_service
+
+# 获取画像（static + dynamic）
+profile = await profile_service.get_profile(
+    container_tag="user_001",
+    query="饮食偏好",  # 可选，触发搜索
+)
 ```
 
 ### 数据库表
 
 | 表名 | 说明 | 核心字段 |
 |-----|------|---------|
-| `raw_messages` | 原始消息 | id, content, agent_id (NULL=手动), embedding |
-| `summaries` | DAG 摘要节点 | id, content, level, token_count |
-| `summary_messages` | 摘要-消息关联 | summary_id, raw_message_id |
-| `summary_parents` | 摘要父子关系 | child_id, parent_id |
-| `summary_entities` | 摘要-实体关联 | summary_id, entity_id |
-| `context_items` | 有序上下文序列 | session_id, ordinal, item_type |
-| `entities` / `relations` | 知识图谱 | name, type, relation_type |
+| `memories` | 记忆表 | id, container_tag, content, embedding, is_static, is_latest, metadata |
+| `memory_relations` | 关系表 | from_memory_id, to_memory_id, relation_type, confidence |
+| `memory_profiles` | 画像缓存 | container_tag, static_memories, dynamic_memories |
 
 ---
 
-## 统一 DAG 架构使用指南
+## 时序语义关系
 
-### 统一记忆入口（UnifiedMemoryService）
+### updates 关系
+
+当新记忆与旧记忆存在矛盾时，自动创建 `updates` 关系：
 
 ```python
-from src.services.unified_memory_service import unified_memory_service
+# 旧记忆："我在 Google 工作"
+# 新记忆："我现在在 Supermemory 工作"
+# 自动创建：new_memory -[updates]-> old_memory
+# 自动标记：old_memory.is_latest = FALSE
+```
 
-# 用户手动存储偏好
-result = await unified_memory_service.store(
-    user_id="user_001",
-    content="我是素食主义者，不喜欢吃肉",
-    source="manual",  # manual 或 agent
-    memory_type="preference",
-    metadata={
-        "tags": ["饮食", "偏好"],
-        "location_name": "北京",
+### extends 关系
+
+当新记忆与旧记忆属于同一主题时，自动创建 `extends` 关系：
+
+```python
+# 旧记忆："我喜欢喝咖啡"
+# 新记忆："我每天早上都要喝一杯美式咖啡"
+# 自动创建：new_memory -[extends]-> old_memory
+```
+
+### derives 关系
+
+推断关系（暂未自动创建，可手动创建）：
+
+```python
+# 从多条记忆推断新知识
+await relation_service.create(
+    from_memory_id=inferred_memory.id,
+    to_memory_id=source_memory.id,
+    relation_type="derives",
+    confidence=0.7,
+)
+```
+
+---
+
+## 用户画像系统
+
+### static vs dynamic
+
+- **static**: `is_static = TRUE`，永久特征（姓名、职业、偏好）
+- **dynamic**: `is_static = FALSE`，最近活动（项目、兴趣）
+
+### 画像缓存
+
+```python
+# 获取画像（从缓存或重新构建）
+profile = await profile_service.get_profile(container_tag="user_001")
+
+# 返回结构
+{
+    "profile": {
+        "static": ["John Doe", "高级工程师", "喜欢暗黑模式"],
+        "dynamic": ["正在做认证迁移", "调试速率限制"]
     },
-)
-# 返回: {"raw_message_id": "raw_xxx", "memory_type": "preference", ...}
-
-# Agent 存储对话
-result = await unified_memory_service.store(
-    user_id="user_001",
-    content="用户询问今天天气",
-    source="agent",
-    agent_id="agent_001",
-    session_id="session_001",
-)
-
-# 统一召回
-results = await unified_memory_service.recall(
-    query="饮食偏好",
-    user_id="user_001",
-    scope="manual_only",  # all | manual_only | agent_only
-    limit=10,
-)
-```
-
-### API 端点
-
-**创建记忆**（统一 DAG 架构）:
-```bash
-POST /memories?user_id=user_001
-{
-    "content": "我喜欢喝咖啡"
+    "searchResults": [...]  # 如果提供了 query
 }
 ```
 
-**智能召回**:
-```bash
-POST /memories/smart-recall
-{
-    "query": "我有什么饮食偏好？",
-    "user_id": "user_001"
-}
-```
+### 后台任务
 
-### 数据迁移
-
-将旧 `memories` 表数据迁移到 `raw_messages`:
-```bash
-python scripts/migrate_memories_to_raw_messages.py
-```
+- **profile_rebuild**: 每 5 分钟重建有更新的用户画像
+- **cache_cleanup**: 每 10 分钟清理过期缓存
 
 ---
 
-## Evolution Services（v4.0 新增）
+## 实体提取
 
-Evolution Services 提供记忆进化机制，包括重要性评估、事实提取、记忆融合、用户画像、时间感知、分段和遗忘等功能。
-
-### 服务列表
-
-| 服务 | 文件 | 说明 |
-|-----|------|------|
-| ImportanceService | `importance_service.py` | 重要性评估 |
-| FactExtractionService | `fact_extraction_service.py` | 事实提取 |
-| FusionService | `fusion_service.py` | 记忆融合 |
-| UserProfileService | `user_profile_service.py` | 用户画像 |
-| TemporalService | `temporal_service.py` | 时间感知 |
-| ChunkingService | `chunking_service.py` | 分段服务 |
-| ForgettingService | `forgetting_service.py` | 遗忘机制 |
-
-### 使用示例
+使用 jieba 和正则表达式提取实体：
 
 ```python
-from src.services.evolution.importance_service import ImportanceService
-from src.services.evolution.user_profile_service import UserProfileService
+from src.services.core.entity_extraction import entity_extractor
 
-# 重要性评估
-importance_service = ImportanceService()
-score = await importance_service.evaluate(content, user_id)
+# 提取实体
+entities = entity_extractor.extract("我在北京工作，喜欢喝咖啡")
 
-# 用户画像
-profile_service = UserProfileService()
-profile = await profile_service.get_profile(user_id)
+# 返回结构
+[
+    Entity(text="北京", type="location", ...),
+    Entity(text="工作", type="activity", ...),
+]
+
+# 提取到 metadata 格式
+metadata = entity_extractor.extract_to_metadata(content)
+# {"location": ["北京"], "preference": ["喜欢喝咖啡"]}
 ```
+
+支持的实体类型：
+- `location`: 地点
+- `organization`: 组织
+- `person`: 人物
+- `time`: 时间
+- `preference`: 偏好
+- `contact`: 联系方式
 
 ---
 
-## API v1 Endpoints（v4.0 新增）
+## API 端点
 
-API v1 提供 RESTful API 接口，采用模块化设计。
+### v2 API（简化架构）
 
-### 端点列表
-
-| 端点 | 文件 | 说明 |
-|-----|------|------|
-| Memories | `memories.py` | 记忆 CRUD |
-| Recall | `recall.py` | 智能召回 |
-| Profile | `profile.py` | 用户画像 |
-| Relations | `relations.py` | 关系管理 |
-| Notifications | `notifications.py` | 通知管理 |
-| Containers | `containers.py` | 容器管理 |
-| Auth | `auth.py` | 认证授权 |
-
-### API 基础路径
-
-```
-/api/v1/
-```
-
-### 认证
-
-API 使用 API Key 进行认证：
-```bash
-Authorization: Bearer rk_live_xxxxx
-```
-
----
-
-## Background Tasks（v4.0 新增）
-
-Background Tasks 提供后台任务调度功能。
-
-### 调度器
-
-| 任务 | 说明 |
+| 端点 | 说明 |
 |-----|------|
-| Scheduler | `scheduler.py` | 任务调度器 |
+| `POST /v2/memories` | 创建记忆 |
+| `GET /v2/profile` | 获取用户画像 |
+| `POST /v2/search` | 搜索记忆 |
+| `POST /v2/memories/{id}/forget` | 遗忘记忆 |
+| `POST /v2/memories/{id}/restore` | 恢复记忆 |
+| `POST /v2/memories/{id}/update` | 创建新版本 |
 
-### 使用示例
+---
 
-```python
-from src.background.scheduler import scheduler
+## 插件集成
 
-# 启动调度器
-await scheduler.start()
+### OpenClaw 插件
 
-# 停止调度器
-await scheduler.stop()
-```
+路径：`src/plugins/openclaw/`
+
+- `plugin.json`: 插件清单
+- `client.py`: 客户端封装
+- `hooks.py`: 钩子实现（before_agent_start, agent_end）
+- `tools.py`: 工具实现（memory_store, memory_search, memory_profile, memory_forget）
+
+### OpenCode 插件
+
+路径：`src/plugins/opencode/`
+
+- `tool.py`: 统一 supermemory 工具
+- `context.py`: 上下文注入
+- `client.py`: 客户端封装
 
 ---
 
@@ -499,26 +433,20 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from dotenv import load_dotenv
-env_path = Path(__file__).parent.parent.parent / ".env"
-load_dotenv(env_path)
-
-from src.services.lossless.raw_message_store import RawMessageStore
+from src.services.core.memory_store import memory_store
 from src.database import db
 
 
 @pytest.mark.asyncio
-async def test_store_raw_message():
-    store = RawMessageStore()
-    user_id = "test_user_001"
-    
+async def test_create_memory():
     await db.connect()
     try:
-        await db.init_user(user_id)
-        async with db.user_context(user_id):
-            # 测试逻辑
-            raw_id = await store.store(user_id, "测试内容", "preference")
-            assert raw_id.startswith("raw_")
+        memory = await memory_store.create(
+            content="测试内容",
+            container_tag="test_user_001",
+            is_static=True,
+        )
+        assert memory.id.startswith("mem_")
     finally:
         await db.disconnect()
 ```
@@ -528,92 +456,13 @@ async def test_store_raw_message():
 使用描述性前缀：`test_<feature>_<purpose>`
 - `test_user_store` - 存储测试
 - `test_user_recall` - 召回测试
-- `test_user_compact` - 压缩测试
-
----
-
-## OpenClaw 插件集成
-
-### 插件清单
-
-文件：`src/openclaw_plugin/openclaw.plugin.json`
-
-```json
-{
-  "id": "memory-recall",
-  "name": "Memory Recall Engine",
-  "version": "4.0.0",
-  "type": "context_engine",
-  "capabilities": {
-    "owns_compaction": true,
-    "supports_dag": true,
-    "supports_recall": true
-  }
-}
-```
-
-### ContextEngine 实现
-
-```python
-# src/openclaw_plugin/context_engine.py
-from src.services.lossless.memory_recall_engine import memory_recall_engine
-
-class MemoryRecallContextEngine:
-    """OpenClaw ContextEngine 实现"""
-    
-    async def bootstrap(self, params: Dict) -> Dict:
-        return await memory_recall_engine.bootstrap(params)
-    
-    async def ingest(self, params: Dict) -> Dict:
-        return await memory_recall_engine.ingest(params)
-    
-    async def assemble(self, params: Dict) -> Dict:
-        return await memory_recall_engine.assemble(params)
-    
-    async def compact(self, params: Dict) -> Dict:
-        return await memory_recall_engine.compact(params)
-```
-
----
-
-## 实施进度
-
-### ✅ 已完成（Phase 1-4）
-
-| 模块 | 状态 | 文件 |
-|-----|------|-----|
-| 数据库表（6个） | ✅ | `migrations/015_create_lossless_tables.sql` |
-| RawMessageStore | ✅ | `src/services/lossless/raw_message_store.py` |
-| SummaryStore | ✅ | `src/services/lossless/summary_store.py` |
-| ContextStore | ✅ | `src/services/lossless/context_store.py` |
-| CompactionEngine | ✅ | `src/services/lossless/compaction_engine.py` |
-| MemoryRecallEngine | ✅ | `src/services/lossless/memory_recall_engine.py` |
-| LosslessRecallService | ✅ | `src/services/lossless/lossless_recall_service.py` |
-| DAGExpandService | ✅ | `src/services/lossless/dag_expand_service.py` |
-| UnifiedMemoryService | ✅ | `src/services/unified_memory_service.py` |
-| OpenClaw 插件清单 | ✅ | `src/openclaw_plugin/openclaw.plugin.json` |
-| API: POST /memories | ✅ | `src/routes/memories.py`（使用 raw_messages） |
-| API: POST /files/upload | ✅ | `src/routes/files.py`（使用 raw_messages） |
-
-### 🚧 待完成（Phase 5-6）
-
-| 功能 | 优先级 | 影响范围 |
-|-----|--------|---------|
-| 实体提取集成 | P0 | 图谱召回失效 |
-| 召回返回片段 | P0 | 长文本召回不可用 |
-| 暴露 expand API | P1 | 摘要无法展开 |
-| 暴露 assemble API | P1 | Agent 无法组装上下文 |
-| 暴露 compact API | P1 | 无法手动触发压缩 |
-| message_entities 关联 | P2 | 图谱召回精度下降 |
-| 长文档自动压缩 | P2 | 长文档无摘要 |
 
 ---
 
 ## 注意事项
 
 1. **向量嵌入**：使用字符串格式 `"[0.1,0.2,...]"` 存储
-2. **Schema 隔离**：每个用户独立 Schema
-3. **Fresh Tail 保护**：压缩时保护最近 8 条消息
-4. **三阶段压缩**：normal → aggressive → fallback
-5. **测试隔离**：每个测试使用唯一 user_id
-6. **agent_id 区分**：NULL = 用户手动，非 NULL = Agent 对话
+2. **container_tag**：用户隔离标识（替代原来的 Schema 隔离）
+3. **is_latest**：标记记忆是否为最新版本
+4. **自动关系创建**：创建记忆时自动检测并创建关系
+5. **实体提取**：使用 jieba + 正则，提取到 metadata JSONB
