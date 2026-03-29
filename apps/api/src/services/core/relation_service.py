@@ -1,6 +1,5 @@
 """
 Relation service for memory relationships (updates/extends/derives).
-Implements automatic relation detection and temporal semantics.
 """
 
 from typing import Optional, List, Dict, Any, Tuple
@@ -10,6 +9,7 @@ from enum import Enum
 import re
 
 from src.database import db
+from src.services.core.llm_entity_extraction import llm_entity_extractor
 
 
 class RelationType(Enum):
@@ -181,7 +181,6 @@ class RelationService:
         new_content: str,
         existing_content: str,
     ) -> Tuple[bool, float]:
-        """Detect if new content contradicts existing content."""
         score = 0.0
 
         for pattern_new, pattern_old in self.contradiction_patterns:
@@ -215,7 +214,6 @@ class RelationService:
         content1: str,
         content2: str,
     ) -> Tuple[bool, float, Optional[str]]:
-        """Detect if two contents share the same topic."""
         content1_topics = set()
         content2_topics = set()
 
@@ -238,8 +236,8 @@ class RelationService:
         new_content: str,
         container_tag: str,
         is_static: bool = False,
+        use_llm: bool = False,
     ) -> List[MemoryRelation]:
-        """Automatically create relations when adding a new memory."""
         relations = []
 
         rows = await db.fetch(
@@ -261,9 +259,19 @@ class RelationService:
             existing_content = row["content"]
             existing_is_static = row["is_static"]
 
-            is_contradiction, contradiction_score = await self.detect_contradiction(
-                new_content, existing_content
-            )
+            if use_llm:
+                (
+                    is_contradiction,
+                    contradiction_score,
+                    reason,
+                ) = await llm_entity_extractor.detect_contradiction(
+                    new_content, existing_content
+                )
+            else:
+                is_contradiction, contradiction_score = await self.detect_contradiction(
+                    new_content, existing_content
+                )
+                reason = ""
 
             if is_contradiction:
                 relation = await self.create(
@@ -277,9 +285,20 @@ class RelationService:
                 await self._mark_not_latest(existing_id)
                 continue
 
-            is_similar, similarity_score, topic = await self.detect_topic_similarity(
-                new_content, existing_content
-            )
+            if use_llm:
+                (
+                    is_similar,
+                    similarity_score,
+                    topic,
+                ) = await llm_entity_extractor.detect_topic_similarity(
+                    new_content, existing_content
+                )
+            else:
+                (
+                    is_similar,
+                    similarity_score,
+                    topic,
+                ) = await self.detect_topic_similarity(new_content, existing_content)
 
             if is_similar and existing_is_static == is_static:
                 relation = await self.create(
@@ -293,7 +312,6 @@ class RelationService:
         return relations
 
     async def _mark_not_latest(self, memory_id: str) -> None:
-        """Mark a memory as not the latest version."""
         await db.execute(
             """
             UPDATE memories 
@@ -304,7 +322,6 @@ class RelationService:
         )
 
     async def get_full_history(self, memory_id: str) -> Dict[str, Any]:
-        """Get complete history of a memory including all relations."""
         memory = await db.fetchrow(
             "SELECT * FROM memories WHERE id = $1",
             memory_id,

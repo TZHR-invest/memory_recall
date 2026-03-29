@@ -11,6 +11,7 @@ from src.database import db
 from src.embedding.client import get_embedding_client
 from src.services.core.relation_service import relation_service
 from src.services.core.entity_extraction import entity_extractor
+from src.services.core.llm_entity_extraction import llm_entity_extractor
 
 
 @dataclass
@@ -27,6 +28,10 @@ class Memory:
     confidence: float = 0.8
     created_at: Optional[datetime] = None
     is_forgotten: bool = False
+    version: int = 1
+    root_memory_id: Optional[str] = None
+    source_count: int = 1
+    is_inference: bool = False
 
 
 class MemoryStore:
@@ -42,6 +47,8 @@ class MemoryStore:
         generate_embedding: bool = True,
         auto_relations: bool = True,
         extract_entities: bool = True,
+        use_llm_extraction: bool = False,
+        parent_memory_id: Optional[str] = None,
     ) -> Memory:
         embedding = None
         if generate_embedding:
@@ -50,17 +57,42 @@ class MemoryStore:
         final_metadata = metadata or {}
 
         if extract_entities:
-            try:
-                entities = entity_extractor.extract_to_metadata(content)
-                if entities:
-                    final_metadata["entities"] = entities
-            except Exception:
-                pass
+            if use_llm_extraction:
+                try:
+                    llm_fact = await llm_entity_extractor.extract(content)
+                    if llm_fact.entities:
+                        final_metadata["entities"] = llm_fact.entities
+                    is_static = llm_fact.is_static
+                except Exception:
+                    entities = entity_extractor.extract_to_metadata(content)
+                    if entities:
+                        final_metadata["entities"] = entities
+            else:
+                try:
+                    entities = entity_extractor.extract_to_metadata(content)
+                    if entities:
+                        final_metadata["entities"] = entities
+                except Exception:
+                    pass
+
+        final_metadata["relations"] = {"updates": [], "extends": [], "derives": []}
+
+        version = 1
+        root_memory_id = None
+
+        if parent_memory_id:
+            parent = await self.get_by_id(parent_memory_id)
+            if parent:
+                version = parent.version + 1
+                root_memory_id = parent.root_memory_id or parent.id
 
         row = await db.fetchrow(
             """
-            INSERT INTO memories (container_tag, content, embedding, is_static, metadata)
-            VALUES ($1, $2, $3, $4, $5)
+            INSERT INTO memories (
+                container_tag, content, embedding, is_static, metadata,
+                version, root_memory_id
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
             RETURNING *
             """,
             container_tag,
@@ -68,22 +100,80 @@ class MemoryStore:
             self._embedding_to_str(embedding) if embedding else None,
             is_static,
             json.dumps(final_metadata),
+            version,
+            root_memory_id,
         )
 
         memory = self._row_to_memory(row)
 
         if auto_relations:
             try:
-                await relation_service.auto_create_relations(
+                relations = await relation_service.auto_create_relations(
                     new_memory_id=memory.id,
                     new_content=content,
                     container_tag=container_tag,
                     is_static=is_static,
                 )
+                await self._update_embedded_relations(memory.id, relations)
             except Exception:
                 pass
 
         return memory
+
+    async def _update_embedded_relations(
+        self,
+        memory_id: str,
+        relations: List[Any],
+    ) -> None:
+        memory = await self.get_by_id(memory_id)
+        if not memory:
+            return
+
+        metadata = memory.metadata.copy()
+        relations_dict = metadata.get(
+            "relations", {"updates": [], "extends": [], "derives": []}
+        )
+
+        for rel in relations:
+            rel_type = rel.relation_type
+            target_id = rel.to_memory_id
+            if rel_type in relations_dict and target_id not in relations_dict[rel_type]:
+                relations_dict[rel_type].append(target_id)
+
+        metadata["relations"] = relations_dict
+        await self.update_metadata(memory_id, metadata)
+
+    async def add_relation(
+        self,
+        memory_id: str,
+        target_id: str,
+        relation_type: str,
+    ) -> bool:
+        memory = await self.get_by_id(memory_id)
+        if not memory:
+            return False
+
+        metadata = memory.metadata.copy()
+        relations_dict = metadata.get(
+            "relations", {"updates": [], "extends": [], "derives": []}
+        )
+
+        if relation_type not in relations_dict:
+            relations_dict[relation_type] = []
+
+        if target_id not in relations_dict[relation_type]:
+            relations_dict[relation_type].append(target_id)
+
+        metadata["relations"] = relations_dict
+        return await self.update_metadata(memory_id, metadata)
+
+    async def get_relations(self, memory_id: str) -> Dict[str, List[str]]:
+        memory = await self.get_by_id(memory_id)
+        if not memory:
+            return {"updates": [], "extends": [], "derives": []}
+        return memory.metadata.get(
+            "relations", {"updates": [], "extends": [], "derives": []}
+        )
 
     async def get_by_id(self, memory_id: str) -> Optional[Memory]:
         row = await db.fetchrow(
@@ -147,6 +237,23 @@ class MemoryStore:
             """,
             container_tag,
             limit,
+        )
+        return [self._row_to_memory(row) for row in rows]
+
+    async def get_version_chain(self, memory_id: str) -> List[Memory]:
+        memory = await self.get_by_id(memory_id)
+        if not memory:
+            return []
+
+        root_id = memory.root_memory_id or memory.id
+
+        rows = await db.fetch(
+            """
+            SELECT * FROM memories 
+            WHERE root_memory_id = $1 OR id = $1
+            ORDER BY version ASC
+            """,
+            root_id,
         )
         return [self._row_to_memory(row) for row in rows]
 
@@ -244,16 +351,10 @@ class MemoryStore:
             container_tag=old_memory.container_tag,
             is_static=old_memory.is_static,
             metadata=old_memory.metadata,
+            parent_memory_id=memory_id,
         )
 
-        await db.execute(
-            """
-            INSERT INTO memory_relations_new (from_memory_id, to_memory_id, relation_type)
-            VALUES ($1, $2, 'updates')
-            """,
-            new_memory.id,
-            memory_id,
-        )
+        await self.add_relation(new_memory.id, memory_id, "updates")
 
         await db.execute(
             """
@@ -294,6 +395,10 @@ class MemoryStore:
             confidence=row.get("confidence", 0.8),
             created_at=row.get("created_at"),
             is_forgotten=row.get("is_forgotten", False),
+            version=row.get("version", 1),
+            root_memory_id=row.get("root_memory_id"),
+            source_count=row.get("source_count", 1),
+            is_inference=row.get("is_inference", False),
         )
 
     def _parse_embedding(self, embedding_str: Optional[str]) -> Optional[List[float]]:
