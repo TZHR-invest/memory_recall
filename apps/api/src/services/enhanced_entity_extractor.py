@@ -17,6 +17,7 @@
 
 from typing import List, Dict, Optional, Tuple
 import re
+import time
 from difflib import SequenceMatcher
 from ..database import db
 import logging
@@ -138,7 +139,7 @@ class EnhancedEntityExtractor:
             logger.info(f"触发自动刷新（距离上次刷新 {elapsed:.0f}秒）")
             await self.refresh()
 
-    def extract_entities(
+    async def extract_entities(
         self, query: str, user_id: str, methods: List[str] = None
     ) -> List[Tuple[str, str, float]]:
         """

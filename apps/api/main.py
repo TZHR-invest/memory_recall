@@ -13,13 +13,25 @@ import traceback
 
 from src.config import settings
 from src.database import db
+from src.background.scheduler import scheduler, setup_background_tasks
 from src.routes import health
 from src.routes import memories
-from src.routes import upload
 from src.routes import files
 from src.routes import graph
 from src.routes import users
 from src.routes import context
+
+# v1 API routes
+from src.api.v1 import auth as v1_auth
+from src.api.v1 import memories as v1_memories
+from src.api.v1 import recall as v1_recall
+from src.api.v1 import containers as v1_containers
+from src.api.v1 import relations as v1_relations
+from src.api.v1 import profile as v1_profile
+from src.api.v1 import notifications as v1_notifications
+
+# v2 API routes (simplified architecture)
+from src.api.v2 import memories as v2_memories
 
 
 # ==================== 应用生命周期管理 ====================
@@ -41,13 +53,24 @@ async def lifespan(app: FastAPI):
             print("✅ pgvector 扩展已启用")
         else:
             print("⚠️  pgvector 扩展未启用，向量功能将不可用")
+
+        # 启动后台任务调度器
+        setup_background_tasks()
+        await scheduler.start()
+        print("✅ 后台任务调度器已启动")
     except Exception as e:
         print(f"❌ 数据库连接失败: {e}")
         raise
 
     yield
 
-    # 关闭时断开数据库
+    # 关闭时停止调度器并断开数据库
+    try:
+        await scheduler.stop()
+        print("✅ 后台任务调度器已停止")
+    except Exception as e:
+        print(f"⚠️  调度器关闭时出错: {e}")
+
     try:
         await db.disconnect()
         print("✅ 数据库连接已关闭")
@@ -172,13 +195,24 @@ async def global_exception_handler(request: Request, exc: Exception):
 # 健康检查（无前缀）
 app.include_router(health.router, tags=["健康检查"])
 
-# API 路由（带版本前缀）
+# Legacy API 路由（保持兼容）
 app.include_router(users.router, prefix="/api/v1", tags=["用户管理"])
 app.include_router(memories.router, prefix="/api/v1", tags=["记忆管理"])
-app.include_router(upload.router, prefix="/api/v1", tags=["图片上传"])
 app.include_router(files.router, prefix="/api/v1", tags=["文件上传"])
 app.include_router(graph.router, tags=["图谱增强召回"])
 app.include_router(context.router, prefix="/api/v1", tags=["上下文管理"])
+
+# v1 API routes (authenticated)
+app.include_router(v1_auth.router, prefix="/v1", tags=["认证"])
+app.include_router(v1_memories.router, prefix="/v1", tags=["记忆 v1"])
+app.include_router(v1_recall.router, prefix="/v1", tags=["召回 v1"])
+app.include_router(v1_containers.router, prefix="/v1", tags=["容器 v1"])
+app.include_router(v1_relations.router, prefix="/v1", tags=["关系 v1"])
+app.include_router(v1_profile.router, prefix="/v1", tags=["画像 v1"])
+app.include_router(v1_notifications.router, prefix="/v1", tags=["通知 v1"])
+
+# v2 API routes (simplified memory architecture)
+app.include_router(v2_memories.router, tags=["Memories v2"])
 
 
 # ==================== 根路径和元数据 ====================

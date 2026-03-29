@@ -92,7 +92,7 @@ async def test_dict_update():
     enhanced_extractor._initialized = True
 
     # 使用增强提取器查询
-    results = enhanced_extractor.extract_entities(
+    results = await enhanced_extractor.extract_entities(
         query=f"关于{test_entity}的信息", user_id=user_id, methods=["exact"]
     )
 

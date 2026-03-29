@@ -50,6 +50,7 @@ async def test_vector_recall():
                     await raw_store.update_embedding(raw_id, embedding)
 
             results = await service._vector_recall(
+                query="测试查询",
                 query_embedding=[0.1] * 1024,
                 user_id=user_id,
                 agent_filter="agent_id IS NULL",
@@ -155,6 +156,37 @@ async def test_merge_results():
 
     assert len(merged) == 2
     assert merged[0]["id"] == "raw_001"
+
+
+@pytest.mark.asyncio
+async def test_chinese_keyword_recall():
+    service = LosslessRecallService()
+    raw_store = RawMessageStore()
+    user_id = "test_recall_chinese_keyword"
+
+    await db.connect()
+    try:
+        await db.init_user(user_id)
+
+        async with db.user_context(user_id):
+            await raw_store.store(
+                user_id=user_id,
+                content="今天在公园跑步，天气很好",
+                memory_type="note",
+            )
+
+            results = await service._keyword_recall(
+                query="跑步",
+                user_id=user_id,
+                agent_filter="agent_id IS NULL",
+                limit=10,
+            )
+
+            assert isinstance(results, list)
+            assert len(results) >= 1
+            assert any("跑步" in r["content"] for r in results)
+    finally:
+        await db.disconnect()
 
 
 if __name__ == "__main__":

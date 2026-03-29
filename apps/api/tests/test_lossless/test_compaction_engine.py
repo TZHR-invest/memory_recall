@@ -2,6 +2,7 @@ import pytest
 from pathlib import Path
 import sys
 import os
+import time
 from datetime import datetime
 
 sys.path.insert(
@@ -22,6 +23,10 @@ from src.services.lossless.raw_message_store import RawMessageStore
 from src.services.lossless.summary_store import SummaryStore
 from src.services.lossless.context_store import ContextStore
 from src.database import db
+
+
+def unique_user_id(base: str) -> str:
+    return f"{base}_{int(time.time() * 1000000)}"
 
 
 def test_estimate_tokens():
@@ -48,7 +53,7 @@ async def test_compaction_evaluate():
     engine = CompactionEngine()
     raw_store = RawMessageStore()
     context_store = ContextStore()
-    user_id = "test_compaction_eval"
+    user_id = unique_user_id("test_compaction_eval")
     session_id = "session_eval"
 
     await db.connect()
@@ -80,7 +85,7 @@ async def test_leaf_compact():
     engine = CompactionEngine()
     raw_store = RawMessageStore()
     context_store = ContextStore()
-    user_id = "test_compaction_leaf"
+    user_id = unique_user_id("test_compaction_leaf")
     session_id = "session_leaf"
 
     def mock_summarize(text: str, aggressive: bool = False) -> str:
@@ -128,7 +133,7 @@ async def test_fresh_tail_protection():
     engine = CompactionEngine({"fresh_tail_count": 5})
     raw_store = RawMessageStore()
     context_store = ContextStore()
-    user_id = "test_fresh_tail"
+    user_id = unique_user_id("test_fresh_tail")
     session_id = "session_fresh"
 
     def mock_summarize(text: str, aggressive: bool = False) -> str:

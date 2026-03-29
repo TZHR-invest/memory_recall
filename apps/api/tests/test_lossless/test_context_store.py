@@ -2,6 +2,7 @@ import pytest
 from pathlib import Path
 import sys
 import os
+import time
 
 sys.path.insert(
     0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -18,11 +19,19 @@ from src.services.lossless.summary_store import SummaryStore
 from src.database import db
 
 
+def unique_user_id(base: str) -> str:
+    return f"{base}_{int(time.time() * 1000000)}"
+
+
+def unique_user_id(base: str) -> str:
+    return f"{base}_{int(time.time() * 1000000)}"
+
+
 @pytest.mark.asyncio
 async def test_append_message():
     store = ContextStore()
     raw_store = RawMessageStore()
-    user_id = "test_user_ctx_append_pytest"
+    user_id = unique_user_id("test_user_ctx_append")
 
     await db.connect()
     try:
@@ -53,7 +62,7 @@ async def test_append_message():
 async def test_append_summary():
     store = ContextStore()
     summary_store = SummaryStore()
-    user_id = "test_user_ctx_summary_pytest"
+    user_id = unique_user_id("test_user_ctx_summary")
 
     await db.connect()
     try:
@@ -82,7 +91,7 @@ async def test_replace_range_with_summary():
     store = ContextStore()
     raw_store = RawMessageStore()
     summary_store = SummaryStore()
-    user_id = "test_user_ctx_replace_pytest"
+    user_id = unique_user_id("test_user_ctx_replace")
 
     await db.connect()
     try:
@@ -124,7 +133,7 @@ async def test_replace_range_with_summary():
 async def test_get_token_count():
     store = ContextStore()
     raw_store = RawMessageStore()
-    user_id = "test_user_ctx_tokens_pytest"
+    user_id = unique_user_id("test_user_ctx_tokens")
 
     await db.connect()
     try:
@@ -150,7 +159,7 @@ async def test_get_token_count():
 async def test_exists():
     store = ContextStore()
     raw_store = RawMessageStore()
-    user_id = "test_user_ctx_exists_pytest"
+    user_id = unique_user_id("test_user_ctx_exists")
 
     await db.connect()
     try:
@@ -173,7 +182,7 @@ async def test_exists():
 async def test_clear():
     store = ContextStore()
     raw_store = RawMessageStore()
-    user_id = "test_user_ctx_clear_pytest"
+    user_id = unique_user_id("test_user_ctx_clear")
 
     await db.connect()
     try:
@@ -202,7 +211,7 @@ async def test_clear():
 async def test_get_last_n_items():
     store = ContextStore()
     raw_store = RawMessageStore()
-    user_id = "test_user_ctx_last_n_pytest"
+    user_id = unique_user_id("test_user_ctx_last_n")
 
     await db.connect()
     try:
@@ -229,7 +238,7 @@ async def test_mixed_message_and_summary():
     store = ContextStore()
     raw_store = RawMessageStore()
     summary_store = SummaryStore()
-    user_id = "test_user_ctx_mixed_pytest"
+    user_id = unique_user_id("test_user_ctx_mixed")
 
     await db.connect()
     try:

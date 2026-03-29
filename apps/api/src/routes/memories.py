@@ -7,12 +7,10 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 from pydantic import BaseModel, Field
 
-from ..models.memory import Memory, MemoryCreate, MemoryUpdate
-from ..services.memory_service import memory_service
-from ..services.recall_service import get_recall_service
-from ..services.query_parser import query_parser
-from ..services.llm_recall_service import get_llm_recall_service
+from ..models.memory import MemoryCreate
 from ..services.unified_memory_service import unified_memory_service
+from ..services.core.lossless_recall_service import lossless_recall_service
+from ..services.llm_recall_service import get_llm_recall_service
 from ..database import db
 
 router = APIRouter(prefix="/memories", tags=["记忆管理"])
@@ -210,31 +208,29 @@ async def list_memories(
     order: str = Query("desc", description="排序方向（asc/desc）"),
 ):
     """
-    列出记忆
+    列出记忆（v3.0 DAG 架构，从 raw_messages 表查询）
 
     - **user_id**: 用户 ID（必填）
     - **limit**: 每页数量，1-100，默认 50
     - **offset**: 偏移量，默认 0
-    - **status**: 状态过滤，默认 active
+    - **status**: 状态过滤（当前仅支持 active）
     - **order_by**: 排序字段，默认 created_at
     - **order**: 排序方向，默认 desc
     """
-    # 设置当前用户
-    db.set_current_user(user_id)
+    memories = await unified_memory_service.get_user_memories(user_id, limit)
 
-    memories = await memory_service.list(limit, offset, status)
-
-    # 获取总数
-    total = await db.fetchval("SELECT COUNT(*) FROM memories WHERE status = $1", status)
+    total = await db.fetchval(
+        "SELECT COUNT(*) FROM raw_messages WHERE user_id = $1", user_id
+    )
 
     return {
         "code": 200,
         "message": "success",
         "data": {
-            "memories": [m.model_dump() for m in memories],
+            "memories": memories,
             "count": len(memories),
-            "total": total,
-            "has_more": offset + limit < total,
+            "total": total or 0,
+            "has_more": offset + limit < (total or 0),
         },
     }
 
@@ -243,91 +239,62 @@ async def list_memories(
     "/{memory_id}",
     response_model=dict,
     summary="获取单个记忆",
-    description="根据 ID 获取记忆详情",
+    description="根据 ID 获取记忆详情（DAG 架构）",
     responses={200: {"description": "成功"}, 404: {"description": "记忆不存在"}},
 )
 async def get_memory(memory_id: str, user_id: str = Query(..., description="用户 ID")):
     """
-    获取记忆
+    获取记忆（DAG 架构）
 
-    - **memory_id**: 记忆 ID
+    - **memory_id**: 记忆 ID（支持 raw_xxx 或 sum_xxx 格式）
     - **user_id**: 用户 ID（必填）
     """
-    # 设置当前用户
     db.set_current_user(user_id)
 
-    memory = await memory_service.get(memory_id)
+    memory = await unified_memory_service.get_memory_by_id(memory_id)
 
     if not memory:
         raise HTTPException(status_code=404, detail="Memory not found")
 
-    # 更新访问计数
-    await db.execute(
-        """
-        UPDATE memories 
-        SET access_count = access_count + 1, 
-            last_accessed_at = NOW()
-        WHERE id = $1
-    """,
-        memory_id,
-    )
-
-    return {"code": 200, "message": "success", "data": memory.model_dump()}
+    return {"code": 200, "message": "success", "data": memory}
 
 
 @router.put(
     "/{memory_id}",
     response_model=dict,
     summary="更新记忆",
-    description="更新记忆内容",
-    responses={200: {"description": "更新成功"}, 404: {"description": "记忆不存在"}},
+    description="更新记忆内容（暂不支持 - DAG 架构下需要重新设计）",
+    responses={
+        200: {"description": "更新成功"},
+        404: {"description": "记忆不存在"},
+        501: {"description": "功能暂未实现"},
+    },
+    deprecated=True,
 )
 async def update_memory(
     memory_id: str,
-    updates: MemoryUpdate,
+    updates: Dict[str, Any] = Body(...),
     user_id: str = Query(..., description="用户 ID"),
 ):
-    """
-    更新记忆（完整更新）
-
-    - **memory_id**: 记忆 ID
-    - **updates**: 更新数据
-    - **user_id**: 用户 ID（必填）
-    """
-    # 设置当前用户
-    db.set_current_user(user_id)
-
-    success = await memory_service.update(memory_id, updates)
-
-    if not success:
-        raise HTTPException(status_code=404, detail="Memory not found")
-
-    # 获取更新后的记忆
-    updated_memory = await memory_service.get(memory_id)
-
-    return {"code": 200, "message": "success", "data": updated_memory.model_dump()}
+    raise HTTPException(
+        status_code=501,
+        detail="Update endpoint is not yet supported in DAG architecture. TODO: Implement update in UnifiedMemoryService.",
+    )
 
 
 @router.delete(
     "/{memory_id}",
     response_model=dict,
     summary="删除记忆",
-    description="删除记忆（软删除）",
+    description="删除记忆（DAG 架构 - 硬删除）",
     responses={200: {"description": "删除成功"}, 404: {"description": "记忆不存在"}},
 )
 async def delete_memory(
     memory_id: str, user_id: str = Query(..., description="用户 ID")
 ):
-    """
-    删除记忆（软删除）
-
-    - **memory_id**: 记忆 ID
-    - **user_id**: 用户 ID（必填）
-    """
-    # 设置当前用户
     db.set_current_user(user_id)
 
-    success = await memory_service.delete(memory_id)
+    success = await unified_memory_service.delete_memory(memory_id)
 
     if not success:
         raise HTTPException(status_code=404, detail="Memory not found")
@@ -342,7 +309,7 @@ async def delete_memory(
     "/search",
     response_model=dict,
     summary="语义搜索",
-    description="使用向量相似度和关键词混合检索记忆",
+    description="使用向量相似度和关键词混合检索记忆（DAG 架构）",
     responses={
         200: {
             "description": "搜索成功",
@@ -354,11 +321,10 @@ async def delete_memory(
                         "data": {
                             "results": [
                                 {
-                                    "id": "mem_abc123",
+                                    "id": "raw_abc123",
                                     "content": "今天在咖啡店见面",
                                     "similarity": 0.95,
-                                    "vector_score": 0.92,
-                                    "keyword_score": 0.98,
+                                    "source": "vector",
                                 }
                             ],
                             "count": 1,
@@ -371,33 +337,15 @@ async def delete_memory(
     },
 )
 async def search_memories(request: SearchRequest):
-    """
-    语义搜索记忆
-
-    使用向量相似度 + 关键词混合检索：
-    - **query**: 搜索查询文本
-    - **user_id**: 用户 ID（必填）
-    - **limit**: 返回数量，默认 10
-    - **min_similarity**: 最小相似度阈值，默认 0.5
-    - **hybrid_weight**: 向量检索权重，默认 0.7（关键词权重为 0.3）
-    """
-    # 设置当前用户
     db.set_current_user(request.user_id)
 
     try:
-        recall_service = get_recall_service()
-
-        # 提取关键词用于混合检索
-        from ..services.jieba_service import extract_keywords
-
-        keywords = extract_keywords(request.query, min_length=2)[:5]  # 取前5个关键词
-
-        results = await recall_service.search(
+        results = await lossless_recall_service.hybrid_recall(
             query=request.query,
+            user_id=request.user_id,
+            scope="all",
             limit=request.limit,
             min_similarity=request.min_similarity,
-            hybrid_weight=request.hybrid_weight,
-            keywords=keywords,  # 传递关键词
         )
 
         return {
@@ -493,14 +441,12 @@ async def recall_memories(request: RecallRequest):
                 },
             }
 
-        # 传统混合召回
-        recall_service = get_recall_service()
+        from ..services.core.lossless_recall_service import lossless_recall_service
+
         llm_recall = get_llm_recall_service()
 
-        # 解析查询（默认使用 Jieba 分词，速度快）
         parsed_query = None
         if request.use_parser:
-            # 使用 Jieba 分词
             from ..services.jieba_service import (
                 extract_keywords,
                 extract_time_keywords,
@@ -511,7 +457,7 @@ async def recall_memories(request: RecallRequest):
 
             start_time = time.time()
             keywords = extract_keywords(request.query)
-            time_range = extract_time_keywords(request.query)
+            time_range_parsed = extract_time_keywords(request.query)
             location = extract_location(request.query)
             person = extract_person(request.query)
             jieba_time = (time.time() - start_time) * 1000
@@ -519,52 +465,34 @@ async def recall_memories(request: RecallRequest):
             parsed_query = {
                 "source": "jieba",
                 "keywords": keywords,
-                "time_range": time_range,
+                "time_range": time_range_parsed,
                 "location": location,
                 "people": [person] if person else [],
                 "parse_time_ms": jieba_time,
             }
 
-        # 构建过滤条件
         time_range = None
-        location_filter = None
-        person_filter = None
+        if parsed_query and parsed_query.get("time_range"):
+            tr = parsed_query["time_range"]
+            if tr.get("start") and tr.get("end"):
+                from datetime import datetime
 
-        if parsed_query:
-            # 时间范围（转换格式）
-            if parsed_query.get("time_range"):
-                tr = parsed_query["time_range"]
-                if tr.get("start") and tr.get("end"):
-                    from datetime import datetime
+                time_range = {
+                    "start_time": datetime.fromisoformat(str(tr["start"]))
+                    if isinstance(tr["start"], str)
+                    else tr["start"],
+                    "end_time": datetime.fromisoformat(str(tr["end"]))
+                    if isinstance(tr["end"], str)
+                    else tr["end"],
+                }
 
-                    time_range = {
-                        "start_time": datetime.fromisoformat(str(tr["start"]))
-                        if isinstance(tr["start"], str)
-                        else tr["start"],
-                        "end_time": datetime.fromisoformat(str(tr["end"]))
-                        if isinstance(tr["end"], str)
-                        else tr["end"],
-                    }
-
-            # 地点过滤
-            if parsed_query.get("location"):
-                location_filter = parsed_query["location"]
-
-            # 人物过滤
-            if parsed_query.get("people") and len(parsed_query["people"]) > 0:
-                person_filter = parsed_query["people"][0]
-
-        # 执行搜索（混合召回不使用硬过滤）
-        memory_results = await recall_service.search(
+        memory_results = await lossless_recall_service.hybrid_recall(
             query=request.query,
+            user_id=request.user_id,
+            scope="all",
             limit=request.limit,
-            # 混合召回时，不使用 location_filter 和 person_filter
-            # 让向量相似度和图谱关系来召回相关记忆
-            time_range=time_range,  # ⏰ 时间过滤保留（更准确）
             min_similarity=request.min_similarity,
-            keywords=parsed_query.get("keywords") if parsed_query else None,
-            enable_graph=True,  # ✅ 启用图谱召回
-            user_id=request.user_id,  # ✅ 传递 user_id
+            time_range=time_range,
         )
 
         # 调用 LLM 生成回答
@@ -585,6 +513,113 @@ async def recall_memories(request: RecallRequest):
                 "recall_mode": "hybrid_recall",
             },
         }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get(
+    "/{memory_id}/expand",
+    response_model=dict,
+    summary="展开 DAG 节点",
+    description="从摘要节点展开查看关联的原始消息或子摘要",
+    responses={
+        200: {
+            "description": "展开成功",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "code": 200,
+                        "message": "success",
+                        "data": {
+                            "root_id": "sum_xxx",
+                            "type": "summary",
+                            "nodes": [
+                                {
+                                    "id": "raw_xxx",
+                                    "type": "raw_message",
+                                    "content": "...",
+                                }
+                            ],
+                            "total_nodes": 5,
+                        },
+                    }
+                }
+            },
+        }
+    },
+)
+async def expand_memory(
+    memory_id: str,
+    user_id: str = Query(..., description="用户 ID"),
+    depth: int = Query(10, ge=1, le=50, description="展开深度"),
+    max_tokens: int = Query(5000, ge=100, le=50000, description="最大 Token 数"),
+):
+    """
+    展开 DAG 节点
+
+    - **memory_id**: 记忆 ID（可以是 raw_message 或 summary）
+    - **user_id**: 用户 ID（必填）
+    - **depth**: 展开深度，默认 10
+    - **max_tokens**: 最大返回 Token 数，默认 5000
+    """
+    from ..services.core.dag_expand_service import dag_expand_service
+    from ..services.core.raw_message_store import RawMessageStore
+
+    db.set_current_user(user_id)
+
+    try:
+        if memory_id.startswith("raw_"):
+            raw_store = RawMessageStore()
+            msg = await raw_store.get_by_id(memory_id)
+            if not msg:
+                raise HTTPException(status_code=404, detail="Memory not found")
+
+            return {
+                "code": 200,
+                "message": "success",
+                "data": {
+                    "root_id": memory_id,
+                    "type": "raw_message",
+                    "nodes": [
+                        {
+                            "id": msg.id,
+                            "type": "raw_message",
+                            "content": msg.content,
+                            "token_count": msg.token_count,
+                            "created_at": msg.created_at.isoformat()
+                            if msg.created_at
+                            else None,
+                        }
+                    ],
+                    "total_nodes": 1,
+                },
+            }
+
+        if memory_id.startswith("sum_"):
+            result = await dag_expand_service.expand_to_messages(
+                summary_id=memory_id,
+                max_tokens=max_tokens,
+            )
+
+            if "error" in result:
+                raise HTTPException(status_code=404, detail=result["error"])
+
+            return {
+                "code": 200,
+                "message": "success",
+                "data": {
+                    "root_id": memory_id,
+                    "type": "summary",
+                    "nodes": result.get("messages", []),
+                    "total_nodes": result.get("total_messages", 0),
+                    "total_tokens": result.get("total_tokens", 0),
+                },
+            }
+
+        raise HTTPException(status_code=400, detail="Invalid memory ID format")
+
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -669,22 +704,43 @@ async def smart_recall_memories(request: SmartRecallRequest):
     "/batch",
     response_model=dict,
     summary="批量创建记忆",
-    description="批量创建多条记忆",
+    description="批量创建多条记忆（DAG 架构）",
 )
-async def batch_create_memories(memories: List[MemoryCreate]):
-    """
-    批量创建记忆
-
-    - **memories**: 记忆列表（最多 100 条）
-    """
+async def batch_create_memories(
+    memories: List[MemoryCreate],
+    user_id: str = Query(..., description="用户 ID"),
+):
     if len(memories) > 100:
         raise HTTPException(status_code=400, detail="Maximum 100 memories per batch")
+
+    db.set_current_user(user_id)
 
     try:
         created_ids = []
         for memory in memories:
-            memory_id = await memory_service.create(memory)
-            created_ids.append(memory_id)
+            metadata = {}
+            if memory.location:
+                metadata["location_name"] = memory.location.name
+                metadata["location_address"] = memory.location.address
+                metadata["location_latitude"] = memory.location.latitude
+                metadata["location_longitude"] = memory.location.longitude
+            if memory.people:
+                metadata["people"] = [p.model_dump() for p in memory.people]
+            if memory.emotion:
+                metadata["emotion"] = memory.emotion.model_dump()
+            if memory.tags:
+                metadata["tags"] = memory.tags
+            if memory.time:
+                metadata["time_value"] = memory.time.value
+
+            result = await unified_memory_service.store(
+                user_id=user_id,
+                content=memory.content,
+                source="manual",
+                memory_type="preference",
+                metadata=metadata,
+            )
+            created_ids.append(result["raw_message_id"])
 
         return {
             "code": 200,
@@ -721,38 +777,24 @@ async def batch_create_memories(memories: List[MemoryCreate]):
     },
 )
 async def create_memory_with_graph(request: CreateMemoryWithGraphRequest):
-    """
-    创建记忆（带图谱构建）
-
-    并发执行：
-    - 向量存储（生成 embedding + 存储 memories 表）
-    - 图谱构建（提取实体 + 关系）
-
-    参数：
-    - **content**: 记忆内容（必填）
-    - **user_id**: 用户 ID（必填）
-    - **enable_graph**: 是否启用图谱构建（默认 True）
-    - **enable_confirmation**: 是否启用智能确认（默认 False）
-
-    返回：
-    - memory_id: 记忆 ID
-    - graph: 图谱信息（如果启用）
-    """
-    # 设置当前用户 schema
     db.set_current_user(request.user_id)
 
     try:
-        result = await memory_service.create_memory_with_graph_v2(
-            content=request.content,
+        result = await unified_memory_service.store(
             user_id=request.user_id,
+            content=request.content,
+            source="manual",
+            memory_type="preference",
             enable_graph=request.enable_graph,
-            enable_confirmation=request.enable_confirmation,
         )
 
         return {
             "success": True,
-            "memory_id": result["memory_id"],
-            "graph": result.get("graph"),
+            "memory_id": result["raw_message_id"],
+            "graph": {
+                "entities": result.get("entities", []),
+                "entities_count": result.get("entities_count", 0),
+            },
         }
 
     except Exception as e:
@@ -763,21 +805,21 @@ async def create_memory_with_graph(request: CreateMemoryWithGraphRequest):
     "/batch",
     response_model=dict,
     summary="批量删除记忆",
-    description="批量删除多条记忆",
+    description="批量删除多条记忆（DAG 架构）",
 )
-async def batch_delete_memories(memory_ids: List[str] = Body(...)):
-    """
-    批量删除记忆
-
-    - **memory_ids**: 记忆 ID 列表（最多 100 条）
-    """
+async def batch_delete_memories(
+    memory_ids: List[str] = Body(...),
+    user_id: str = Query(..., description="用户 ID"),
+):
     if len(memory_ids) > 100:
         raise HTTPException(status_code=400, detail="Maximum 100 memories per batch")
+
+    db.set_current_user(user_id)
 
     try:
         deleted_count = 0
         for memory_id in memory_ids:
-            if await memory_service.delete(memory_id):
+            if await unified_memory_service.delete_memory(memory_id):
                 deleted_count += 1
 
         return {
@@ -817,7 +859,7 @@ async def expand_summary(request: ExpandRequest):
     db.set_current_user(request.user_id)
 
     try:
-        from src.services.lossless.dag_expand_service import dag_expand_service
+        from src.services.core.dag_expand_service import dag_expand_service
 
         result = await dag_expand_service.expand_to_messages(
             summary_id=request.summary_id,
