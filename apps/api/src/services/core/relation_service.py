@@ -1,11 +1,13 @@
 """
 Relation service for memory relationships (updates/extends/derives).
+Implements automatic relation detection and temporal semantics.
 """
 
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 from datetime import datetime
 from dataclasses import dataclass
 from enum import Enum
+import re
 
 from src.database import db
 
@@ -26,7 +28,37 @@ class MemoryRelation:
     created_at: datetime
 
 
+# Contradiction patterns for Chinese text
+CONTRADICTION_PATTERNS = [
+    # 状态变化模式
+    (r"现在(.+?)(工作|住|在)", r"以前(.+?)(工作|住|在)"),
+    (r"目前在(.+?)", r"之前在(.+?)"),
+    (r"目前是(.+?)", r"之前是(.+?)"),
+    # 偏好变化模式
+    (r"(不喜欢|不爱)(.+)", r"(喜欢|爱)\2"),
+    (r"(喜欢|爱)(.+)", r"(不喜欢|不爱)\2"),
+    # 事实更新模式
+    (r"现在(.+?)是(.+)", r"(.+?)是(.+)"),
+    # 数值更新模式
+    (r"(\d+)(岁|年|月|天)", r"(\d+)\2"),
+]
+
+# Topic similarity keywords
+TOPIC_KEYWORDS = {
+    "饮食": ["吃", "喝", "食物", "餐", "口味", "喜欢", "不喜欢", "素食", "肉"],
+    "工作": ["工作", "公司", "职业", "职位", "项目", "同事", "老板", "上班"],
+    "居住": ["住", "城市", "地区", "地址", "搬家", "房子"],
+    "爱好": ["喜欢", "爱好", "兴趣", "运动", "游戏", "电影", "音乐", "书"],
+    "社交": ["朋友", "家人", "同事", "见面", "聚会", "社交"],
+    "健康": ["健康", "运动", "锻炼", "医生", "医院", "生病"],
+}
+
+
 class RelationService:
+    def __init__(self):
+        self.contradiction_patterns = CONTRADICTION_PATTERNS
+        self.topic_keywords = TOPIC_KEYWORDS
+
     async def create(
         self,
         from_memory_id: str,
@@ -143,6 +175,181 @@ class RelationService:
             relation_id,
         )
         return result == "DELETE 1"
+
+    async def detect_contradiction(
+        self,
+        new_content: str,
+        existing_content: str,
+    ) -> Tuple[bool, float]:
+        """Detect if new content contradicts existing content."""
+        score = 0.0
+
+        for pattern_new, pattern_old in self.contradiction_patterns:
+            new_match = re.search(pattern_new, new_content)
+            old_match = re.search(pattern_old, existing_content)
+
+            if new_match and old_match:
+                new_value = new_match.group(1) if new_match.groups() else ""
+                old_value = old_match.group(1) if old_match.groups() else ""
+
+                if new_value and old_value and new_value != old_value:
+                    score += 0.3
+
+        time_indicators = ["现在", "目前", "现在", "最近", "已经"]
+        has_time_new = any(ind in new_content for ind in time_indicators)
+        has_time_old = any(
+            ind in existing_content for ind in ["以前", "之前", "过去", "原来"]
+        )
+
+        if has_time_new and has_time_old:
+            score += 0.2
+
+        update_keywords = ["换了", "改了", "变成", "不再", "现在", "已经"]
+        if any(kw in new_content for kw in update_keywords):
+            score += 0.2
+
+        return (score >= 0.5, min(score, 1.0))
+
+    async def detect_topic_similarity(
+        self,
+        content1: str,
+        content2: str,
+    ) -> Tuple[bool, float, Optional[str]]:
+        """Detect if two contents share the same topic."""
+        content1_topics = set()
+        content2_topics = set()
+
+        for topic, keywords in self.topic_keywords.items():
+            if any(kw in content1 for kw in keywords):
+                content1_topics.add(topic)
+            if any(kw in content2 for kw in keywords):
+                content2_topics.add(topic)
+
+        common_topics = content1_topics & content2_topics
+
+        if common_topics:
+            return (True, 0.7, list(common_topics)[0])
+
+        return (False, 0.0, None)
+
+    async def auto_create_relations(
+        self,
+        new_memory_id: str,
+        new_content: str,
+        container_tag: str,
+        is_static: bool = False,
+    ) -> List[MemoryRelation]:
+        """Automatically create relations when adding a new memory."""
+        relations = []
+
+        rows = await db.fetch(
+            """
+            SELECT id, content, is_static FROM memories
+            WHERE container_tag = $1
+            AND id != $2
+            AND is_latest = TRUE
+            AND is_forgotten = FALSE
+            ORDER BY created_at DESC
+            LIMIT 20
+            """,
+            container_tag,
+            new_memory_id,
+        )
+
+        for row in rows:
+            existing_id = row["id"]
+            existing_content = row["content"]
+            existing_is_static = row["is_static"]
+
+            is_contradiction, contradiction_score = await self.detect_contradiction(
+                new_content, existing_content
+            )
+
+            if is_contradiction:
+                relation = await self.create(
+                    from_memory_id=new_memory_id,
+                    to_memory_id=existing_id,
+                    relation_type=RelationType.UPDATES.value,
+                    confidence=contradiction_score,
+                )
+                relations.append(relation)
+
+                await self._mark_not_latest(existing_id)
+                continue
+
+            is_similar, similarity_score, topic = await self.detect_topic_similarity(
+                new_content, existing_content
+            )
+
+            if is_similar and existing_is_static == is_static:
+                relation = await self.create(
+                    from_memory_id=new_memory_id,
+                    to_memory_id=existing_id,
+                    relation_type=RelationType.EXTENDS.value,
+                    confidence=similarity_score,
+                )
+                relations.append(relation)
+
+        return relations
+
+    async def _mark_not_latest(self, memory_id: str) -> None:
+        """Mark a memory as not the latest version."""
+        await db.execute(
+            """
+            UPDATE memories 
+            SET is_latest = FALSE, valid_until = NOW(), updated_at = NOW()
+            WHERE id = $1
+            """,
+            memory_id,
+        )
+
+    async def get_full_history(self, memory_id: str) -> Dict[str, Any]:
+        """Get complete history of a memory including all relations."""
+        memory = await db.fetchrow(
+            "SELECT * FROM memories WHERE id = $1",
+            memory_id,
+        )
+
+        if not memory:
+            return {}
+
+        updates = await self.get_version_history(memory_id)
+
+        extends = await db.fetch(
+            """
+            SELECT m.id, m.content, m.created_at, r.confidence
+            FROM memory_relations_new r
+            JOIN memories m ON r.to_memory_id = m.id
+            WHERE r.from_memory_id = $1 AND r.relation_type = 'extends'
+            ORDER BY r.created_at DESC
+            """,
+            memory_id,
+        )
+
+        derives = await db.fetch(
+            """
+            SELECT m.id, m.content, m.created_at, r.confidence
+            FROM memory_relations_new r
+            JOIN memories m ON r.to_memory_id = m.id
+            WHERE r.from_memory_id = $1 AND r.relation_type = 'derives'
+            ORDER BY r.created_at DESC
+            """,
+            memory_id,
+        )
+
+        return {
+            "memory": {
+                "id": memory["id"],
+                "content": memory["content"],
+                "is_latest": memory["is_latest"],
+                "created_at": memory["created_at"].isoformat()
+                if memory["created_at"]
+                else None,
+            },
+            "updates_history": updates,
+            "extends_related": [dict(r) for r in extends],
+            "derives_related": [dict(r) for r in derives],
+        }
 
     def _row_to_relation(self, row: Dict) -> MemoryRelation:
         return MemoryRelation(
