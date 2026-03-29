@@ -11,26 +11,71 @@ router = APIRouter(prefix="/v1", tags=["Memories"])
 
 
 class CreateMemoryRequest(BaseModel):
-    content: str = Field(..., description="Memory content")
-    container_tag: str = Field(..., description="Container tag for isolation")
-    is_static: bool = Field(False, description="Whether this is a permanent trait")
+    content: str = Field(..., description="Memory content", examples=["我喜欢喝咖啡"])
+    container_tag: str = Field(
+        ..., description="Container tag for isolation", examples=["user_001"]
+    )
+    is_static: bool = Field(
+        False,
+        description="Whether this is a permanent trait (name, preference) vs recent activity",
+    )
     metadata: Dict[str, Any] = Field(
         default_factory=dict, description="Additional metadata"
     )
 
 
+class MemoryResponse(BaseModel):
+    id: str = Field(..., description="Memory ID", examples=["mem_abc123"])
+    content: str = Field(..., description="Memory content")
+    container_tag: str = Field(..., description="Container tag")
+    is_static: bool = Field(..., description="Is static memory")
+    created_at: Optional[str] = Field(None, description="Creation timestamp")
+
+
 class SearchRequest(BaseModel):
-    query: str = Field(..., description="Search query")
+    query: str = Field(..., description="Search query", examples=["饮食偏好"])
     container_tag: str = Field(..., description="Container tag to search in")
     limit: int = Field(10, ge=1, le=100, description="Max results")
-    threshold: float = Field(0.6, ge=0.0, le=1.0, description="Similarity threshold")
+    threshold: float = Field(
+        0.6, ge=0.0, le=1.0, description="Similarity threshold (0-1)"
+    )
 
 
 class UpdateMemoryRequest(BaseModel):
-    content: str = Field(..., description="New memory content")
+    content: str = Field(
+        ..., description="New memory content", examples=["我现在在 Supermemory 工作"]
+    )
 
 
-@router.post("/memories")
+class CreateDocumentRequest(BaseModel):
+    content: str = Field(..., description="Document content")
+    container_tag: str = Field(..., description="Container tag for isolation")
+    metadata: Dict[str, Any] = Field(
+        default_factory=dict, description="Additional metadata"
+    )
+
+
+@router.post(
+    "/memories",
+    summary="Create a new memory",
+    description="Store a new memory with automatic entity extraction and relation detection. Use is_static=true for permanent traits.",
+    responses={
+        200: {
+            "description": "Memory created successfully",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "id": "mem_abc123",
+                        "content": "我喜欢喝咖啡",
+                        "container_tag": "user_001",
+                        "is_static": True,
+                        "created_at": "2024-01-15T10:30:00",
+                    }
+                }
+            },
+        }
+    },
+)
 async def create_memory(request: CreateMemoryRequest):
     memory = await memory_store.create(
         content=request.content,
@@ -50,7 +95,31 @@ async def create_memory(request: CreateMemoryRequest):
     }
 
 
-@router.get("/memories")
+@router.get(
+    "/memories",
+    summary="List memories",
+    description="List all memories for a container, ordered by creation date (newest first).",
+    responses={
+        200: {
+            "description": "List of memories",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "memories": [
+                            {
+                                "id": "mem_abc123",
+                                "content": "我喜欢喝咖啡",
+                                "is_static": True,
+                                "created_at": "2024-01-15T10:30:00",
+                            }
+                        ],
+                        "count": 1,
+                    }
+                }
+            },
+        }
+    },
+)
 async def list_memories(
     container_tag: str = Query(..., description="Container tag"),
     limit: int = Query(20, ge=1, le=100, description="Max results"),
@@ -74,7 +143,15 @@ async def list_memories(
     }
 
 
-@router.get("/memories/{memory_id}")
+@router.get(
+    "/memories/{memory_id}",
+    summary="Get memory by ID",
+    description="Retrieve a single memory with full details including metadata.",
+    responses={
+        200: {"description": "Memory details"},
+        404: {"description": "Memory not found"},
+    },
+)
 async def get_memory(memory_id: str):
     memory = await memory_store.get_by_id(memory_id)
     if not memory:
@@ -92,7 +169,15 @@ async def get_memory(memory_id: str):
     }
 
 
-@router.post("/memories/{memory_id}/forget")
+@router.post(
+    "/memories/{memory_id}/forget",
+    summary="Soft delete a memory",
+    description="Mark a memory as forgotten (soft delete). It can be restored later.",
+    responses={
+        200: {"description": "Memory forgotten"},
+        404: {"description": "Memory not found"},
+    },
+)
 async def forget_memory(memory_id: str):
     memory = await memory_store.get_by_id(memory_id)
     if not memory:
@@ -105,7 +190,15 @@ async def forget_memory(memory_id: str):
     return {"id": memory_id, "forgotten": success}
 
 
-@router.post("/memories/{memory_id}/restore")
+@router.post(
+    "/memories/{memory_id}/restore",
+    summary="Restore a forgotten memory",
+    description="Restore a previously forgotten memory.",
+    responses={
+        200: {"description": "Memory restored"},
+        404: {"description": "Memory not found"},
+    },
+)
 async def restore_memory(memory_id: str):
     memory = await memory_store.get_by_id(memory_id)
     if not memory:
@@ -118,7 +211,15 @@ async def restore_memory(memory_id: str):
     return {"id": memory_id, "restored": success}
 
 
-@router.post("/memories/{memory_id}/update")
+@router.post(
+    "/memories/{memory_id}/update",
+    summary="Create a new version of a memory",
+    description="Create an updated version of a memory. The old memory will be marked as is_latest=false and an 'updates' relation will be created.",
+    responses={
+        200: {"description": "New version created"},
+        404: {"description": "Memory not found"},
+    },
+)
 async def update_memory(memory_id: str, request: UpdateMemoryRequest):
     old_memory = await memory_store.get_by_id(memory_id)
     if not old_memory:
@@ -140,7 +241,15 @@ async def update_memory(memory_id: str, request: UpdateMemoryRequest):
     }
 
 
-@router.get("/memories/{memory_id}/history")
+@router.get(
+    "/memories/{memory_id}/history",
+    summary="Get memory version history",
+    description="Get the version history of a memory, showing all previous versions linked by 'updates' relations.",
+    responses={
+        200: {"description": "Version history"},
+        404: {"description": "Memory not found"},
+    },
+)
 async def get_memory_history(memory_id: str):
     memory = await memory_store.get_by_id(memory_id)
     if not memory:
@@ -151,12 +260,36 @@ async def get_memory_history(memory_id: str):
     return {"memory_id": memory_id, "history": history}
 
 
-@router.get("/profile")
+@router.get(
+    "/profile",
+    summary="Get user profile",
+    description="Get the aggregated user profile with static (permanent traits) and dynamic (recent activities) memories. Optionally search within the profile.",
+    responses={
+        200: {
+            "description": "User profile",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "profile": {
+                            "static": ["John Doe", "喜欢喝咖啡"],
+                            "dynamic": ["最近在做一个认证迁移项目"],
+                        },
+                        "searchResults": [],
+                    }
+                }
+            },
+        }
+    },
+)
 async def get_profile(
     container_tag: str = Query(..., description="Container tag"),
-    query: Optional[str] = Query(None, description="Optional search query"),
-    max_static: int = Query(10, ge=1, le=50, description="Max static facts"),
-    max_dynamic: int = Query(10, ge=1, le=50, description="Max dynamic facts"),
+    query: Optional[str] = Query(
+        None, description="Optional search query to find relevant memories"
+    ),
+    max_static: int = Query(10, ge=1, le=50, description="Max static facts to return"),
+    max_dynamic: int = Query(
+        10, ge=1, le=50, description="Max dynamic facts to return"
+    ),
 ):
     profile = await profile_service.get_profile(
         container_tag=container_tag,
@@ -168,7 +301,31 @@ async def get_profile(
     return profile
 
 
-@router.post("/search")
+@router.post(
+    "/search",
+    summary="Search memories",
+    description="Semantic search across memories using vector similarity. Returns memories ranked by relevance.",
+    responses={
+        200: {
+            "description": "Search results",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "query": "饮食偏好",
+                        "results": [
+                            {
+                                "id": "mem_abc123",
+                                "content": "我喜欢喝咖啡",
+                                "similarity": 0.92,
+                            }
+                        ],
+                        "count": 1,
+                    }
+                }
+            },
+        }
+    },
+)
 async def search_memories(request: SearchRequest):
     results = await memory_store.search(
         query=request.query,
@@ -180,15 +337,12 @@ async def search_memories(request: SearchRequest):
     return {"query": request.query, "results": results, "count": len(results)}
 
 
-class CreateDocumentRequest(BaseModel):
-    content: str = Field(..., description="Document content")
-    container_tag: str = Field(..., description="Container tag for isolation")
-    metadata: Dict[str, Any] = Field(
-        default_factory=dict, description="Additional metadata"
-    )
-
-
-@router.post("/documents")
+@router.post(
+    "/documents",
+    summary="Create a new document",
+    description="Store a document for later processing or reference.",
+    responses={200: {"description": "Document created"}},
+)
 async def create_document(request: CreateDocumentRequest):
     document = await document_store.create(
         content=request.content,
@@ -205,7 +359,12 @@ async def create_document(request: CreateDocumentRequest):
     }
 
 
-@router.get("/documents")
+@router.get(
+    "/documents",
+    summary="List documents",
+    description="List all documents for a container with pagination support.",
+    responses={200: {"description": "List of documents"}},
+)
 async def list_documents(
     container_tag: str = Query(..., description="Container tag"),
     limit: int = Query(20, ge=1, le=100, description="Max results"),
@@ -237,7 +396,15 @@ async def list_documents(
     }
 
 
-@router.get("/documents/{document_id}")
+@router.get(
+    "/documents/{document_id}",
+    summary="Get document by ID",
+    description="Retrieve a single document with full content.",
+    responses={
+        200: {"description": "Document details"},
+        404: {"description": "Document not found"},
+    },
+)
 async def get_document(document_id: str):
     document = await document_store.get_by_id(document_id)
     if not document:
@@ -253,7 +420,15 @@ async def get_document(document_id: str):
     }
 
 
-@router.delete("/documents/{document_id}")
+@router.delete(
+    "/documents/{document_id}",
+    summary="Delete a document",
+    description="Permanently delete a document.",
+    responses={
+        200: {"description": "Document deleted"},
+        404: {"description": "Document not found"},
+    },
+)
 async def delete_document(document_id: str):
     document = await document_store.get_by_id(document_id)
     if not document:
