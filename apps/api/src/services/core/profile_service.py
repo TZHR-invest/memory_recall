@@ -21,6 +21,7 @@ class ProfileService:
         query: Optional[str] = None,
         max_static: int = 10,
         max_dynamic: int = 10,
+        include_metadata: bool = False,
     ) -> Dict[str, Any]:
         cached = await self._get_cached_profile(container_tag)
         if cached and self._is_cache_valid(cached):
@@ -31,6 +32,34 @@ class ProfileService:
 
         static = profile.get("static_memories", [])[:max_static]
         dynamic = profile.get("dynamic_memories", [])[:max_dynamic]
+
+        if include_metadata:
+            static_memories = await memory_store.get_static_memories(
+                container_tag=container_tag,
+                limit=max_static,
+            )
+            dynamic_memories = await memory_store.get_dynamic_memories(
+                container_tag=container_tag,
+                limit=max_dynamic,
+            )
+            static = [
+                {
+                    "content": m.content,
+                    "metadata": m.metadata,
+                    "version": m.version,
+                    "created_at": m.created_at.isoformat() if m.created_at else None,
+                }
+                for m in static_memories
+            ]
+            dynamic = [
+                {
+                    "content": m.content,
+                    "metadata": m.metadata,
+                    "version": m.version,
+                    "created_at": m.created_at.isoformat() if m.created_at else None,
+                }
+                for m in dynamic_memories
+            ]
 
         search_results = []
         if query:
@@ -46,6 +75,73 @@ class ProfileService:
                 "dynamic": dynamic,
             },
             "searchResults": search_results,
+        }
+
+    async def get_profile_with_entities(
+        self,
+        container_tag: str,
+        entity_type: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        memories = await memory_store.get_by_container(container_tag, limit=100)
+
+        all_entities: Dict[str, List[Dict[str, Any]]] = {}
+
+        for m in memories:
+            entities = m.metadata.get("entities", {})
+            for etype, values in entities.items():
+                if entity_type and etype != entity_type:
+                    continue
+                if etype not in all_entities:
+                    all_entities[etype] = []
+                for value in values:
+                    all_entities[etype].append(
+                        {
+                            "value": value,
+                            "source_id": m.id,
+                            "is_static": m.is_static,
+                        }
+                    )
+
+        return {
+            "container_tag": container_tag,
+            "entities": all_entities,
+            "total_memories": len(memories),
+        }
+
+    async def get_profile_with_relations(
+        self,
+        container_tag: str,
+    ) -> Dict[str, Any]:
+        memories = await memory_store.get_by_container(container_tag, limit=50)
+
+        nodes = []
+        edges = []
+
+        for m in memories:
+            nodes.append(
+                {
+                    "id": m.id,
+                    "content": m.content,
+                    "is_static": m.is_static,
+                    "version": m.version,
+                }
+            )
+
+            relations = m.metadata.get("relations", {})
+            for rel_type, target_ids in relations.items():
+                for target_id in target_ids:
+                    edges.append(
+                        {
+                            "source": m.id,
+                            "target": target_id,
+                            "type": rel_type,
+                        }
+                    )
+
+        return {
+            "container_tag": container_tag,
+            "nodes": nodes,
+            "edges": edges,
         }
 
     async def get_static_facts(
