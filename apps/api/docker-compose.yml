@@ -1,0 +1,43 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_HOST=postgres
+      - DATABASE_PORT=5432
+      - DATABASE_NAME=memory_recall
+      - DATABASE_USER=postgres
+      - DATABASE_PASSWORD=postgres
+      - VOLC_API_KEY=${VOLC_API_KEY}
+      - VOLC_API_BASE=${VOLC_API_BASE:-https://ark.cn-beijing.volces.com/api/v3}
+      - VOLC_LLM_MODEL=${VOLC_LLM_MODEL:-doubao-seed-2-0-mini-260215}
+      - VOLC_EMBEDDING_MODEL=${VOLC_EMBEDDING_MODEL:-doubao-embedding-vision-251215}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./src:/app/src
+    restart: unless-stopped
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=memory_recall
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
