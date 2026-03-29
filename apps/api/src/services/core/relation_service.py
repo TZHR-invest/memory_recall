@@ -156,7 +156,7 @@ class RelationService:
 
         row = await db.fetchrow(
             """
-            INSERT INTO memory_relations_new (from_memory_id, to_memory_id, relation_type, confidence)
+            INSERT INTO memory_relations (from_memory_id, to_memory_id, relation_type, confidence)
             VALUES ($1, $2, $3, $4)
             RETURNING *
             """,
@@ -174,7 +174,7 @@ class RelationService:
     async def get_by_memory(self, memory_id: str) -> List[MemoryRelation]:
         rows = await db.fetch(
             """
-            SELECT * FROM memory_relations_new
+            SELECT * FROM memory_relations
             WHERE from_memory_id = $1 OR to_memory_id = $1
             ORDER BY created_at DESC
             """,
@@ -194,7 +194,7 @@ class RelationService:
             relations = await db.fetch(
                 """
                 SELECT r.*, m.content, m.created_at, m.is_latest
-                FROM memory_relations_new r
+                FROM memory_relations r
                 JOIN memories m ON r.to_memory_id = m.id
                 WHERE r.from_memory_id = $1 AND r.relation_type = 'updates'
                 """,
@@ -229,7 +229,7 @@ class RelationService:
         rows = await db.fetch(
             f"""
             SELECT r.relation_type, r.confidence, m.id, m.content, m.created_at
-            FROM memory_relations_new r
+            FROM memory_relations r
             JOIN memories m ON (
                 CASE 
                     WHEN r.from_memory_id = $1 THEN r.to_memory_id
@@ -259,7 +259,7 @@ class RelationService:
 
     async def delete(self, relation_id: str) -> bool:
         result = await db.execute(
-            "DELETE FROM memory_relations_new WHERE id = $1",
+            "DELETE FROM memory_relations WHERE id = $1",
             relation_id,
         )
         return result == "DELETE 1"
@@ -463,7 +463,7 @@ class RelationService:
         extends = await db.fetch(
             """
             SELECT m.id, m.content, m.created_at, r.confidence
-            FROM memory_relations_new r
+            FROM memory_relations r
             JOIN memories m ON r.to_memory_id = m.id
             WHERE r.from_memory_id = $1 AND r.relation_type = 'extends'
             ORDER BY r.created_at DESC
@@ -474,7 +474,7 @@ class RelationService:
         derives = await db.fetch(
             """
             SELECT m.id, m.content, m.created_at, r.confidence
-            FROM memory_relations_new r
+            FROM memory_relations r
             JOIN memories m ON r.to_memory_id = m.id
             WHERE r.from_memory_id = $1 AND r.relation_type = 'derives'
             ORDER BY r.created_at DESC
