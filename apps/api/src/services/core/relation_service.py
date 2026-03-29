@@ -15,6 +15,7 @@ from src.services.core.chinese_entity_types import (
     has_extend_marker,
     has_derive_marker,
 )
+from src.embedding.client import get_embedding_client
 
 
 class RelationType(Enum):
@@ -96,6 +97,7 @@ class RelationService:
         self.update_markers = CHINESE_UPDATE_MARKERS
         self.extend_markers = CHINESE_EXTEND_MARKERS
         self.derive_markers = CHINESE_DERIVE_MARKERS
+        self.embedding_client = get_embedding_client()
 
     def detect_relation_type_by_markers(
         self,
@@ -318,6 +320,44 @@ class RelationService:
 
         return (False, 0.0, None)
 
+    async def _get_semantic_similar_memories(
+        self,
+        content: str,
+        container_tag: str,
+        exclude_id: str,
+        limit: int = 20,
+        threshold: float = 0.4,
+    ) -> List[Dict[str, Any]]:
+        if not self.embedding_client:
+            return []
+
+        query_embedding = self.embedding_client.embed(content)
+        if not query_embedding:
+            return []
+
+        embedding_str = "[" + ",".join(map(str, query_embedding)) + "]"
+
+        rows = await db.fetch(
+            """
+            SELECT id, content, is_static,
+                   1 - (embedding <=> $1::vector) as similarity
+            FROM memories
+            WHERE container_tag = $2
+            AND id != $3
+            AND is_latest = TRUE
+            AND is_forgotten = FALSE
+            AND 1 - (embedding <=> $1::vector) > $4
+            ORDER BY similarity DESC
+            LIMIT $5
+            """,
+            embedding_str,
+            container_tag,
+            exclude_id,
+            threshold,
+            limit,
+        )
+        return [dict(r) for r in rows]
+
     async def auto_create_relations(
         self,
         new_memory_id: str,
@@ -325,21 +365,17 @@ class RelationService:
         container_tag: str,
         is_static: bool = False,
         use_llm: bool = False,
+        similarity_threshold: float = 0.4,
+        max_candidates: int = 20,
     ) -> List[MemoryRelation]:
         relations = []
 
-        rows = await db.fetch(
-            """
-            SELECT id, content, is_static FROM memories
-            WHERE container_tag = $1
-            AND id != $2
-            AND is_latest = TRUE
-            AND is_forgotten = FALSE
-            ORDER BY created_at DESC
-            LIMIT 20
-            """,
-            container_tag,
-            new_memory_id,
+        rows = await self._get_semantic_similar_memories(
+            content=new_content,
+            container_tag=container_tag,
+            exclude_id=new_memory_id,
+            limit=max_candidates,
+            threshold=similarity_threshold,
         )
 
         for row in rows:
