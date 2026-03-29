@@ -11,7 +11,7 @@ class Settings(BaseSettings):
 
     # 应用配置
     APP_NAME: str = "Memory Recall API"
-    APP_VERSION: str = "4.0.0"
+    APP_VERSION: str = "5.0.0"
     APP_ENV: str = "development"
     APP_DEBUG: bool = True
     LOG_LEVEL: str = "INFO"
@@ -40,6 +40,11 @@ class Settings(BaseSettings):
 
     # Function Calling 配置
     USE_FUNCTION_CALLING: bool = False  # 默认关闭，测试通过后开启
+
+    # LLM 实体提取配置
+    LLM_EXTRACTION_TIMEOUT: float = 5.0  # LLM提取超时时间（秒）
+    USE_LLM_EXTRACTION: bool = True  # 默认使用LLM提取
+    USE_LAC_EXTRACTOR: bool = False  # LAC提取器（可选）
 
     class Config:
         env_file = ".env"

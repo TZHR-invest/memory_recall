@@ -330,5 +330,12 @@ async def check_rate_limit(
     return current_user
 
 
+def verify_container_ownership(container_tag: str, user_id: str) -> str:
+    """Verify that user owns the container."""
+    if not container_tag.startswith(f"{user_id}_") and container_tag != user_id:
+        raise HTTPException(status_code=403, detail="Container ownership mismatch")
+    return container_tag
+
+
 # Singleton
 auth_service = AuthService()

@@ -1,8 +1,8 @@
-# Memory Recall - 简化记忆系统
+# Memory Recall - 统一记忆系统
 
-**版本**：v4.0.0  
-**状态**：重构完成  
-**最后更新**：2026-03-29
+**版本**：v5.0.0  
+**状态**：生产就绪  
+**最后更新**：2026-03-30
 
 ---
 
@@ -10,18 +10,18 @@
 
 **核心目标**：
 1. 简化架构，提升性能（召回延迟从 1.5-4 秒降到 ~50ms）
-2. 实现时间语义（理解信息何时生效、何时失效）
-3. 用户画像分离（static/dynamic 区分，精准上下文注入）
-4. OpenClaw/OpenCode 插件集成
+2. 统一 API 入口（合并 v1/v2 为单一版本）
+3. 完整认证支持（API Key + 权限控制 + 速率限制）
+4. 用户画像分离（static/dynamic 区分，精准上下文注入）
 
 **核心特性**：
+- ✅ 统一 API（单一入口，无版本前缀）
+- ✅ 完整认证系统（API Key + 容器所有权验证）
 - ✅ 简化数据模型（3 核心表：memories, relations, profiles）
 - ✅ 时间语义关系（updates/extends/derives）
 - ✅ 用户画像分离（static/dynamic）
-- ✅ OpenClaw 插件（Tools + Hooks）
-- ✅ OpenCode 插件（统一 Tool + Context Injection）
-- ✅ 统一客户端接口
-- ✅ 轻量级实体提取
+- ✅ 知识图谱 API（可视化支持）
+- ✅ 中文实体提取（ASMR 6维度）
 
 ---
 
@@ -39,7 +39,7 @@
 
 ## 核心架构
 
-### 简化记忆架构（v4.0）
+### 简化记忆架构（v5.0）
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -133,10 +133,27 @@ uvicorn main:app --host 0.0.0.0 --port 8000
 
 ## API 接口
 
+**认证**: 所有端点需要 `X-API-Key` header。
+
+### 创建 API Key
+
+```bash
+POST /auth/keys
+X-API-Key: <admin_key>
+Content-Type: application/json
+
+{
+    "name": "My API Key",
+    "permissions": ["read", "write"],
+    "is_test": false
+}
+```
+
 ### 创建记忆
 
 ```bash
-POST /v1/memories
+POST /memories
+X-API-Key: <your-api-key>
 Content-Type: application/json
 
 {
@@ -149,13 +166,15 @@ Content-Type: application/json
 ### 获取用户画像
 
 ```bash
-GET /v1/profile?container_tag=user_001&query=饮食偏好
+GET /profile?container_tag=user_001&query=饮食偏好
+X-API-Key: <your-api-key>
 ```
 
 ### 搜索记忆
 
 ```bash
-POST /v1/search
+POST /search
+X-API-Key: <your-api-key>
 Content-Type: application/json
 
 {
@@ -166,22 +185,32 @@ Content-Type: application/json
 }
 ```
 
+### 知识图谱
+
+```bash
+GET /graph?container_tag=user_001
+X-API-Key: <your-api-key>
+```
+
 ### 遗忘记忆
 
 ```bash
-POST /v1/memories/{memory_id}/forget
+POST /memories/{memory_id}/forget
+X-API-Key: <your-api-key>
 ```
 
 ### 恢复记忆
 
 ```bash
-POST /v1/memories/{memory_id}/restore
+POST /memories/{memory_id}/restore
+X-API-Key: <your-api-key>
 ```
 
 ### 更新记忆版本
 
 ```bash
-POST /v1/memories/{memory_id}/update
+POST /memories/{memory_id}/update
+X-API-Key: <your-api-key>
 Content-Type: application/json
 
 {
@@ -329,28 +358,27 @@ client.close()
 
 ---
 
-## 关键变更（v4.0）
+## 关键变更（v5.0.0）
 
 ### 新增功能
 
-- 时间语义关系（updates/extends/derives）
-- 用户画像分离（static/dynamic）
-- OpenClaw 插件
-- OpenCode 插件
-- 统一客户端接口
+- **统一 API**: 合并 v1/v2 为单一入口，无版本前缀
+- **完整认证**: API Key + 容器所有权验证 + 速率限制
+- **知识图谱 API**: `GET /graph` 端点
+- **中文实体提取**: ASMR 6维度实体类型
+- **关系检测**: 中文语义标记识别
 
-### 删除功能
+### Breaking Changes
 
-- DAG 压缩机制
-- 图谱召回
-- Function Calling 实体提取
-- Schema 隔离（改为 container_tag）
+- 所有端点需要 `X-API-Key` 认证
+- API 路径变更：`/v1/*` → `/*`（根路径）
+- `container_tag` 格式：`{user_id}[_{project}]`（所有权验证）
 
 ### 性能提升
 
 - 召回延迟：1.5-4 秒 → ~50ms
 - 数据模型：6+ 表 → 3 核心表
-- 代码量：72 文件 → ~40 文件
+- API 端点：30+ → 17（精简）
 
 ---
 
@@ -362,4 +390,4 @@ MIT License
 
 *创建者：颓弟*  
 *创建时间：2026-03-19*  
-*最后更新：2026-03-29*
+*最后更新：2026-03-30*

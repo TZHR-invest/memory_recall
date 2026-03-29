@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from typing import List, Optional
 from datetime import datetime
 
-from ..auth import (
+from src.api.auth import (
     AuthService,
     APIKeyCreate,
     APIKeyResponse,
