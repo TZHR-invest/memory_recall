@@ -41,7 +41,7 @@ def format_context(
     project_memories: Optional[List[Dict[str, Any]]],
     user_memories: Optional[List[Dict[str, Any]]],
 ) -> str:
-    parts = ["[SUPERMEMORY]"]
+    parts = ["[MEMORY-RECALL]"]
 
     if profile and profile.get("profile"):
         static_facts = profile["profile"].get("static", [])
@@ -80,7 +80,7 @@ def format_context(
 
 
 MEMORY_NUDGE = """[MEMORY TRIGGER DETECTED]
-The user wants you to remember something. Use the `supermemory` tool with `mode: "add"` to save this information.
+The user wants you to remember something. Use the `memory-recall` tool with `mode: "add"` to save this information.
 
 - Use `scope: "project"` for project-specific preferences
 - Use `scope: "user"` for cross-project preferences
