@@ -25,6 +25,33 @@
 
 ---
 
+## 项目结构
+
+```
+memory_recall/
+├── apps/api/                    # 核心后端服务
+│   ├── src/
+│   │   ├── api/                 # API 端点（memories, auth, graph）
+│   │   ├── services/
+│   │   │   ├── core/            # 核心服务
+│   │   │   │   ├── memory_store.py      # 记忆存储
+│   │   │   │   ├── relation_service.py  # 关系管理
+│   │   │   │   ├── profile_service.py   # 用户画像
+│   │   │   │   ├── entity_extraction.py # 实体提取
+│   │   │   │   ├── document_processor.py # 文档处理
+│   │   │   │   └── chunking/            # AST-aware 文档分块
+│   │   │   └── ...
+│   │   ├── plugins/             # OpenClaw/OpenCode 插件
+│   │   ├── llm/                 # LLM 客户端
+│   │   └── embedding/           # 向量嵌入
+│   ├── migrations/              # 数据库迁移
+│   └── tests/                   # 测试用例
+├── docs/                        # 设计文档
+└── web/                         # 前端界面
+```
+
+---
+
 ## 技术栈
 
 | 组件 | 技术选择 | 说明 |
@@ -367,6 +394,7 @@ client.close()
 - **知识图谱 API**: `GET /graph` 端点
 - **中文实体提取**: ASMR 6维度实体类型
 - **关系检测**: 中文语义标记识别
+- **智能文档分块**: AST-aware chunking（支持 Python/JS/TS 代码）
 
 ### Breaking Changes
 

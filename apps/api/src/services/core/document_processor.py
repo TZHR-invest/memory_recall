@@ -86,6 +86,62 @@ Note:
 - Return JSON only, no other explanations"""
 
 
+SECTION_SUMMARY_PROMPT_ZH = """为以下文档片段生成一个简洁的摘要。
+
+文档片段 {section_num}/{total_sections}:
+{content}
+
+要求:
+- 摘要长度: 100-150字
+- 概括这个片段的主要内容和观点
+- 保持客观准确
+
+直接返回摘要文本，不要其他内容。"""
+
+
+SECTION_SUMMARY_PROMPT_EN = """Generate a concise summary for the following document section.
+
+Section {section_num}/{total_sections}:
+{content}
+
+Requirements:
+- Summary length: 100-150 words
+- Cover main content and points of this section
+- Keep it objective and accurate
+
+Return the summary text directly, nothing else."""
+
+
+MERGE_SUMMARIES_PROMPT_ZH = """以下是一个文档的多个片段摘要，请将它们合并成一个完整的文档摘要。
+
+片段摘要:
+{summaries}
+
+要求:
+- 合并所有片段摘要
+- 去除重复内容
+- 保持逻辑连贯
+- 最终长度: 150-250字
+- 概括整个文档的核心内容
+
+直接返回合并后的摘要文本，不要其他内容。"""
+
+
+MERGE_SUMMARIES_PROMPT_EN = """Below are summaries of multiple sections from a document. Please merge them into a complete document summary.
+
+Section summaries:
+{summaries}
+
+Requirements:
+- Merge all section summaries
+- Remove duplicate content
+- Keep logical coherence
+- Final length: 150-250 words
+- Cover the core content of the entire document
+
+Return the merged summary text directly, nothing else."""
+
+
 SUMMARY_ONLY_PROMPT_ZH = """为以下文档生成一个简洁的摘要。
 
 文档内容:
@@ -188,27 +244,31 @@ class DocumentProcessor:
         self,
         content: str,
         max_content_length: int = 4000,
+        max_section_length: int = 3000,
     ) -> Optional[str]:
         if not self.llm_client:
             return self._fallback_summary(content)
 
-        truncated_content = self._truncate_content(content, max_content_length)
-        language = self._detect_language(truncated_content)
-        prompt = self._get_summary_prompt(truncated_content, language)
+        if len(content) <= max_content_length:
+            truncated_content = self._truncate_content(content, max_content_length)
+            language = self._detect_language(truncated_content)
+            prompt = self._get_summary_prompt(truncated_content, language)
 
-        try:
-            result = await asyncio.wait_for(
-                asyncio.to_thread(
-                    self.llm_client.chat,
-                    [{"role": "user", "content": prompt}],
-                    0.3,
-                    300,
-                ),
-                timeout=self.timeout,
-            )
-            return result.strip() if result else None
-        except Exception:
-            return self._fallback_summary(content)
+            try:
+                result = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        self.llm_client.chat,
+                        [{"role": "user", "content": prompt}],
+                        0.3,
+                        300,
+                    ),
+                    timeout=self.timeout,
+                )
+                return result.strip() if result else None
+            except Exception:
+                return self._fallback_summary(content)
+
+        return await self._hierarchical_summary(content, max_section_length)
 
     async def extract_title(
         self,
@@ -286,6 +346,118 @@ class DocumentProcessor:
         if language == "zh":
             return TITLE_ONLY_PROMPT_ZH.format(content=content)
         return TITLE_ONLY_PROMPT_EN.format(content=content)
+
+    async def _hierarchical_summary(
+        self,
+        content: str,
+        max_section_length: int = 3000,
+    ) -> Optional[str]:
+        language = self._detect_language(content)
+        sections = self._split_into_sections(content, max_section_length)
+
+        if not sections:
+            return self._fallback_summary(content)
+
+        section_summaries = []
+        total_sections = len(sections)
+
+        for i, section in enumerate(sections, 1):
+            try:
+                if language == "zh":
+                    prompt = SECTION_SUMMARY_PROMPT_ZH.format(
+                        section_num=i,
+                        total_sections=total_sections,
+                        content=section,
+                    )
+                else:
+                    prompt = SECTION_SUMMARY_PROMPT_EN.format(
+                        section_num=i,
+                        total_sections=total_sections,
+                        content=section,
+                    )
+
+                result = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        self.llm_client.chat,
+                        [{"role": "user", "content": prompt}],
+                        0.3,
+                        200,
+                    ),
+                    timeout=self.timeout,
+                )
+
+                if result:
+                    section_summaries.append(result.strip())
+            except Exception:
+                continue
+
+        if not section_summaries:
+            return self._fallback_summary(content)
+
+        if len(section_summaries) == 1:
+            return section_summaries[0]
+
+        return await self._merge_summaries(section_summaries, language)
+
+    async def _merge_summaries(
+        self,
+        summaries: List[str],
+        language: str,
+    ) -> Optional[str]:
+        combined = "\n\n".join(f"片段 {i + 1}: {s}" for i, s in enumerate(summaries))
+
+        if language == "zh":
+            prompt = MERGE_SUMMARIES_PROMPT_ZH.format(summaries=combined)
+        else:
+            prompt = MERGE_SUMMARIES_PROMPT_EN.format(summaries=combined)
+
+        try:
+            result = await asyncio.wait_for(
+                asyncio.to_thread(
+                    self.llm_client.chat,
+                    [{"role": "user", "content": prompt}],
+                    0.3,
+                    400,
+                ),
+                timeout=self.timeout,
+            )
+            return result.strip() if result else None
+        except Exception:
+            return " ".join(summaries)
+
+    def _split_into_sections(
+        self,
+        content: str,
+        max_section_length: int,
+    ) -> List[str]:
+        if len(content) <= max_section_length:
+            return [content]
+
+        sections = []
+        paragraphs = re.split(r"\n\s*\n", content)
+
+        current_section = []
+        current_length = 0
+
+        for para in paragraphs:
+            para = para.strip()
+            if not para:
+                continue
+
+            para_length = len(para)
+
+            if current_length + para_length > max_section_length and current_section:
+                sections.append("\n\n".join(current_section))
+                current_section = [para]
+                current_length = para_length
+            else:
+                current_section.append(para)
+                current_length += para_length
+
+        if current_section:
+            sections.append("\n\n".join(current_section))
+
+        return sections
 
     def _fallback_metadata(self, content: str) -> DocumentMetadata:
         return DocumentMetadata(

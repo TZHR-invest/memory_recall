@@ -1,8 +1,9 @@
 """
-Document chunking service with semantic splitting and contextual retrieval.
+Document chunking service with AST-aware code chunking and content-type-based strategies.
 
-Based on Supermemory's approach:
-- Semantic chunking using embedding similarity
+Supports:
+- AST-aware chunking for Python/JavaScript/TypeScript code
+- Content type detection and automatic strategy selection
 - Contextual retrieval with document context
 - Structure-aware splitting
 """
@@ -11,9 +12,20 @@ import re
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass, field
 
+from .chunking.types import (
+    ChunkConfig as NewChunkConfig,
+    TextChunk as NewTextChunk,
+    ContentType,
+    ChunkContext,
+)
+from .chunking.content_detector import ContentDetector
+from .chunking.factory import ChunkingStrategyFactory
+
 
 @dataclass
 class ChunkConfig:
+    """Legacy configuration for backward compatibility."""
+
     max_chunk_tokens: int = 512
     min_chunk_tokens: int = 50
     overlap_tokens: int = 50
@@ -22,9 +34,17 @@ class ChunkConfig:
     semantic_similarity_threshold: float = 0.5
     context_max_tokens: int = 100
 
+    enable_ast: bool = False
+    enable_context: bool = True
+    max_chunk_size: int = 1500
+    overlap_lines: int = 10
+    content_type: Optional[ContentType] = None
+
 
 @dataclass
 class TextChunk:
+    """Legacy text chunk for backward compatibility."""
+
     content: str
     embedded_content: Optional[str] = None
     position: int = 0
@@ -35,8 +55,17 @@ class TextChunk:
 
 
 class DocumentChunker:
+    """
+    Main document chunker with AST-aware and content-type-based strategies.
+
+    Supports two modes:
+    1. Legacy mode (enable_ast=False): Uses regex-based paragraph/sentence splitting
+    2. AST mode (enable_ast=True): Uses AST-aware chunking for code + content-type detection
+    """
+
     def __init__(self, config: Optional[ChunkConfig] = None):
         self.config = config or ChunkConfig()
+        self._detector = ContentDetector()
 
         self._sentence_endings = re.compile(r"[。！？\.!?]\s*")
         self._paragraph_breaks = re.compile(r"\n\s*\n")
@@ -46,6 +75,63 @@ class DocumentChunker:
         self._numbered_list = re.compile(r"^\s*\d+[.)]\s+", re.MULTILINE)
 
     def chunk(
+        self,
+        text: str,
+        metadata: Optional[Dict[str, Any]] = None,
+        document_title: Optional[str] = None,
+        document_summary: Optional[str] = None,
+    ) -> List[TextChunk]:
+        if not text or not text.strip():
+            return []
+
+        if self.config.enable_ast:
+            return self._chunk_with_strategy(
+                text, metadata, document_title, document_summary
+            )
+
+        return self._chunk_legacy(text, metadata, document_title, document_summary)
+
+    def _chunk_with_strategy(
+        self,
+        text: str,
+        metadata: Optional[Dict[str, Any]] = None,
+        document_title: Optional[str] = None,
+        document_summary: Optional[str] = None,
+    ) -> List[TextChunk]:
+        content_type = self.config.content_type
+        if content_type is None:
+            content_type = self._detector.detect(text, metadata)
+
+        new_config = NewChunkConfig(
+            max_chunk_size=self.config.max_chunk_size,
+            min_chunk_size=self.config.min_chunk_tokens,
+            overlap_lines=self.config.overlap_lines,
+            enable_context=self.config.enable_context,
+            context_max_chars=self.config.context_max_tokens * 2,
+            content_type=content_type,
+            max_chunk_tokens=self.config.max_chunk_tokens,
+            min_chunk_tokens=self.config.min_chunk_tokens,
+            overlap_tokens=self.config.overlap_tokens,
+            enable_contextual_retrieval=self.config.enable_contextual_retrieval,
+        )
+
+        strategy = ChunkingStrategyFactory.get_strategy(content_type, new_config)
+        new_chunks = strategy.chunk(text, metadata, document_title, document_summary)
+
+        return [self._convert_chunk(c) for c in new_chunks]
+
+    def _convert_chunk(self, new_chunk: NewTextChunk) -> TextChunk:
+        return TextChunk(
+            content=new_chunk.content,
+            embedded_content=new_chunk.embedded_content,
+            position=new_chunk.position,
+            token_count=new_chunk.token_count,
+            start_offset=new_chunk.start_offset,
+            end_offset=new_chunk.end_offset,
+            metadata=new_chunk.metadata,
+        )
+
+    def _chunk_legacy(
         self,
         text: str,
         metadata: Optional[Dict[str, Any]] = None,
