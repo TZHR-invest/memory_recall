@@ -13,7 +13,7 @@ def create_plugin(config: Dict[str, Any]):
 
         tool = create_tool(client, config)
 
-        ctx.tool("supermemory", tool["schema"], tool["execute"])
+        ctx.tool("memory-recall", tool["schema"], tool["execute"])
 
         @ctx.hook("chat.message")
         async def on_chat_message(input_data, output_data):

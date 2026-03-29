@@ -23,7 +23,7 @@ MEMORY_TYPES = [
 def create_tool(client: OpenCodeClient, config: Dict[str, Any]):
     def tool_schema():
         return {
-            "name": "supermemory",
+            "name": "memory-recall",
             "description": "Manage persistent memory system. Use 'search' to find memories, 'add' to store knowledge.",
             "parameters": {
                 "type": "object",
@@ -70,7 +70,7 @@ def create_tool(client: OpenCodeClient, config: Dict[str, Any]):
                 return json.dumps(
                     {
                         "success": True,
-                        "message": "Supermemory Usage Guide",
+                        "message": "Memory Recall Usage Guide",
                         "modes": ["add", "search", "profile", "list", "forget"],
                         "scopes": {
                             "user": "Cross-project",

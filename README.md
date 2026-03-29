@@ -301,7 +301,7 @@ bunx memory-recall-opencode install
 
 ```json
 {
-    "name": "supermemory",
+    "name": "memory-recall",
     "modes": ["add", "search", "profile", "list", "forget"],
     "scopes": ["user", "project"]
 }
