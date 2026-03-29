@@ -178,7 +178,7 @@ async def test_entity_matching():
             print(f"   ❌ 正则匹配: 未找到")
 
         # 5. 综合测试
-        all_results = extractor.extract_entities(query, user_id)
+        all_results = await extractor.extract_entities(query, user_id)
         if all_results:
             print(f"   ⭐ 综合匹配:")
             for entity_name, method, confidence in all_results[:3]:

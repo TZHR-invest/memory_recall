@@ -6,7 +6,20 @@
 2. 图谱遍历关系
 3. BM25 重排序
 4. 返回关系三元组 + 记忆内容
+
+⚠️ DEPRECATED: 此服务已废弃，请使用 lossless_recall_service (v3.0 DAG 架构)
+- 旧版查询 'memories' 表
+- 新版查询 'raw_messages' + 'summaries' 表
+- 迁移指南: 使用 lossless_recall_service.hybrid_recall() 替代 graph_recall_service.hybrid_recall()
 """
+
+import warnings
+
+warnings.warn(
+    "graph_recall_service 已废弃，请使用 lossless_recall_service (v3.0 DAG 架构)",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 from typing import List, Dict, Optional, Any
 from ..database import db
@@ -16,6 +29,7 @@ from .llm_recall_service import get_llm_recall_service
 from .embedding_cache import get_embedding_cache
 from .entity_dictionary_service import get_entity_dictionary_service
 from .jieba_service import extract_keywords
+from ..embedding.client import get_embedding_client
 from rank_bm25 import BM25Okapi
 import asyncio
 import logging
@@ -31,6 +45,7 @@ class GraphEnhancedRecallService:
         self.llm_service = get_llm_recall_service()
         self.embedding_cache = get_embedding_cache()
         self.entity_dict = get_entity_dictionary_service()
+        self.embedding_client = get_embedding_client()
 
     async def search_by_entity(
         self, entity_name: str, user_id: str, limit: int = 10
@@ -481,7 +496,7 @@ class GraphEnhancedRecallService:
                 methods = ["keyword"]
 
             # 提取实体
-            results = extractor.extract_entities(query, user_id, methods)
+            results = await extractor.extract_entities(query, user_id, methods)
 
             logger.info(f"增强实体提取结果: {results[:3]}")
 
@@ -785,27 +800,54 @@ class GraphEnhancedRecallService:
         limit: int,
         time_range: Optional[Dict[str, Any]] = None,
     ) -> List[Dict]:
-        """向量召回（调用现有 RecallService）"""
+        """向量召回（直接查询数据库）"""
         try:
-            from .recall_service import get_recall_service
-
-            recall_service = get_recall_service()
-
-            # 调用向量搜索
-            query_embedding = recall_service.embedding_client.embed(query)
+            # 生成查询向量
+            query_embedding = self.embedding_client.embed(query)
             if not query_embedding:
                 logger.warning(f"生成查询向量失败: {query}")
                 return []
 
-            # 执行向量搜索（传递时间过滤）
-            results = await recall_service._vector_search(
-                query_embedding,
-                limit,
-                time_range=time_range,  # ✅ 传递时间过滤
-                location_filter=None,
-                person_filter=None,
-                tag_filter=None,
-            )
+            # 转换为 PostgreSQL 向量格式
+            embedding_str = "[" + ",".join(map(str, query_embedding)) + "]"
+
+            # 构建基础 SQL
+            sql = """
+                SELECT 
+                    m.id,
+                    m.content,
+                    m.created_at,
+                    m.time_value,
+                    m.location_name,
+                    m.people,
+                    1 - (m.embedding <=> $1::vector) AS similarity
+                FROM memories m
+                WHERE m.user_id = $2
+                AND m.status = 'active'
+                AND m.embedding IS NOT NULL
+            """
+
+            params = [embedding_str, user_id]
+            param_count = 2
+
+            # 添加时间过滤
+            if time_range:
+                if time_range.get("start_time"):
+                    param_count += 1
+                    sql += f" AND m.time_value >= ${param_count}"
+                    params.append(time_range["start_time"])
+                if time_range.get("end_time"):
+                    param_count += 1
+                    sql += f" AND m.time_value <= ${param_count}"
+                    params.append(time_range["end_time"])
+
+            sql += f"""
+                ORDER BY m.embedding <=> $1::vector
+                LIMIT ${param_count + 1}
+            """
+            params.append(limit)
+
+            results = await db.fetch(sql, *params)
 
             # 转换格式以匹配混合召回接口
             return [
@@ -820,7 +862,9 @@ class GraphEnhancedRecallService:
                     else None,
                     "location": r.get("location_name"),
                     "people": r.get("people"),
-                    "similarity": r.get("similarity", 0.0),
+                    "similarity": float(r["similarity"])
+                    if r.get("similarity")
+                    else 0.0,
                     "recall_type": "vector",
                 }
                 for r in results
@@ -837,22 +881,53 @@ class GraphEnhancedRecallService:
         limit: int,
         time_range: Optional[Dict[str, Any]] = None,
     ) -> List[Dict]:
-        """关键词召回（调用现有 RecallService）"""
+        """关键词召回（直接查询数据库）"""
         try:
-            from .recall_service import get_recall_service
+            # 提取关键词
+            keywords = extract_keywords(query, min_length=1)
+            if not keywords:
+                return []
 
-            recall_service = get_recall_service()
+            # 构建 tsquery
+            tsquery = " | ".join(keywords)
 
-            # 执行关键词搜索（传递时间过滤）
-            results = await recall_service._keyword_search(
-                query,
-                limit,
-                time_range=time_range,  # ✅ 传递时间过滤
-                location_filter=None,
-                person_filter=None,
-                tag_filter=None,
-                keywords=None,  # 让 recall_service 自己提取关键词
-            )
+            # 构建基础 SQL
+            sql = """
+                SELECT 
+                    m.id,
+                    m.content,
+                    m.created_at,
+                    m.time_value,
+                    m.location_name,
+                    m.people,
+                    ts_rank_cd(to_tsvector('simple', m.content), to_tsquery('simple', $1)) AS rank
+                FROM memories m
+                WHERE m.user_id = $2
+                AND m.status = 'active'
+                AND to_tsvector('simple', m.content) @@ to_tsquery('simple', $1)
+            """
+
+            params = [tsquery, user_id]
+            param_count = 2
+
+            # 添加时间过滤
+            if time_range:
+                if time_range.get("start_time"):
+                    param_count += 1
+                    sql += f" AND m.time_value >= ${param_count}"
+                    params.append(time_range["start_time"])
+                if time_range.get("end_time"):
+                    param_count += 1
+                    sql += f" AND m.time_value <= ${param_count}"
+                    params.append(time_range["end_time"])
+
+            sql += f"""
+                ORDER BY rank DESC
+                LIMIT ${param_count + 1}
+            """
+            params.append(limit)
+
+            results = await db.fetch(sql, *params)
 
             # 转换格式以匹配混合召回接口
             return [
@@ -867,7 +942,9 @@ class GraphEnhancedRecallService:
                     else None,
                     "location": r.get("location_name"),
                     "people": r.get("people"),
-                    "similarity": r.get("similarity", 0.0),
+                    "similarity": min(1.0, float(r["rank"]) * 5)
+                    if r.get("rank")
+                    else 0.0,
                     "recall_type": "keyword",
                 }
                 for r in results

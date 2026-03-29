@@ -67,3 +67,18 @@ htmlcov/
 
 # Test results
 apps/api/tests/extraction_results/
+
+# OpenClaw Plugin (built separately)
+clients/
+
+# Build artifacts
+*.tgz
+*.sh
+
+# Tool config directories
+.pi/
+.opencode/
+
+# Runtime storage
+storage/
+openspec/

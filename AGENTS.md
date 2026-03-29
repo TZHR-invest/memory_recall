@@ -8,7 +8,7 @@ Memory Recall 是一个通用记忆召回系统，支持：
 - **OpenClaw ContextEngine 插件集成**
 - **多用户 Schema 隔离**
 
-**当前版本**: v3.0.0  
+**当前版本**: v4.0.0  
 **工作目录**: `apps/api/`
 
 ---
@@ -107,14 +107,33 @@ apps/api/src/
 │   │   ├── memory_recall_engine.py   # ContextEngine 接口
 │   │   ├── lossless_recall_service.py # 混合召回
 │   │   └── dag_expand_service.py     # DAG 展开
+│   ├── evolution/      # 记忆进化服务（v4.0 新增）
+│   │   ├── importance_service.py     # 重要性评估
+│   │   ├── fact_extraction_service.py # 事实提取
+│   │   ├── fusion_service.py          # 记忆融合
+│   │   ├── user_profile_service.py    # 用户画像
+│   │   ├── temporal_service.py        # 时间感知
+│   │   ├── chunking_service.py        # 分段服务
+│   │   └── forgetting_service.py      # 遗忘机制
 │   ├── unified_memory_service.py     # 统一入口（v3.0）
 │   ├── memory_service.py             # 传统记忆服务
 │   ├── recall_service.py             # 召回服务
 │   └── graph_recall_service.py       # 图谱召回
-├── routes/             # FastAPI 路由
+├── api/                # API v1 路由（v4.0 新增）
+│   └── v1/
+│       ├── memories.py       # 记忆 API
+│       ├── recall.py         # 召回 API
+│       ├── profile.py        # 用户画像 API
+│       ├── relations.py      # 关系 API
+│       ├── notifications.py  # 通知 API
+│       ├── containers.py     # 容器 API
+│       └── auth.py           # 认证 API
+├── routes/             # FastAPI 路由（遗留）
 │   ├── memories.py     # 记忆 CRUD（已迁移到 DAG）
 │   ├── files.py        # 文件上传（已迁移到 DAG）
 │   └── graph.py        # 图谱查询
+├── background/         # 后台任务（v4.0 新增）
+│   └── scheduler.py    # 任务调度器
 ├── llm/                # LLM 客户端
 ├── embedding/          # 向量嵌入
 ├── tools/              # Function Calling 工具
@@ -380,6 +399,94 @@ python scripts/migrate_memories_to_raw_messages.py
 
 ---
 
+## Evolution Services（v4.0 新增）
+
+Evolution Services 提供记忆进化机制，包括重要性评估、事实提取、记忆融合、用户画像、时间感知、分段和遗忘等功能。
+
+### 服务列表
+
+| 服务 | 文件 | 说明 |
+|-----|------|------|
+| ImportanceService | `importance_service.py` | 重要性评估 |
+| FactExtractionService | `fact_extraction_service.py` | 事实提取 |
+| FusionService | `fusion_service.py` | 记忆融合 |
+| UserProfileService | `user_profile_service.py` | 用户画像 |
+| TemporalService | `temporal_service.py` | 时间感知 |
+| ChunkingService | `chunking_service.py` | 分段服务 |
+| ForgettingService | `forgetting_service.py` | 遗忘机制 |
+
+### 使用示例
+
+```python
+from src.services.evolution.importance_service import ImportanceService
+from src.services.evolution.user_profile_service import UserProfileService
+
+# 重要性评估
+importance_service = ImportanceService()
+score = await importance_service.evaluate(content, user_id)
+
+# 用户画像
+profile_service = UserProfileService()
+profile = await profile_service.get_profile(user_id)
+```
+
+---
+
+## API v1 Endpoints（v4.0 新增）
+
+API v1 提供 RESTful API 接口，采用模块化设计。
+
+### 端点列表
+
+| 端点 | 文件 | 说明 |
+|-----|------|------|
+| Memories | `memories.py` | 记忆 CRUD |
+| Recall | `recall.py` | 智能召回 |
+| Profile | `profile.py` | 用户画像 |
+| Relations | `relations.py` | 关系管理 |
+| Notifications | `notifications.py` | 通知管理 |
+| Containers | `containers.py` | 容器管理 |
+| Auth | `auth.py` | 认证授权 |
+
+### API 基础路径
+
+```
+/api/v1/
+```
+
+### 认证
+
+API 使用 API Key 进行认证：
+```bash
+Authorization: Bearer rk_live_xxxxx
+```
+
+---
+
+## Background Tasks（v4.0 新增）
+
+Background Tasks 提供后台任务调度功能。
+
+### 调度器
+
+| 任务 | 说明 |
+|-----|------|
+| Scheduler | `scheduler.py` | 任务调度器 |
+
+### 使用示例
+
+```python
+from src.background.scheduler import scheduler
+
+# 启动调度器
+await scheduler.start()
+
+# 停止调度器
+await scheduler.stop()
+```
+
+---
+
 ## 测试规范
 
 ### 测试文件结构
@@ -435,7 +542,7 @@ async def test_store_raw_message():
 {
   "id": "memory-recall",
   "name": "Memory Recall Engine",
-  "version": "3.0.0",
+  "version": "4.0.0",
   "type": "context_engine",
   "capabilities": {
     "owns_compaction": true,

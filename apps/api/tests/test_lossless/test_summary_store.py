@@ -2,6 +2,7 @@ import pytest
 from pathlib import Path
 import sys
 import os
+import time
 
 sys.path.insert(
     0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -17,10 +18,14 @@ from src.services.lossless.raw_message_store import RawMessageStore
 from src.database import db
 
 
+def unique_user_id(base: str) -> str:
+    return f"{base}_{int(time.time() * 1000000)}"
+
+
 @pytest.mark.asyncio
 async def test_create_summary():
     store = SummaryStore()
-    user_id = "test_user_summary_pytest"
+    user_id = unique_user_id("test_user_summary")
 
     await db.connect()
     try:
@@ -51,7 +56,7 @@ async def test_create_summary():
 async def test_link_messages():
     store = SummaryStore()
     raw_store = RawMessageStore()
-    user_id = "test_user_link_pytest"
+    user_id = unique_user_id("test_user_link")
 
     await db.connect()
     try:
@@ -79,7 +84,7 @@ async def test_link_messages():
 @pytest.mark.asyncio
 async def test_link_parents():
     store = SummaryStore()
-    user_id = "test_user_parents_pytest"
+    user_id = unique_user_id("test_user_parents")
 
     await db.connect()
     try:
@@ -110,7 +115,7 @@ async def test_link_parents():
 @pytest.mark.asyncio
 async def test_get_summary_children():
     store = SummaryStore()
-    user_id = "test_user_children_pytest"
+    user_id = unique_user_id("test_user_children")
 
     await db.connect()
     try:
@@ -142,7 +147,7 @@ async def test_get_summary_children():
 @pytest.mark.asyncio
 async def test_update_embedding():
     store = SummaryStore()
-    user_id = "test_user_sum_embedding_pytest"
+    user_id = unique_user_id("test_user_sum_embedding")
 
     await db.connect()
     try:
@@ -168,7 +173,7 @@ async def test_update_embedding():
 @pytest.mark.asyncio
 async def test_get_by_agent():
     store = SummaryStore()
-    user_id = "test_user_by_agent_pytest"
+    user_id = unique_user_id("test_user_by_agent")
 
     await db.connect()
     try:

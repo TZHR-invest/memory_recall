@@ -7,15 +7,15 @@ from datetime import datetime
 
 from src.database import db
 from src.models.lossless import MemoryType
-from src.services.lossless.raw_message_store import (
+from src.services.core.raw_message_store import (
     RawMessageStore,
     raw_message_store as default_raw_store,
 )
-from src.services.lossless.summary_store import (
+from src.services.core.summary_store import (
     SummaryStore,
     summary_store as default_summary_store,
 )
-from src.services.lossless.lossless_recall_service import (
+from src.services.core.lossless_recall_service import (
     LosslessRecallService,
     lossless_recall_service as default_recall_service,
 )

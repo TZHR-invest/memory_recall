@@ -12,28 +12,27 @@ from dotenv import load_dotenv
 env_path = Path(__file__).parent.parent.parent / ".env"
 load_dotenv(env_path)
 
-from src.services.lossless.memory_recall_engine import (
-    MemoryRecallEngine,
-    memory_recall_engine,
-    ContextEngineInfo,
+from src.services.core.memory_service import (
+    MemoryService,
+    memory_service,
+    ServiceInfo,
 )
-from src.services.lossless.raw_message_store import RawMessageStore
-from src.services.lossless.context_store import ContextStore
+from src.services.core.raw_message_store import RawMessageStore
+from src.services.core.context_store import ContextStore
 from src.database import db
 
 
 def test_engine_info():
-    info = ContextEngineInfo()
+    info = ServiceInfo()
 
     assert info.id == "memory-recall"
-    assert info.name == "Memory Recall Engine"
-    assert info.version == "3.0.0"
-    assert info.owns_compaction == True
+    assert info.name == "Memory Service"
+    assert info.version == "4.0.0"
 
 
 @pytest.mark.asyncio
 async def test_bootstrap():
-    engine = MemoryRecallEngine()
+    engine = MemoryService()
     user_id = "test_engine_bootstrap"
     session_id = "session_bootstrap"
 

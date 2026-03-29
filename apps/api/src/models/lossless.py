@@ -6,6 +6,8 @@ MemoryType = Literal["preference", "note", "dialogue"]
 SummaryKind = Literal["leaf", "condensed"]
 ItemType = Literal["message", "summary"]
 CompressionLevel = Literal["normal", "aggressive", "fallback"]
+MemoryBehavior = Literal["fact", "preference", "episode"]
+MemoryLifespan = Literal["temporary", "short_term", "long_term", "permanent"]
 
 
 @dataclass
@@ -35,6 +37,17 @@ class RawMessage:
     id: Optional[str] = None
     created_at: Optional[datetime] = None
     is_archived: bool = False
+    event_date: Optional[datetime] = None
+    document_date: Optional[datetime] = None
+    expiration_date: Optional[datetime] = None
+    memory_lifespan: MemoryLifespan = "long_term"
+    is_latest: bool = True
+    is_expired: bool = False
+    container_id: Optional[str] = None
+    access_count: int = 0
+    last_accessed_at: Optional[datetime] = None
+    memory_behavior: MemoryBehavior = "episode"
+    chunk_count: int = 0
 
 
 @dataclass
@@ -56,6 +69,8 @@ class Summary:
     compression_level: CompressionLevel = "normal"
     summary_id: Optional[str] = None
     created_at: Optional[datetime] = None
+    expiration_date: Optional[datetime] = None
+    is_expired: bool = False
 
 
 @dataclass
