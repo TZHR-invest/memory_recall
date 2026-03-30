@@ -237,9 +237,19 @@ class ProfileService:
         if not row:
             return None
 
+        # Parse JSONB fields (asyncpg returns strings for JSONB when manually serialized)
+        static_memories = row["static_memories"]
+        dynamic_memories = row["dynamic_memories"]
+
+        # Handle both string and already-parsed formats
+        if isinstance(static_memories, str):
+            static_memories = json.loads(static_memories) if static_memories else []
+        if isinstance(dynamic_memories, str):
+            dynamic_memories = json.loads(dynamic_memories) if dynamic_memories else []
+
         return {
-            "static_memories": row["static_memories"] or [],
-            "dynamic_memories": row["dynamic_memories"] or [],
+            "static_memories": static_memories or [],
+            "dynamic_memories": dynamic_memories or [],
             "last_updated": row["last_updated"],
             "entity_context": row["entity_context"],
         }

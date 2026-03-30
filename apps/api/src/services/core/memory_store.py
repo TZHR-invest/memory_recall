@@ -71,7 +71,13 @@ class MemoryStore:
         if generate_embedding:
             embedding = await self._generate_embedding(content)
 
+        # Database JSONB may return as string
         final_metadata = metadata or {}
+        if isinstance(final_metadata, str):
+            try:
+                final_metadata = json.loads(final_metadata)
+            except Exception:
+                final_metadata = {}
 
         if extract_entities:
             if use_llm_extraction:
@@ -425,6 +431,13 @@ class MemoryStore:
         return "[" + ",".join(map(str, embedding)) + "]"
 
     def _row_to_memory(self, row: Dict) -> Memory:
+        metadata = row.get("metadata", {}) or {}
+        if isinstance(metadata, str):
+            try:
+                metadata = json.loads(metadata)
+            except Exception:
+                metadata = {}
+
         return Memory(
             id=row["id"],
             container_tag=row["container_tag"],
@@ -434,7 +447,7 @@ class MemoryStore:
             is_latest=row.get("is_latest", True),
             valid_from=row.get("valid_from"),
             valid_until=row.get("valid_until"),
-            metadata=row.get("metadata", {}) or {},
+            metadata=metadata,
             confidence=row.get("confidence", 0.8),
             created_at=row.get("created_at"),
             is_forgotten=row.get("is_forgotten", False),
