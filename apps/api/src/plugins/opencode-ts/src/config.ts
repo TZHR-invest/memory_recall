@@ -50,7 +50,7 @@ const DEFAULT_CONFIG: Omit<Config, "apiKey"> = {
   maxProjectMemories: 10,
   maxProfileItems: 5,
   injectProfile: true,
-  compactionThreshold: 0.7,
+  compactionThreshold: 0.6,
   enableSummaryCapture: true,
   enableDocumentTracking: true,
   trackedDocPatterns: [
