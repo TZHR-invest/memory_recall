@@ -36,6 +36,40 @@ export interface HybridSearchResult {
   document_type?: string;
 }
 
+// Graph-related interfaces for knowledge graph recall
+export interface GraphNode {
+  id: string;
+  type: "memory";
+  content: string;
+  is_static: boolean;
+  is_latest: boolean;
+  is_inference: boolean;
+  created_at?: string;
+  entities?: Record<string, string[]>;
+}
+
+export interface GraphEdge {
+  source: string;
+  target: string;
+  type: "updates" | "extends" | "derives";
+  confidence: number;
+}
+
+export interface GraphResponse {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  total_count: number;
+  has_more: boolean;
+}
+
+export interface RelatedMemory {
+  id: string;
+  content: string;
+  relation_type: "updates" | "extends" | "derives";
+  confidence: number;
+  created_at?: string;
+}
+
 export interface Profile {
   static: string[];
   dynamic: string[];
@@ -51,6 +85,43 @@ export class ConfigurationError extends Error {
     super(message);
     this.name = "ConfigurationError";
   }
+}
+
+export interface GraphRecallConfig {
+  enableGraphRecall: boolean;
+  enableEntityRecall: boolean;
+  graphMaxDepth: number;
+  graphMaxNodes: number;
+}
+
+const GRAPH_CONFIG_DEFAULTS: GraphRecallConfig = {
+  enableGraphRecall: true,
+  enableEntityRecall: true,
+  graphMaxDepth: 2,
+  graphMaxNodes: 5,
+};
+
+export function validateGraphConfig(config: Partial<GraphRecallConfig>): GraphRecallConfig {
+  const result: GraphRecallConfig = {
+    enableGraphRecall: config.enableGraphRecall ?? GRAPH_CONFIG_DEFAULTS.enableGraphRecall,
+    enableEntityRecall: config.enableEntityRecall ?? GRAPH_CONFIG_DEFAULTS.enableEntityRecall,
+    graphMaxDepth: config.graphMaxDepth ?? GRAPH_CONFIG_DEFAULTS.graphMaxDepth,
+    graphMaxNodes: config.graphMaxNodes ?? GRAPH_CONFIG_DEFAULTS.graphMaxNodes,
+  };
+
+  if (result.graphMaxDepth < 1 || result.graphMaxDepth > 5) {
+    throw new ConfigurationError(
+      `graphMaxDepth must be between 1 and 5, got ${result.graphMaxDepth}`
+    );
+  }
+
+  if (result.graphMaxNodes < 1 || result.graphMaxNodes > 20) {
+    throw new ConfigurationError(
+      `graphMaxNodes must be between 1 and 20, got ${result.graphMaxNodes}`
+    );
+  }
+
+  return result;
 }
 
 const REQUEST_TIMEOUT_MS = 30000; // 30 seconds - API can be slow due to embedding generation
@@ -220,6 +291,41 @@ export class ApiClient {
       }
     );
     return response.results || [];
+  }
+
+  async getGraph(
+    containerTag: string,
+    options?: {
+      limit?: number;
+      offset?: number;
+      isStatic?: boolean;
+    }
+  ): Promise<GraphResponse> {
+    const params = new URLSearchParams({ container_tag: containerTag });
+    if (options?.limit) {
+      params.append("limit", options.limit.toString());
+    }
+    if (options?.offset) {
+      params.append("offset", options.offset.toString());
+    }
+    if (options?.isStatic !== undefined) {
+      params.append("is_static", options.isStatic.toString());
+    }
+    return this.request<GraphResponse>(`/graph?${params.toString()}`);
+  }
+
+  async getRelatedMemories(
+    memoryId: string,
+    relationTypes?: ("updates" | "extends" | "derives")[]
+  ): Promise<RelatedMemory[]> {
+    const params = new URLSearchParams();
+    if (relationTypes && relationTypes.length > 0) {
+      params.append("relation_types", relationTypes.join(","));
+    }
+    const response = await this.request<{ relations: RelatedMemory[] }>(
+      `/memories/${memoryId}/relations?${params.toString()}`
+    );
+    return response.relations || [];
   }
 
   getUserTag(): string {
