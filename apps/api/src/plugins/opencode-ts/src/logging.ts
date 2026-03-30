@@ -136,6 +136,8 @@ export class Logger {
     contextLength?: number;
     graphCount?: number;
     entityCount?: number;
+    filteredCount?: number;
+    dynamicRecall?: boolean;
   }): void {
     this.write("info", "Context injected", {
       session_id: params.sessionId,
@@ -147,6 +149,26 @@ export class Logger {
       context_length: params.contextLength || 0,
       graph_count: params.graphCount || 0,
       entity_count: params.entityCount || 0,
+      filtered_count: params.filteredCount || 0,
+      dynamic_recall: params.dynamicRecall || false,
+    });
+  }
+
+  smartRecall(params: {
+    sessionId: string;
+    recalledCount: number;
+    filteredCount: number;
+    injectedCount: number;
+    threshold: number;
+    dynamicSize: boolean;
+  }): void {
+    this.write("info", "Smart recall executed", {
+      session_id: params.sessionId,
+      recalled_count: params.recalledCount,
+      filtered_count: params.filteredCount,
+      injected_count: params.injectedCount,
+      threshold: params.threshold,
+      dynamic_size: params.dynamicSize,
     });
   }
 

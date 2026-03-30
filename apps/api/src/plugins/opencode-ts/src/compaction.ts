@@ -1,6 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
+import type { OpencodeClient } from "@opencode-ai/sdk";
 import type { ApiClient } from "./client";
 import type { Config } from "./config";
 import type { Logger } from "./logging";
@@ -18,6 +19,7 @@ interface CompactionState {
   lastCompactionTime: Map<string, number>;
   compactionInProgress: Set<string>;
   summarizedSessions: Set<string>;
+  savedSummarySessions: Set<string>; // Prevent duplicate saves
 }
 
 interface MessageInfo {
@@ -175,6 +177,29 @@ function generatePartId(): string {
   return `prt_${timestamp}${random}`;
 }
 
+function extractSummaryContent(messageId: string): string | null {
+  const partDir = path.join(PART_STORAGE, messageId);
+  if (!fs.existsSync(partDir)) return null;
+
+  try {
+    const files = fs.readdirSync(partDir).filter(f => f.endsWith('.json'));
+    for (const file of files) {
+      try {
+        const content = fs.readFileSync(path.join(partDir, file), 'utf-8');
+        const part = JSON.parse(content) as { type?: string; text?: string };
+        if (part.type === 'text' && part.text && part.text.trim()) {
+          return part.text.trim();
+        }
+      } catch {
+        continue;
+      }
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
 function injectHookMessage(
   sessionId: string,
   hookContent: string,
@@ -257,10 +282,12 @@ export class CompactionHook {
   private tags: { user: string; project: string };
   private logger: Logger | null;
   private directory: string;
+  private opencodeClient: OpencodeClient | null = null;
   private state: CompactionState = {
     lastCompactionTime: new Map(),
     compactionInProgress: new Set(),
     summarizedSessions: new Set(),
+    savedSummarySessions: new Set(),
   };
 
   constructor(
@@ -268,13 +295,19 @@ export class CompactionHook {
     config: Config,
     tags: { user: string; project: string },
     logger: Logger | null,
-    directory: string
+    directory: string,
+    opencodeClient?: OpencodeClient
   ) {
     this.client = client;
     this.config = config;
     this.tags = tags;
     this.logger = logger;
     this.directory = directory;
+    this.opencodeClient = opencodeClient || null;
+  }
+
+  setOpenCodeClient(client: OpencodeClient): void {
+    this.opencodeClient = client;
   }
 
   private async fetchProjectMemoriesForCompaction(): Promise<string[]> {
@@ -321,6 +354,13 @@ export class CompactionHook {
   }
 
   async saveSummaryAsMemory(sessionId: string, summaryContent: string): Promise<string | null> {
+    if (this.state.savedSummarySessions.has(sessionId)) {
+      if (this.logger) {
+        this.logger.debug("Summary already saved for this session", { sessionID: sessionId });
+      }
+      return null;
+    }
+
     const minSummaryLength = 100;
     if (!summaryContent || summaryContent.length < minSummaryLength) {
       if (this.logger) {
@@ -344,6 +384,7 @@ export class CompactionHook {
       );
 
       if (result?.id) {
+        this.state.savedSummarySessions.add(sessionId);
         if (this.logger) {
           this.logger.summaryCaptured({
             sessionId,
@@ -359,6 +400,10 @@ export class CompactionHook {
       }
     }
     return null;
+  }
+
+  markSummarized(sessionId: string): void {
+    this.state.summarizedSessions.add(sessionId);
   }
 
   async checkAndTriggerCompaction(
@@ -450,6 +495,17 @@ export class CompactionHook {
     }
 
     try {
+      if (this.opencodeClient) {
+        await this.opencodeClient.tui.showToast({
+          body: {
+            title: "Preemptive Compaction",
+            message: `Context at ${Math.round(usageRatio * 100)}% - compacting with Memory Recall context...`,
+            variant: "warning",
+            duration: 3000,
+          },
+        }).catch(() => {});
+      }
+
       await this.injectCompactionContext({
         sessionID: sessionId,
         providerID: providerId,
@@ -459,6 +515,39 @@ export class CompactionHook {
       });
 
       this.state.summarizedSessions.add(sessionId);
+
+      if (this.opencodeClient) {
+        await this.opencodeClient.session.summarize({
+          path: { id: sessionId },
+          body: { providerID: providerId, modelID: modelId },
+          query: { directory: this.directory },
+        });
+
+        await this.opencodeClient.tui.showToast({
+          body: {
+            title: "Compaction Complete",
+            message: "Session compacted with Memory Recall context. Resuming...",
+            variant: "success",
+            duration: 2000,
+          },
+        }).catch(() => {});
+
+        setTimeout(async () => {
+          try {
+            const storedMsg = messageDir ? findNearestMessageWithFields(messageDir) : null;
+            await this.opencodeClient?.session.promptAsync({
+              path: { id: sessionId },
+              body: {
+                agent: storedMsg?.agent,
+                parts: [{ type: "text", text: "Continue" }],
+              },
+              query: { directory: this.directory },
+            });
+          } catch {}
+        }, 500);
+      }
+
+      this.state.compactionInProgress.delete(sessionId);
 
       if (this.logger) {
         this.logger.compactionComplete({ sessionId, durationMs: 0 });
@@ -471,6 +560,78 @@ export class CompactionHook {
     }
   }
 
+  private async waitForSummaryMessage(
+    sessionId: string,
+    maxAttempts: number = 10,
+    delayMs: number = 500
+  ): Promise<{ content: string; messageId: string } | null> {
+    if (!this.opencodeClient) return null;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      if (attempt > 0) {
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      }
+
+      try {
+        const resp = await this.opencodeClient.session.messages({
+          path: { id: sessionId },
+          query: { directory: this.directory },
+        });
+
+        const messages = (resp.data ?? resp) as Array<{ 
+          id?: string;
+          info: { role?: string; summary?: boolean }; 
+          parts?: Array<{ type: string; text?: string }> 
+        }>;
+
+        const summaryMessages = messages.filter(m => 
+          m.info.role === "assistant" && m.info.summary === true
+        );
+
+        if (summaryMessages.length > 0) {
+          const latestSummary = summaryMessages[summaryMessages.length - 1];
+          
+          if (latestSummary?.parts) {
+            const textParts = latestSummary.parts.filter(p => p.type === "text" && p.text);
+            const summaryContent = textParts.map(p => p.text).join("\n");
+
+            if (summaryContent && summaryContent.length >= 100) {
+              if (this.logger) {
+                this.logger.debug("Summary message found", {
+                  sessionID: sessionId,
+                  attempt: attempt + 1,
+                  contentLength: summaryContent.length,
+                });
+              }
+              return {
+                content: summaryContent,
+                messageId: latestSummary.id || "",
+              };
+            }
+          }
+        }
+
+        if (this.logger) {
+          this.logger.debug("Waiting for summary generation", {
+            sessionID: sessionId,
+            attempt: attempt + 1,
+            maxAttempts,
+          });
+        }
+      } catch (e) {
+        if (this.logger) {
+          this.logger.warn("Failed to fetch messages during polling", {
+            sessionID: sessionId,
+            attempt: attempt + 1,
+            error: String(e),
+          });
+        }
+      }
+    }
+
+    return null;
+  }
+
   async handleSummaryMessage(
     sessionId: string,
     messageInfo: MessageInfo,
@@ -481,6 +642,71 @@ export class CompactionHook {
     this.state.summarizedSessions.delete(sessionId);
 
     if (!this.config.enableSummaryCapture) return;
+
+    // Use polling to wait for summary generation
+    if (this.opencodeClient) {
+      if (this.logger) {
+        this.logger.info("Waiting for summary generation", { sessionID: sessionId });
+      }
+
+      const result = await this.waitForSummaryMessage(sessionId);
+      
+      if (result) {
+        const memoryId = await this.saveSummaryAsMemory(sessionId, result.content);
+        if (memoryId && this.logger) {
+          this.logger.info("Summary saved as memory (from API)", {
+            sessionID: sessionId,
+            memoryID: memoryId,
+            contentLength: result.content.length,
+          });
+        }
+        return;
+      }
+
+      if (this.logger) {
+        this.logger.warn("Summary not found after polling, falling back to file system", {
+          sessionID: sessionId,
+        });
+      }
+    }
+
+    // Fallback to file system extraction
+    const messageId = messageInfo.id;
+    if (!messageId) {
+      if (this.logger) {
+        this.logger.warn("No message ID in summary", { sessionID: sessionId });
+      }
+      return;
+    }
+
+    const summaryContent = extractSummaryContent(messageId);
+    if (!summaryContent) {
+      if (this.logger) {
+        this.logger.warn("Could not extract summary content", { 
+          sessionID: sessionId, 
+          messageID: messageId 
+        });
+      }
+      return;
+    }
+
+    try {
+      const memoryId = await this.saveSummaryAsMemory(sessionId, summaryContent);
+      if (memoryId && this.logger) {
+        this.logger.info("Summary saved as memory (from file)", {
+          sessionID: sessionId,
+          memoryID: memoryId,
+          contentLength: summaryContent.length,
+        });
+      }
+    } catch (e) {
+      if (this.logger) {
+        this.logger.error("Failed to save summary", { 
+          sessionID: sessionId, 
+          error: String(e) 
+        });
+      }
+    }
   }
 
   async handleEvent(event: { type: string; properties?: Record<string, unknown> }, ctxClient: unknown): Promise<void> {
@@ -494,6 +720,7 @@ export class CompactionHook {
         this.state.lastCompactionTime.delete(sessionId);
         this.state.compactionInProgress.delete(sessionId);
         this.state.summarizedSessions.delete(sessionId);
+        this.state.savedSummarySessions.delete(sessionId);
       }
       return;
     }
@@ -503,7 +730,14 @@ export class CompactionHook {
       const sessionId = info.sessionID;
       if (!sessionId) return;
 
+      // Check if this is a summary message (explicit)
       if (info.role === "assistant" && info.summary === true && info.finish) {
+        await this.handleSummaryMessage(sessionId, info, ctxClient);
+        return;
+      }
+
+      // OpenCode may not set summary: true, so we check summarizedSessions
+      if (info.role === "assistant" && info.finish && this.state.summarizedSessions.has(sessionId)) {
         await this.handleSummaryMessage(sessionId, info, ctxClient);
         return;
       }
