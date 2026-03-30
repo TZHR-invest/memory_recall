@@ -150,11 +150,7 @@ async function server(input: PluginInput, options: Record<string, unknown> = {})
           synthetic: true,
         } as never);
         
-        tracker.addMany(
-          result.userCount > 0 
-            ? Array.from({ length: result.userCount }, (_, i) => `mem_${sessionId}_${i}`)
-            : []
-        );
+        tracker.addMany(result.injectedMemoryIds);
         
         logger.contextInjected({
           sessionId,
@@ -208,7 +204,24 @@ async function server(input: PluginInput, options: Record<string, unknown> = {})
 
     if (config.enableSummaryCapture) {
       try {
-        const projectMemories = await client.listMemories(projectTag, 5);
+        // Priority: use cached latest summary (just generated) over database
+        const cachedSummary = compactionHook.getLatestSummary(sessionId);
+        if (cachedSummary) {
+          const locale = config.language === "auto" ? "en_US" : config.language;
+          const prefix = locale === "zh_CN" ? "[会话摘要]\n" : "[Session Summary]\n";
+          outputData.context.push("[Project Memories]\n" + prefix + cachedSummary);
+          logger.debug("Using cached latest summary for compaction restore", {
+            sessionID: sessionId,
+            contentLength: cachedSummary.length,
+          });
+          return;
+        }
+
+        const allMemories = await client.listMemories(projectTag, 5);
+        const projectMemories = allMemories.filter(m => 
+          !m.content.startsWith("[Session Summary]") && 
+          !m.content.startsWith("[会话摘要]")
+        );
         if (projectMemories.length > 0) {
           const context = projectMemories.map((m) => "- " + m.content).join("\n");
           outputData.context.push("[Project Memories]\n" + context);

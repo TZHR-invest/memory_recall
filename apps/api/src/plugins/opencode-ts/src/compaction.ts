@@ -20,6 +20,7 @@ interface CompactionState {
   compactionInProgress: Set<string>;
   summarizedSessions: Set<string>;
   savedSummarySessions: Set<string>; // Prevent duplicate saves
+  latestSummaries: Map<string, { content: string; timestamp: number }>; // Cache latest summaries by session
 }
 
 interface MessageInfo {
@@ -288,6 +289,7 @@ export class CompactionHook {
     compactionInProgress: new Set(),
     summarizedSessions: new Set(),
     savedSummarySessions: new Set(),
+    latestSummaries: new Map(),
   };
 
   constructor(
@@ -310,15 +312,36 @@ export class CompactionHook {
     this.opencodeClient = client;
   }
 
-  private async fetchProjectMemoriesForCompaction(): Promise<string[]> {
+  private async fetchProjectMemoriesForCompaction(sessionId?: string): Promise<string[]> {
+    const memories: string[] = [];
+    
+    if (sessionId) {
+      const cachedSummary = this.state.latestSummaries.get(sessionId);
+      if (cachedSummary) {
+        const locale = this.config.language === "auto" ? "en_US" : this.config.language;
+        const prefix = locale === "zh_CN" ? "[会话摘要]\n" : "[Session Summary]\n";
+        memories.push(prefix + cachedSummary.content);
+        if (this.logger) {
+          this.logger.debug("Using cached latest summary", {
+            sessionID: sessionId,
+            contentLength: cachedSummary.content.length,
+            age: Date.now() - cachedSummary.timestamp,
+          });
+        }
+      }
+    }
+
     try {
-      const memories = await this.client.listMemories(this.tags.project, this.config.maxProjectMemories);
-      return memories
+      const dbMemories = await this.client.listMemories(this.tags.project, this.config.maxProjectMemories);
+      const dbContents = dbMemories
         .map((m) => m.content)
         .filter((c): c is string => Boolean(c));
+      memories.push(...dbContents);
     } catch {
-      return [];
+      // Continue with cached summary only
     }
+
+    return memories;
   }
 
   async injectCompactionContext(summarizeCtx: {
@@ -332,7 +355,7 @@ export class CompactionHook {
       this.logger.info("Injecting compaction context", { sessionID: summarizeCtx.sessionID });
     }
 
-    const projectMemories = await this.fetchProjectMemoriesForCompaction();
+    const projectMemories = await this.fetchProjectMemoriesForCompaction(summarizeCtx.sessionID);
     const locale = this.config.language === "auto" ? "en_US" : this.config.language;
     const prompt = createCompactionPrompt(projectMemories, locale as Locale);
 
@@ -385,6 +408,10 @@ export class CompactionHook {
 
       if (result?.id) {
         this.state.savedSummarySessions.add(sessionId);
+        this.state.latestSummaries.set(sessionId, {
+          content: summaryContent,
+          timestamp: Date.now(),
+        });
         if (this.logger) {
           this.logger.summaryCaptured({
             sessionId,
@@ -404,6 +431,24 @@ export class CompactionHook {
 
   markSummarized(sessionId: string): void {
     this.state.summarizedSessions.add(sessionId);
+  }
+
+  /**
+   * Get the latest cached summary for a session.
+   * Returns null if no cached summary exists or it's too old.
+   */
+  getLatestSummary(sessionId: string): string | null {
+    const cached = this.state.latestSummaries.get(sessionId);
+    if (!cached) return null;
+
+    // Cache expires after 5 minutes
+    const MAX_CACHE_AGE = 5 * 60 * 1000;
+    if (Date.now() - cached.timestamp > MAX_CACHE_AGE) {
+      this.state.latestSummaries.delete(sessionId);
+      return null;
+    }
+
+    return cached.content;
   }
 
   async checkAndTriggerCompaction(
@@ -721,6 +766,7 @@ export class CompactionHook {
         this.state.compactionInProgress.delete(sessionId);
         this.state.summarizedSessions.delete(sessionId);
         this.state.savedSummarySessions.delete(sessionId);
+        this.state.latestSummaries.delete(sessionId);
       }
       return;
     }
