@@ -42,6 +42,60 @@ class ExtractedFact:
 
 DEFAULT_TIMEOUT = 5.0
 
+# 无意义实体黑名单
+MEANINGLESS_ENTITIES = {
+    # 代词
+    "我",
+    "你",
+    "他",
+    "她",
+    "它",
+    "我们",
+    "你们",
+    "他们",
+    "自己",
+    "大家",
+    # 模糊时间
+    "目前",
+    "平时",
+    "最近",
+    "现在",
+    "当前",
+    "近期",
+    "将来",
+    "过去",
+    # 数量词
+    "一个",
+    "几个",
+    "一些",
+    "很多",
+    "少量",
+    "多个",
+    "各种",
+    "所有",
+    # 副词/连词
+    "就",
+    "也",
+    "都",
+    "还",
+    "又",
+    "才",
+    "只",
+    "最",
+    "很",
+    "非常",
+    # 常见误识别
+    "博客",
+    "微信",
+    "微博",
+    "网站",
+    "app",
+    "APP",
+}
+
+# 不需要的实体类型
+SKIP_ENTITY_TYPES = {"time", "number", "activity"}
+
 ENGLISH_ENTITY_EXTRACTION_PROMPT = """Extract entities and facts from the following text.
 
 Text: {text}
@@ -104,6 +158,8 @@ class LLMEntityExtractor:
 
             if result:
                 entities = result.get("entities", {})
+                entities = self._filter_entities(entities)
+
                 llm_is_static = result.get("is_static", False)
                 chinese_is_static = (
                     detect_is_static(text) if language == "chinese" else None
@@ -151,6 +207,29 @@ class LLMEntityExtractor:
             context_section=context_section,
         )
 
+    def _filter_entities(self, entities: Dict[str, List[str]]) -> Dict[str, List[str]]:
+        """过滤无意义的实体"""
+        filtered = {}
+
+        for entity_type, values in entities.items():
+            if entity_type in SKIP_ENTITY_TYPES:
+                continue
+
+            clean_values = []
+            for value in values:
+                if not value or len(value) < 2:
+                    continue
+                if value in MEANINGLESS_ENTITIES:
+                    continue
+                if value.lower() in MEANINGLESS_ENTITIES:
+                    continue
+                clean_values.append(value)
+
+            if clean_values:
+                filtered[entity_type] = clean_values
+
+        return filtered
+
     def _fallback_extraction(
         self,
         text: str,
@@ -159,6 +238,7 @@ class LLMEntityExtractor:
         from src.services.core.entity_extraction import entity_extractor
 
         entities = entity_extractor.extract_to_metadata(text)
+        entities = self._filter_entities(entities)
 
         is_static = (
             detect_is_static(text) if detect_language(text) == "chinese" else False

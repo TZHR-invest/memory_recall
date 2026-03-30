@@ -14,6 +14,8 @@ import json
 from src.database import db
 from src.services.core.document_chunker import document_chunker, ChunkConfig
 from src.services.core.document_processor import document_processor
+from src.embedding.client import get_embedding_client
+from src.config import settings
 
 
 @dataclass
@@ -50,6 +52,9 @@ class Chunk:
 class DocumentStore:
     """Document storage with chunking support"""
 
+    def __init__(self):
+        self.embedding_client = get_embedding_client()
+
     async def create(
         self,
         content: str,
@@ -64,6 +69,7 @@ class DocumentStore:
         chunk_config: Optional[ChunkConfig] = None,
         document_summary: Optional[str] = None,
         auto_extract: bool = True,
+        generate_embeddings: bool = True,
     ) -> Document:
         word_count = len(content.split())
 
@@ -118,6 +124,7 @@ class DocumentStore:
                     chunk_type=chunk_data.get("type", "text"),
                     embedding=chunk_data.get("embedding"),
                     embedding_model=chunk_data.get("embedding_model"),
+                    generate_embedding=generate_embeddings,
                 )
 
             await db.execute(
@@ -143,6 +150,7 @@ class DocumentStore:
                     position=chunk.position,
                     chunk_type="text",
                     metadata=chunk.metadata,
+                    generate_embedding=generate_embeddings,
                 )
 
             if text_chunks:
@@ -167,7 +175,16 @@ class DocumentStore:
         embedding: Optional[List[float]] = None,
         embedding_model: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
+        generate_embedding: bool = True,
     ) -> Chunk:
+        if embedding is None and generate_embedding and self.embedding_client:
+            try:
+                text_to_embed = embedded_content if embedded_content else content
+                embedding = await self.embedding_client.embed(text_to_embed)
+                embedding_model = settings.VOLC_EMBEDDING_MODEL
+            except Exception:
+                pass
+
         embedding_str = None
         if embedding:
             embedding_str = "[" + ",".join(map(str, embedding)) + "]"
