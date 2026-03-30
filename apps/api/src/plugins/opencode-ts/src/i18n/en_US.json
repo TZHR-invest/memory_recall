@@ -1,0 +1,48 @@
+{
+  "locale": "en_US",
+  "keywords": [
+    "remember",
+    "memorize",
+    "save this",
+    "note this",
+    "keep in mind",
+    "don't forget",
+    "learn this",
+    "store this",
+    "record this",
+    "make a note",
+    "take note",
+    "jot down",
+    "commit to memory",
+    "remember that",
+    "never forget",
+    "always remember"
+  ],
+  "nudge": "[MEMORY TRIGGER DETECTED]\nThe user wants you to remember something. Use the `memory-recall` tool with `mode: \"add\"` to save this information.\n\n- Use `scope: \"project\"` for project-specific preferences\n- Use `scope: \"user\"` for cross-project preferences\n\nDO NOT skip this step.",
+  "context_header": "[MEMORY-RECALL]",
+  "user_profile": "User Profile",
+  "recent_context": "Recent Context",
+  "project_knowledge": "Project Knowledge",
+  "relevant_memories": "Relevant Memories",
+  "session_summary": "[Session Summary]",
+  "session_summary_sections": {
+    "user_requests": "## 1. User Requests (As-Is)",
+    "final_goal": "## 2. Final Goal",
+    "work_completed": "## 3. Work Completed",
+    "remaining_tasks": "## 4. Remaining Tasks",
+    "must_not_do": "## 5. MUST NOT Do (Critical Constraints)"
+  },
+  "tool_messages": {
+    "help_title": "Memory Recall Usage Guide",
+    "mode_add": "Store a new memory",
+    "mode_search": "Search memories",
+    "mode_profile": "View user profile",
+    "mode_list": "List recent memories",
+    "mode_forget": "Remove a memory",
+    "scope_user": "Cross-project",
+    "scope_project": "This project (default)",
+    "memory_added": "Memory added to {scope} scope",
+    "memory_removed": "Memory removed",
+    "cannot_store_private": "Cannot store fully private content"
+  }
+}
