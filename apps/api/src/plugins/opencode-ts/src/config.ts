@@ -30,6 +30,10 @@ export interface Config {
   maxChunks: number;
   chunksSimilarityThreshold: number;
   chunksDocTypes: string[];
+  enableGraphRecall: boolean;
+  enableEntityRecall: boolean;
+  graphMaxDepth: number;
+  graphMaxNodes: number;
 }
 
 const DEFAULT_CONFIG: Omit<Config, "apiKey"> = {
@@ -61,6 +65,10 @@ const DEFAULT_CONFIG: Omit<Config, "apiKey"> = {
   maxChunks: 5,
   chunksSimilarityThreshold: 0.5,
   chunksDocTypes: [],
+  enableGraphRecall: true,
+  enableEntityRecall: true,
+  graphMaxDepth: 2,
+  graphMaxNodes: 5,
 };
 
 function parseJsonc(content: string): Record<string, unknown> {
@@ -199,6 +207,22 @@ export function loadConfig(overrides: Record<string, unknown> = {}): Config {
       (overrides.chunksDocTypes as string[]) ||
       (fileConfig.chunksDocTypes as string[]) ||
       DEFAULT_CONFIG.chunksDocTypes,
+    enableGraphRecall:
+      (overrides.enableGraphRecall as boolean) ??
+      (fileConfig.enableGraphRecall as boolean) ??
+      DEFAULT_CONFIG.enableGraphRecall,
+    enableEntityRecall:
+      (overrides.enableEntityRecall as boolean) ??
+      (fileConfig.enableEntityRecall as boolean) ??
+      DEFAULT_CONFIG.enableEntityRecall,
+    graphMaxDepth:
+      (overrides.graphMaxDepth as number) ||
+      (fileConfig.graphMaxDepth as number) ||
+      DEFAULT_CONFIG.graphMaxDepth,
+    graphMaxNodes:
+      (overrides.graphMaxNodes as number) ||
+      (fileConfig.graphMaxNodes as number) ||
+      DEFAULT_CONFIG.graphMaxNodes,
   };
 
   return config;
