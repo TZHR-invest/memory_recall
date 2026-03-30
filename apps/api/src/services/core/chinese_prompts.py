@@ -7,55 +7,46 @@ Based on LLM-IE best practices and ASMR 6-dimension architecture.
 from typing import Optional
 
 
-CHINESE_ENTITY_EXTRACTION_PROMPT = """从以下中文文本中提取实体和事实。
+CHINESE_ENTITY_EXTRACTION_PROMPT = """从以下中文文本中提取有价值的实体。
 
 文本：{text}
 {context_section}
 
-请提取：
-1. 实体及其类型（按ASMR六维度分类）
-2. 判断这是静态事实（永久特征如姓名、偏好）还是动态事实（近期活动）
-3. 置信度评分（0.0-1.0）
+提取规则：
+1. 只提取对记忆召回有价值的实体
+2. 不要提取：代词（我、你、他）、数量词（一个、几个）、模糊时间（目前、平时、最近）
+3. 实体必须是具体的、可识别的
 
-ASMR六维度实体类型：
-- 人物(person)：姓名、身份、角色、关系
-- 事物/概念(thing_concept)：项目、组织、地点、产品、技术
-- 事件(event)：会议、任务、活动
-- 属性/事实(attribute_fact)：偏好、技能、状态、学历
-- 关系(relation)：实体间的关联
-- 元数据(meta)：来源、置信度
-
-中文特有实体类型：
-- 职业：工程师、医生、老师、程序员
-- 学历：本科、硕士、博士
-- 爱好：打篮球、看书、旅行
-- 技能：Python、驾驶、钢琴
-- 家庭关系：妻子、儿子、父母
-
-静态事实指示词：是、叫、姓、职业是、喜欢、偏好、过敏、毕业、擅长
-动态事实指示词：今天、昨天、本周、正在、最近、目前、计划、准备
+提取类型：
+- person: 人名（张三、李明）
+- location: 具体地点（北京、上海、望京）
+- organization: 组织机构（字节跳动、北京大学）
+- contact: 联系方式（手机号、邮箱、微信号）
+- skill: 技术技能（Python、TypeScript、React）
+- preference: 明确的偏好（喜欢暗黑模式、不吃辣）
+- occupation: 职业身份（软件工程师、产品经理）
+- education: 学历信息（硕士、博士）
 
 返回JSON格式：
 {{
   "entities": {{
     "person": ["张三"],
-    "organization": ["字节跳动"],
     "location": ["北京"],
-    "time": ["明天"],
+    "organization": ["字节跳动"],
+    "contact": ["13812345678"],
+    "skill": ["Python", "React"],
     "preference": ["喜欢暗黑模式"],
-    "contact": ["微信号abc123"],
-    "activity": ["正在做项目迁移"],
-    "职业": ["软件工程师"],
-    "学历": ["硕士"],
-    "爱好": ["打篮球"],
-    "技能": ["Python"]
+    "occupation": ["软件工程师"],
+    "education": ["硕士"]
   }},
   "is_static": true,
-  "confidence": 0.9,
-  "key_facts": ["用户在字节跳动工作", "用户住在北京"]
+  "confidence": 0.9
 }}
 
-只包含非空实体类型。保持简洁准确。"""
+注意：
+- 空数组不要返回
+- 不确定的不提取
+- 宁缺毋滥"""
 
 
 CHINESE_CONTRADICTION_PROMPT = """分析以下两条中文陈述是否存在矛盾。

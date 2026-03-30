@@ -292,19 +292,27 @@ class DocumentChunker:
         chunk_content: str,
         document_title: Optional[str] = None,
         document_summary: Optional[str] = None,
+        source: Optional[str] = None,
+        doc_type: Optional[str] = None,
     ) -> str:
         context_parts = []
 
+        if source:
+            context_parts.append(f"# 文件: {source}")
+
+        if doc_type:
+            context_parts.append(f"# 类型: {doc_type}")
+
         if document_title:
-            context_parts.append(f"文档主题: {document_title}")
+            context_parts.append(f"# 标题: {document_title}")
 
         if document_summary:
             summary_tokens = self._estimate_tokens(document_summary)
             if summary_tokens <= self.config.context_max_tokens:
-                context_parts.append(f"文档摘要: {document_summary}")
+                context_parts.append(f"# 摘要: {document_summary}")
             else:
                 truncated = document_summary[: self.config.context_max_tokens * 4]
-                context_parts.append(f"文档摘要: {truncated}...")
+                context_parts.append(f"# 摘要: {truncated}...")
 
         if context_parts:
             context = "\n".join(context_parts) + "\n\n"
