@@ -112,6 +112,10 @@ async function server(input: PluginInput, options: Record<string, unknown> = {})
         maxChunks: config.maxChunks,
         chunksSimilarityThreshold: config.chunksSimilarityThreshold,
         chunksDocTypes: config.chunksDocTypes,
+        enableGraphRecall: config.enableGraphRecall,
+        enableEntityRecall: config.enableEntityRecall,
+        graphMaxDepth: config.graphMaxDepth,
+        graphMaxNodes: config.graphMaxNodes,
       });
 
       if (result.context) {
@@ -131,6 +135,8 @@ async function server(input: PluginInput, options: Record<string, unknown> = {})
           projectCount: result.projectCount,
           userCount: result.userCount,
           chunksCount: result.chunksCount,
+          graphCount: result.graphCount,
+          entityCount: result.entityCount,
         });
       }
     } catch (e) {
