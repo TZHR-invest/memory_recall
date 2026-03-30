@@ -406,6 +406,7 @@ export interface ContextResult {
   chunksCount: number;
   graphCount: number;
   entityCount: number;
+  injectedMemoryIds: string[];
 }
 
 export async function injectContext(
@@ -447,6 +448,12 @@ export async function injectContext(
   
   try {
     projectMemories = await client.listMemories(projectTag, config.maxProjectMemories);
+    // Filter out Session Summaries - they are only used during compaction restore
+    // Session Summaries are historical conversation compressions, not permanent knowledge
+    projectMemories = projectMemories.filter(m => 
+      !m.content.startsWith("[Session Summary]") && 
+      !m.content.startsWith("[会话摘要]")
+    );
   } catch {}
 
   try {
@@ -516,6 +523,11 @@ export async function injectContext(
     maxChunksItems: config.maxChunks,
   });
 
+  const injectedMemoryIds: string[] = [
+    ...projectMemories.slice(0, config.maxProjectMemories).map(m => m.id),
+    ...mergedMemories.slice(0, config.maxMemories).map(m => m.id),
+  ];
+
   return {
     context,
     profileCount,
@@ -524,5 +536,6 @@ export async function injectContext(
     chunksCount,
     graphCount,
     entityCount,
+    injectedMemoryIds,
   };
 }
