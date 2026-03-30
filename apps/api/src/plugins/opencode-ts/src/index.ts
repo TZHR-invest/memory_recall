@@ -2,15 +2,21 @@ import type { Plugin, PluginInput, Hooks } from "@opencode-ai/plugin";
 import { loadConfig, isConfigured, getUserTag, getProjectTag } from "./config";
 import { ApiClient } from "./client";
 import { createTool, detectMemoryKeyword } from "./tool";
-import { injectContext, getMemoryNudge, type ContextResult } from "./context";
+import { injectContext, getMemoryNudge, type ContextResult, type ExpandedMemory } from "./context";
 import { detectLocaleFromText } from "./i18n";
 import { initLogging } from "./logging";
 import { CompactionHook } from "./compaction";
 import { EventHandler } from "./events";
 import { DocumentTracker } from "./document-tracker";
 import { FileWatcher } from "./file-watcher";
+import { 
+  SessionTrackerManager, 
+  calculateDynamicRecallSize,
+  filterMemoriesForInjection,
+  type ConversationMessage 
+} from "./tracker";
 
-const injectedSessions = new Set<string>();
+const sessionTrackerManager = new SessionTrackerManager();
 
 interface TextPart {
   type: "text";
@@ -65,7 +71,15 @@ async function server(input: PluginInput, options: Record<string, unknown> = {})
 
   const tool = createTool(client, config);
 
-  const compactionHook = new CompactionHook(client, config, tags, logger, input.directory);
+  const opencodeClient = input.client;
+  const compactionHook = new CompactionHook(
+    client,
+    config,
+    tags,
+    logger,
+    input.directory,
+    opencodeClient
+  );
 
   const eventHandler = new EventHandler(config, compactionHook, tags, logger);
 
@@ -98,15 +112,23 @@ async function server(input: PluginInput, options: Record<string, unknown> = {})
       logger.keywordDetected({ sessionId, keyword: "detected", language: locale });
     }
 
-    if (injectedSessions.has(sessionId)) return;
-    injectedSessions.add(sessionId);
+    if (!config.enableSmartRecall) {
+      const tracker = sessionTrackerManager.getTracker(sessionId);
+      if (tracker.size() > 0) return;
+    }
+
+    const tracker = sessionTrackerManager.getTracker(sessionId);
+    
+    const dynamicMaxMemories = config.dynamicRecallSize
+      ? calculateDynamicRecallSize(tracker.size(), config.maxMemories)
+      : config.maxMemories;
 
     try {
       const result = await injectContext(client, userMessage, userTag, projectTag, {
         injectProfile: config.injectProfile,
         maxProfileItems: config.maxProfileItems,
         maxProjectMemories: config.maxProjectMemories,
-        maxMemories: config.maxMemories,
+        maxMemories: dynamicMaxMemories,
         language: config.language,
         enableChunksSearch: config.enableChunksSearch,
         maxChunks: config.maxChunks,
@@ -127,6 +149,13 @@ async function server(input: PluginInput, options: Record<string, unknown> = {})
           text: result.context,
           synthetic: true,
         } as never);
+        
+        tracker.addMany(
+          result.userCount > 0 
+            ? Array.from({ length: result.userCount }, (_, i) => `mem_${sessionId}_${i}`)
+            : []
+        );
+        
         logger.contextInjected({
           sessionId,
           durationMs: Date.now() - startTime,
@@ -155,6 +184,8 @@ async function server(input: PluginInput, options: Record<string, unknown> = {})
   ]);
 
   const eventHook: NonNullable<Hooks["event"]> = async (eventData) => {
+    if (!config.enableEventHandling) return;
+
     const eventType = eventData.event?.type;
     if (!eventType) return;
 
@@ -165,13 +196,15 @@ async function server(input: PluginInput, options: Record<string, unknown> = {})
 
     const handlers = eventHandler.getHandlers();
     if (eventType in handlers) {
-      await handlers[eventType](eventData.event as { type: string; properties?: Record<string, unknown> }, null);
+      await handlers[eventType](eventData.event as { type: string; properties?: Record<string, unknown> }, opencodeClient);
     }
   };
 
   const experimentalSessionCompacting: NonNullable<Hooks["experimental.session.compacting"]> = async (inputData, outputData) => {
     const sessionId = inputData.sessionID;
     logger.info("Session compacting", { sessionId });
+
+    compactionHook.markSummarized(sessionId);
 
     if (config.enableSummaryCapture) {
       try {

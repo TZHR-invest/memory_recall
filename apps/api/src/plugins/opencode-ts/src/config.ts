@@ -34,6 +34,10 @@ export interface Config {
   enableEntityRecall: boolean;
   graphMaxDepth: number;
   graphMaxNodes: number;
+  enableSmartRecall: boolean;
+  maxInjectedMemoryIds: number;
+  recallThreshold: number;
+  dynamicRecallSize: boolean;
 }
 
 const DEFAULT_CONFIG: Omit<Config, "apiKey"> = {
@@ -60,7 +64,7 @@ const DEFAULT_CONFIG: Omit<Config, "apiKey"> = {
   language: "auto",
   logFile: "~/.memory-recall-opencode.log",
   logLevel: "info",
-  enableEventHandling: false,
+  enableEventHandling: true,
   enableChunksSearch: true,
   maxChunks: 5,
   chunksSimilarityThreshold: 0.5,
@@ -69,6 +73,10 @@ const DEFAULT_CONFIG: Omit<Config, "apiKey"> = {
   enableEntityRecall: true,
   graphMaxDepth: 2,
   graphMaxNodes: 5,
+  enableSmartRecall: true,
+  maxInjectedMemoryIds: 100,
+  recallThreshold: 0.5,
+  dynamicRecallSize: true,
 };
 
 function parseJsonc(content: string): Record<string, unknown> {
@@ -223,6 +231,22 @@ export function loadConfig(overrides: Record<string, unknown> = {}): Config {
       (overrides.graphMaxNodes as number) ||
       (fileConfig.graphMaxNodes as number) ||
       DEFAULT_CONFIG.graphMaxNodes,
+    enableSmartRecall:
+      (overrides.enableSmartRecall as boolean) ??
+      (fileConfig.enableSmartRecall as boolean) ??
+      DEFAULT_CONFIG.enableSmartRecall,
+    maxInjectedMemoryIds:
+      (overrides.maxInjectedMemoryIds as number) ||
+      (fileConfig.maxInjectedMemoryIds as number) ||
+      DEFAULT_CONFIG.maxInjectedMemoryIds,
+    recallThreshold:
+      (overrides.recallThreshold as number) ||
+      (fileConfig.recallThreshold as number) ||
+      DEFAULT_CONFIG.recallThreshold,
+    dynamicRecallSize:
+      (overrides.dynamicRecallSize as boolean) ??
+      (fileConfig.dynamicRecallSize as boolean) ??
+      DEFAULT_CONFIG.dynamicRecallSize,
   };
 
   return config;
