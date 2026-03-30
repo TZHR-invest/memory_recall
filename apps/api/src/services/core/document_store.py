@@ -6,16 +6,21 @@ Architecture:
 - chunks: content blocks with embeddings
 """
 
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 from datetime import datetime
 from dataclasses import dataclass, field
 import json
+import hashlib
 
 from src.database import db
 from src.services.core.document_chunker import document_chunker, ChunkConfig
 from src.services.core.document_processor import document_processor
 from src.embedding.client import get_embedding_client
 from src.config import settings
+
+
+def compute_content_hash(content: str) -> str:
+    return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
 
 @dataclass
@@ -29,9 +34,11 @@ class Document:
     token_count: int = 0
     word_count: int = 0
     chunk_count: int = 0
+    content_hash: Optional[str] = None
     status: str = "done"
     metadata: Dict[str, Any] = field(default_factory=dict)
     created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
 
@@ -43,6 +50,7 @@ class Chunk:
     embedded_content: Optional[str] = None
     position: int = 0
     chunk_type: str = "text"
+    content_hash: Optional[str] = None
     embedding: Optional[List[float]] = None
     embedding_model: Optional[str] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
@@ -70,8 +78,18 @@ class DocumentStore:
         document_summary: Optional[str] = None,
         auto_extract: bool = True,
         generate_embeddings: bool = True,
-    ) -> Document:
+    ) -> Tuple[Document, bool]:
         word_count = len(content.split())
+        content_hash = compute_content_hash(content)
+
+        if url:
+            existing = await self.find_by_url(container_tag, url)
+            if existing:
+                return existing, True
+
+        existing = await self.find_by_content_hash(container_tag, content_hash)
+        if existing:
+            return existing, True
 
         if chunk_config:
             chunker = document_chunker.__class__(config=chunk_config)
@@ -97,9 +115,9 @@ class DocumentStore:
             """
             INSERT INTO documents (
                 container_tag, title, url, source, doc_type,
-                token_count, word_count, chunk_count, metadata
+                token_count, word_count, chunk_count, metadata, content_hash
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
             RETURNING *
             """,
             container_tag,
@@ -111,6 +129,7 @@ class DocumentStore:
             word_count,
             0,
             json.dumps(metadata or {}),
+            content_hash,
         )
 
         document = self._row_to_document(row)
@@ -163,7 +182,7 @@ class DocumentStore:
                 document.chunk_count = len(text_chunks)
                 document.token_count = sum(c.token_count for c in text_chunks)
 
-        return document
+        return document, False
 
     async def create_chunk(
         self,
@@ -177,6 +196,8 @@ class DocumentStore:
         metadata: Optional[Dict[str, Any]] = None,
         generate_embedding: bool = True,
     ) -> Chunk:
+        content_hash = compute_content_hash(content)
+
         if embedding is None and generate_embedding and self.embedding_client:
             try:
                 text_to_embed = embedded_content if embedded_content else content
@@ -193,9 +214,9 @@ class DocumentStore:
             """
             INSERT INTO chunks (
                 document_id, content, embedded_content, position, chunk_type,
-                embedding, embedding_model, metadata
+                embedding, embedding_model, metadata, content_hash
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
             RETURNING *
             """,
             document_id,
@@ -206,6 +227,7 @@ class DocumentStore:
             embedding_str,
             embedding_model,
             json.dumps(metadata or {}),
+            content_hash,
         )
 
         return self._row_to_chunk(row)
@@ -235,6 +257,146 @@ class DocumentStore:
             offset,
         )
         return [self._row_to_document(row) for row in rows]
+
+    async def find_by_url(self, container_tag: str, url: str) -> Optional[Document]:
+        row = await db.fetchrow(
+            """
+            SELECT * FROM documents
+            WHERE container_tag = $1 AND url = $2
+            """,
+            container_tag,
+            url,
+        )
+        return self._row_to_document(row) if row else None
+
+    async def find_by_content_hash(
+        self, container_tag: str, content_hash: str
+    ) -> Optional[Document]:
+        row = await db.fetchrow(
+            """
+            SELECT * FROM documents
+            WHERE container_tag = $1 AND content_hash = $2
+            """,
+            container_tag,
+            content_hash,
+        )
+        return self._row_to_document(row) if row else None
+
+    async def update(
+        self,
+        document_id: str,
+        content: str,
+        title: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        auto_chunk: bool = True,
+        chunk_config: Optional[ChunkConfig] = None,
+        generate_embeddings: bool = True,
+    ) -> Tuple[Optional[Document], bool]:
+        document = await self.get_by_id(document_id)
+        if not document:
+            return None, False
+
+        new_content_hash = compute_content_hash(content)
+
+        if document.content_hash == new_content_hash:
+            return document, True
+
+        if chunk_config:
+            chunker = document_chunker.__class__(config=chunk_config)
+        else:
+            chunker = document_chunker
+
+        token_count = chunker._estimate_tokens(content)
+        word_count = len(content.split())
+
+        if auto_chunk:
+            text_chunks = chunker.chunk(content)
+            await self.update_chunks(document_id, text_chunks, generate_embeddings)
+            chunk_count = len(text_chunks)
+        else:
+            chunk_count = document.chunk_count
+
+        row = await db.fetchrow(
+            """
+            UPDATE documents
+            SET content_hash = $1, token_count = $2, word_count = $3,
+                chunk_count = $4, title = COALESCE($5, title),
+                metadata = COALESCE($6, metadata), updated_at = NOW()
+            WHERE id = $7
+            RETURNING *
+            """,
+            new_content_hash,
+            token_count,
+            word_count,
+            chunk_count,
+            title,
+            json.dumps(metadata) if metadata else None,
+            document_id,
+        )
+
+        return self._row_to_document(row) if row else None, False
+
+    async def update_chunks(
+        self,
+        document_id: str,
+        new_chunks: List[Any],
+        generate_embeddings: bool = True,
+    ) -> None:
+        existing_chunks = await self.get_chunks(document_id)
+        existing_by_position = {c.position: c for c in existing_chunks}
+
+        for i, chunk in enumerate(new_chunks):
+            new_hash = compute_content_hash(chunk.content)
+
+            if i in existing_by_position:
+                existing = existing_by_position[i]
+                if existing.content_hash != new_hash:
+                    await db.execute(
+                        """
+                        UPDATE chunks
+                        SET content = $1, content_hash = $2,
+                            embedded_content = $3, metadata = $4
+                        WHERE id = $5
+                        """,
+                        chunk.content,
+                        new_hash,
+                        chunk.embedded_content,
+                        json.dumps(chunk.metadata)
+                        if hasattr(chunk, "metadata")
+                        else "{}",
+                        existing.id,
+                    )
+
+                    if generate_embeddings and self.embedding_client:
+                        try:
+                            text_to_embed = chunk.embedded_content or chunk.content
+                            embedding = await self.embedding_client.embed(text_to_embed)
+                            embedding_str = "[" + ",".join(map(str, embedding)) + "]"
+                            await db.execute(
+                                "UPDATE chunks SET embedding = $1 WHERE id = $2",
+                                embedding_str,
+                                existing.id,
+                            )
+                        except Exception:
+                            pass
+            else:
+                await self.create_chunk(
+                    document_id=document_id,
+                    content=chunk.content,
+                    embedded_content=chunk.embedded_content,
+                    position=i,
+                    chunk_type="text",
+                    metadata=chunk.metadata if hasattr(chunk, "metadata") else None,
+                    generate_embedding=generate_embeddings,
+                )
+
+        if len(existing_chunks) > len(new_chunks):
+            positions_to_delete = [c.id for c in existing_chunks[len(new_chunks) :]]
+            if positions_to_delete:
+                await db.execute(
+                    "DELETE FROM chunks WHERE id = ANY($1)",
+                    positions_to_delete,
+                )
 
     async def get_chunks(self, document_id: str) -> List[Chunk]:
         rows = await db.fetch(
@@ -334,6 +496,7 @@ class DocumentStore:
             token_count=row.get("token_count", 0),
             word_count=row.get("word_count", 0),
             chunk_count=row.get("chunk_count", 0),
+            content_hash=row.get("content_hash"),
             status=row.get("status", "done"),
             metadata=row.get("metadata", {}) or {},
             created_at=row.get("created_at"),
@@ -354,6 +517,7 @@ class DocumentStore:
             embedded_content=row.get("embedded_content"),
             position=row.get("position", 0),
             chunk_type=row.get("chunk_type", "text"),
+            content_hash=row.get("content_hash"),
             embedding=embedding,
             embedding_model=row.get("embedding_model"),
             metadata=row.get("metadata", {}) or {},

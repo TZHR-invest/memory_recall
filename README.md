@@ -334,6 +334,43 @@ final_score = vector_similarity × 0.5 + relation_score × 0.3 + entity_match_sc
 | `preference` | 0.7 | 偏好 |
 | `time` | 0.5 | 时间 |
 
+### 智能召回机制
+
+插件支持每条消息智能召回，动态调整上下文注入：
+
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| `enableSmartRecall` | `true` | 每条消息触发召回（关闭则仅首条消息注入） |
+| `maxInjectedMemoryIds` | `100` | 跟踪的最大已注入记忆 ID（LRU 淘汰） |
+| `recallThreshold` | `0.5` | 召回相似度阈值 |
+| `dynamicRecallSize` | `true` | 根据对话长度动态调整召回数量 |
+
+**动态召回公式**：
+```
+recall_count = max(2, maxMemories × (1 - min(0.5, conversationLength × 0.05)))
+```
+
+**去重机制**：
+1. ID 去重：排除已注入的记忆 ID
+2. 相似度过滤：只保留 `similarity >= threshold` 的结果
+3. 对话历史过滤：排除已在对话中出现的内容
+
+### 自动 Compaction
+
+当上下文使用率达到阈值时，插件自动触发 compaction：
+
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| `compactionThreshold` | `0.8` | 触发 compaction 的上下文使用率阈值 |
+| `enableSummaryCapture` | `true` | 自动保存会话摘要为项目记忆 |
+| `enableEventHandling` | `true` | 启用事件处理（compaction 触发） |
+
+**Compaction 流程**：
+1. 监听 `message.updated` 事件
+2. 当上下文使用率 >= 阈值时触发 compaction
+3. 生成会话摘要并注入项目知识
+4. 摘要保存为项目记忆（带 `[会话摘要]` 前缀）
+
 ### 统一 Tool
 
 ```json
