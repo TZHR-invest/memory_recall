@@ -42,7 +42,7 @@ class Settings(BaseSettings):
     USE_FUNCTION_CALLING: bool = False  # 默认关闭，测试通过后开启
 
     # LLM 实体提取配置
-    LLM_EXTRACTION_TIMEOUT: float = 5.0  # LLM提取超时时间（秒）
+    LLM_EXTRACTION_TIMEOUT: float = 300.0  # LLM提取超时时间（秒）
     USE_LLM_EXTRACTION: bool = True  # 默认使用LLM提取
     USE_LAC_EXTRACTOR: bool = False  # LAC提取器（可选）
 

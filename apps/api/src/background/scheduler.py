@@ -25,6 +25,7 @@ class BackgroundScheduler:
     def __init__(self):
         self.tasks: List[TaskConfig] = []
         self._running = False
+        self._task: Optional[asyncio.Task] = None
 
     def register_task(
         self,
@@ -41,11 +42,20 @@ class BackgroundScheduler:
         )
 
     async def start(self) -> None:
+        """启动调度器（作为后台任务运行，不阻塞）"""
         self._running = True
-        await self._run_loop()
+        self._task = asyncio.create_task(self._run_loop())
 
     async def stop(self) -> None:
+        """停止调度器"""
         self._running = False
+        if self._task:
+            self._task.cancel()
+            try:
+                await self._task
+            except asyncio.CancelledError:
+                pass
+            self._task = None
 
     async def _run_loop(self) -> None:
         while self._running:
