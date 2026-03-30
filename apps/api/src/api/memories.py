@@ -17,8 +17,9 @@ router = APIRouter(tags=["Memories"])
 
 class CreateMemoryRequest(BaseModel):
     content: str = Field(..., description="Memory content", examples=["我喜欢喝咖啡"])
-    container_tag: str = Field(
-        ..., description="Container tag for isolation", examples=["user_001"]
+    container_tag: Optional[str] = Field(
+        None,
+        description="Container tag (optional, defaults to your API key's container)",
     )
     is_static: bool = Field(
         False,
@@ -32,6 +33,10 @@ class CreateMemoryRequest(BaseModel):
         description="Per-container context to guide entity extraction (max 1500 chars). Persists for subsequent extractions in this container.",
         examples=["设计探索对话，关注用户的UI偏好和品牌需求"],
     )
+    skip_extraction: bool = Field(
+        False,
+        description="Skip LLM entity extraction (faster for large documents)",
+    )
 
 
 class MemoryResponse(BaseModel):
@@ -44,7 +49,10 @@ class MemoryResponse(BaseModel):
 
 class SearchRequest(BaseModel):
     query: str = Field(..., description="Search query", examples=["饮食偏好"])
-    container_tag: str = Field(..., description="Container tag to search in")
+    container_tag: Optional[str] = Field(
+        None,
+        description="Container tag (optional, defaults to your API key's container)",
+    )
     limit: int = Field(10, ge=1, le=100, description="Max results")
     threshold: float = Field(
         0.6, ge=0.0, le=1.0, description="Similarity threshold (0-1)"
@@ -59,10 +67,71 @@ class UpdateMemoryRequest(BaseModel):
 
 class CreateDocumentRequest(BaseModel):
     content: str = Field(..., description="Document content")
-    container_tag: str = Field(..., description="Container tag for isolation")
+    container_tag: Optional[str] = Field(
+        None,
+        description="Container tag (optional, defaults to your API key's container)",
+    )
+    title: Optional[str] = Field(None, description="Document title")
+    source: Optional[str] = Field(None, description="Document source (e.g., file path)")
+    doc_type: str = Field("text", description="Document type")
     metadata: Dict[str, Any] = Field(
         default_factory=dict, description="Additional metadata"
     )
+
+
+class ChunkSearchRequest(BaseModel):
+    query: str = Field(
+        ..., description="Search query for document chunks", examples=["how to deploy"]
+    )
+    container_tag: Optional[str] = Field(
+        None,
+        description="Container tag (optional, defaults to your API key's container)",
+    )
+    limit: int = Field(10, ge=1, le=100, description="Max results")
+    threshold: float = Field(
+        0.5, ge=0.0, le=1.0, description="Similarity threshold (0-1)"
+    )
+    doc_types: Optional[List[str]] = Field(
+        None, description="Filter by document types (e.g., ['markdown', 'code'])"
+    )
+
+
+class ChunkSearchResult(BaseModel):
+    id: str = Field(..., description="Chunk ID")
+    content: str = Field(..., description="Chunk content (truncated to 500 chars)")
+    document_id: str = Field(..., description="Parent document ID")
+    document_title: Optional[str] = Field(None, description="Document title")
+    document_type: Optional[str] = Field(None, description="Document type")
+    position: Optional[int] = Field(None, description="Chunk position in document")
+    similarity: float = Field(..., description="Similarity score (0-1)")
+
+
+class HybridSearchRequest(BaseModel):
+    query: str = Field(
+        ..., description="Search query", examples=["deployment instructions"]
+    )
+    container_tag: Optional[str] = Field(
+        None,
+        description="Container tag (optional, defaults to your API key's container)",
+    )
+    limit: int = Field(10, ge=1, le=100, description="Max results")
+    threshold: float = Field(
+        0.5, ge=0.0, le=1.0, description="Similarity threshold (0-1)"
+    )
+    sources: Optional[List[str]] = Field(
+        None, description="Filter by source types: ['memory'], ['chunk'], or both"
+    )
+
+
+class HybridSearchResult(BaseModel):
+    id: str = Field(..., description="Memory or Chunk ID")
+    content: str = Field(..., description="Content (truncated for display)")
+    source: str = Field(..., description="Source type: 'memory' or 'chunk'")
+    similarity: float = Field(..., description="Similarity score (0-1)")
+    document_title: Optional[str] = Field(
+        None, description="Document title (for chunks)"
+    )
+    document_type: Optional[str] = Field(None, description="Document type (for chunks)")
 
 
 @router.post(
@@ -91,27 +160,30 @@ async def create_memory(
     current_user: Dict = Depends(require_permission("write")),
     _: Dict = Depends(check_rate_limit),
 ):
-    verify_container_ownership(request.container_tag, current_user["user_id"])
+    container_tag = request.container_tag or current_user["container_tag"]
+
+    verify_container_ownership(container_tag, current_user["key_id"])
 
     entity_context = request.entity_context
 
     if entity_context:
         await profile_service.set_entity_context(
-            container_tag=request.container_tag,
+            container_tag=container_tag,
             entity_context=entity_context,
         )
     else:
-        entity_context = await profile_service.get_entity_context(request.container_tag)
+        entity_context = await profile_service.get_entity_context(container_tag)
 
     memory = await memory_store.create(
         content=request.content,
-        container_tag=request.container_tag,
+        container_tag=container_tag,
         is_static=request.is_static,
         metadata=request.metadata,
         entity_context=entity_context,
+        extract_entities=not request.skip_extraction,
     )
 
-    await profile_service.invalidate_cache(request.container_tag)
+    await profile_service.invalidate_cache(container_tag)
 
     return {
         "id": memory.id,
@@ -148,12 +220,13 @@ async def create_memory(
     },
 )
 async def list_memories(
-    container_tag: str = Query(..., description="Container tag"),
+    container_tag: Optional[str] = Query(None, description="Container tag (optional)"),
     limit: int = Query(20, ge=1, le=100, description="Max results"),
     current_user: Dict = Depends(require_permission("read")),
     _: Dict = Depends(check_rate_limit),
 ):
-    verify_container_ownership(container_tag, current_user["user_id"])
+    container_tag = container_tag or current_user["container_tag"]
+    verify_container_ownership(container_tag, current_user["key_id"])
 
     memories = await memory_store.get_by_container(
         container_tag=container_tag,
@@ -192,7 +265,7 @@ async def get_memory(
     if not memory:
         raise HTTPException(status_code=404, detail="Memory not found")
 
-    verify_container_ownership(memory.container_tag, current_user["user_id"])
+    verify_container_ownership(memory.container_tag, current_user["key_id"])
 
     return {
         "id": memory.id,
@@ -224,7 +297,7 @@ async def forget_memory(
     if not memory:
         raise HTTPException(status_code=404, detail="Memory not found")
 
-    verify_container_ownership(memory.container_tag, current_user["user_id"])
+    verify_container_ownership(memory.container_tag, current_user["key_id"])
 
     success = await memory_store.forget(memory_id)
     if success:
@@ -251,7 +324,7 @@ async def restore_memory(
     if not memory:
         raise HTTPException(status_code=404, detail="Memory not found")
 
-    verify_container_ownership(memory.container_tag, current_user["user_id"])
+    verify_container_ownership(memory.container_tag, current_user["key_id"])
 
     success = await memory_store.restore(memory_id)
     if success:
@@ -279,7 +352,7 @@ async def update_memory(
     if not old_memory:
         raise HTTPException(status_code=404, detail="Memory not found")
 
-    verify_container_ownership(old_memory.container_tag, current_user["user_id"])
+    verify_container_ownership(old_memory.container_tag, current_user["key_id"])
 
     new_memory = await memory_store.create_update_version(
         memory_id=memory_id,
@@ -315,7 +388,7 @@ async def get_memory_history(
     if not memory:
         raise HTTPException(status_code=404, detail="Memory not found")
 
-    verify_container_ownership(memory.container_tag, current_user["user_id"])
+    verify_container_ownership(memory.container_tag, current_user["key_id"])
 
     history = await relation_service.get_version_history(memory_id)
 
@@ -355,7 +428,7 @@ async def get_profile(
     current_user: Dict = Depends(require_permission("read")),
     _: Dict = Depends(check_rate_limit),
 ):
-    verify_container_ownership(container_tag, current_user["user_id"])
+    verify_container_ownership(container_tag, current_user["key_id"])
 
     profile = await profile_service.get_profile(
         container_tag=container_tag,
@@ -397,11 +470,12 @@ async def search_memories(
     current_user: Dict = Depends(require_permission("read")),
     _: Dict = Depends(check_rate_limit),
 ):
-    verify_container_ownership(request.container_tag, current_user["user_id"])
+    container_tag = request.container_tag or current_user["container_tag"]
+    verify_container_ownership(container_tag, current_user["key_id"])
 
     results = await memory_store.search(
         query=request.query,
-        container_tag=request.container_tag,
+        container_tag=container_tag,
         limit=request.limit,
         threshold=request.threshold,
     )
@@ -420,18 +494,25 @@ async def create_document(
     current_user: Dict = Depends(require_permission("write")),
     _: Dict = Depends(check_rate_limit),
 ):
-    verify_container_ownership(request.container_tag, current_user["user_id"])
+    container_tag = request.container_tag or current_user["container_tag"]
+    verify_container_ownership(container_tag, current_user["key_id"])
 
     document = await document_store.create(
         content=request.content,
-        container_tag=request.container_tag,
+        container_tag=container_tag,
+        title=request.title,
+        source=request.source,
+        doc_type=request.doc_type,
         metadata=request.metadata,
     )
 
     return {
         "id": document.id,
-        "content": document.content,
+        "title": document.title,
+        "source": document.source,
         "container_tag": document.container_tag,
+        "token_count": document.token_count,
+        "chunk_count": document.chunk_count,
         "status": document.status,
         "created_at": document.created_at.isoformat() if document.created_at else None,
     }
@@ -444,13 +525,14 @@ async def create_document(
     responses={200: {"description": "List of documents"}},
 )
 async def list_documents(
-    container_tag: str = Query(..., description="Container tag"),
+    container_tag: Optional[str] = Query(None, description="Container tag (optional)"),
     limit: int = Query(20, ge=1, le=100, description="Max results"),
     offset: int = Query(0, ge=0, description="Offset for pagination"),
     current_user: Dict = Depends(require_permission("read")),
     _: Dict = Depends(check_rate_limit),
 ):
-    verify_container_ownership(container_tag, current_user["user_id"])
+    container_tag = container_tag or current_user["container_tag"]
+    verify_container_ownership(container_tag, current_user["key_id"])
 
     documents = await document_store.get_by_container(
         container_tag=container_tag,
@@ -464,9 +546,11 @@ async def list_documents(
         "documents": [
             {
                 "id": d.id,
-                "content": d.content[:500] + "..."
-                if len(d.content) > 500
-                else d.content,
+                "title": d.title,
+                "source": d.source,
+                "doc_type": d.doc_type,
+                "token_count": d.token_count,
+                "chunk_count": d.chunk_count,
                 "status": d.status,
                 "created_at": d.created_at.isoformat() if d.created_at else None,
             }
@@ -496,7 +580,7 @@ async def get_document(
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    verify_container_ownership(document.container_tag, current_user["user_id"])
+    verify_container_ownership(document.container_tag, current_user["key_id"])
 
     return {
         "id": document.id,
@@ -526,8 +610,212 @@ async def delete_document(
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    verify_container_ownership(document.container_tag, current_user["user_id"])
+    verify_container_ownership(document.container_tag, current_user["key_id"])
 
     success = await document_store.delete(document_id)
 
     return {"id": document_id, "deleted": success}
+
+
+@router.post(
+    "/documents/search",
+    summary="Search document chunks",
+    description="Semantic search across document chunks with similarity scoring.",
+    responses={
+        200: {
+            "description": "Search results",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "query": "how to deploy",
+                        "results": [
+                            {
+                                "id": "chunk_abc123",
+                                "content": "## Deployment\nRun `bun run build` to build...",
+                                "document_id": "doc_xyz",
+                                "document_title": "README.md",
+                                "document_type": "markdown",
+                                "position": 5,
+                                "similarity": 0.85,
+                            }
+                        ],
+                        "count": 1,
+                    }
+                }
+            },
+        }
+    },
+)
+async def search_chunks(
+    request: ChunkSearchRequest,
+    current_user: Dict = Depends(require_permission("read")),
+    _: Dict = Depends(check_rate_limit),
+):
+    from src.embedding.client import get_embedding_client
+
+    container_tag = request.container_tag or current_user["container_tag"]
+    verify_container_ownership(container_tag, current_user["key_id"])
+
+    embedding_client = get_embedding_client()
+    query_embedding = await embedding_client.embed(request.query)
+
+    if query_embedding is None:
+        return {"query": request.query, "results": [], "count": 0}
+
+    results = await document_store.search_chunks(
+        query_embedding=query_embedding,
+        container_tag=container_tag,
+        limit=request.limit,
+        threshold=request.threshold,
+    )
+
+    formatted_results = []
+    for r in results:
+        if not isinstance(r, dict):
+            continue
+        chunk = r.get("chunk")
+        if chunk is None:
+            continue
+
+        content = getattr(chunk, "content", "") or ""
+        if len(content) > 500:
+            content = content[:500] + "..."
+
+        metadata = getattr(chunk, "metadata", None) or {}
+        doc_type = metadata.get("doc_type") if isinstance(metadata, dict) else None
+
+        formatted_results.append(
+            {
+                "id": getattr(chunk, "id", ""),
+                "content": content,
+                "document_id": r.get("document_id", ""),
+                "document_title": r.get("title"),
+                "document_type": doc_type,
+                "position": getattr(chunk, "position", None),
+                "similarity": r.get("similarity", 0.0),
+            }
+        )
+
+    if request.doc_types:
+        formatted_results = [
+            r for r in formatted_results if r.get("document_type") in request.doc_types
+        ]
+
+    return {
+        "query": request.query,
+        "results": formatted_results,
+        "count": len(formatted_results),
+    }
+
+
+@router.post(
+    "/search/hybrid",
+    summary="Hybrid search across memories and documents",
+    description="Search both memories and document chunks in a single query, returning combined results sorted by similarity.",
+    responses={
+        200: {
+            "description": "Hybrid search results",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "query": "deployment preferences",
+                        "results": [
+                            {
+                                "id": "mem_abc123",
+                                "content": "I prefer Docker for deployments",
+                                "source": "memory",
+                                "similarity": 0.92,
+                            },
+                            {
+                                "id": "chunk_xyz",
+                                "content": "## Deployment Guide\nUse Docker Compose...",
+                                "source": "chunk",
+                                "similarity": 0.85,
+                                "document_title": "README.md",
+                            },
+                        ],
+                        "count": 2,
+                    }
+                }
+            },
+        }
+    },
+)
+async def hybrid_search(
+    request: HybridSearchRequest,
+    current_user: Dict = Depends(require_permission("read")),
+    _: Dict = Depends(check_rate_limit),
+):
+    from src.embedding.client import get_embedding_client
+
+    container_tag = request.container_tag or current_user["container_tag"]
+    verify_container_ownership(container_tag, current_user["key_id"])
+
+    sources = request.sources or ["memory", "chunk"]
+    search_memories = "memory" in sources
+    search_chunks_flag = "chunk" in sources
+
+    memory_results = []
+    chunk_results = []
+
+    if search_memories:
+        memory_results = await memory_store.search(
+            query=request.query,
+            container_tag=container_tag,
+            limit=request.limit,
+            threshold=request.threshold,
+        )
+
+    if search_chunks_flag:
+        embedding_client = get_embedding_client()
+        query_embedding = await embedding_client.embed(request.query)
+
+        if query_embedding is not None:
+            chunk_raw = await document_store.search_chunks(
+                query_embedding=query_embedding,
+                container_tag=container_tag,
+                limit=request.limit,
+                threshold=request.threshold,
+            )
+
+            chunk_results = []
+            for r in chunk_raw:
+                if not isinstance(r, dict):
+                    continue
+                chunk = r.get("chunk")
+                if chunk is None:
+                    continue
+                content = getattr(chunk, "content", "") or ""
+                truncated = content[:500] + ("..." if len(content) > 500 else "")
+
+                metadata = getattr(chunk, "metadata", None) or {}
+                doc_type = (
+                    metadata.get("doc_type") if isinstance(metadata, dict) else None
+                )
+
+                chunk_results.append(
+                    {
+                        "id": getattr(chunk, "id", ""),
+                        "content": truncated,
+                        "source": "chunk",
+                        "similarity": r.get("similarity", 0.0),
+                        "document_title": r.get("title"),
+                        "document_type": doc_type,
+                    }
+                )
+
+    memory_formatted = [
+        {
+            "id": m.get("id", ""),
+            "content": m.get("content", ""),
+            "source": "memory",
+            "similarity": m.get("similarity", 0.0),
+        }
+        for m in memory_results
+    ]
+
+    combined = memory_formatted + chunk_results
+    combined.sort(key=lambda x: x.get("similarity", 0), reverse=True)
+    combined = combined[: request.limit]
+
+    return {"query": request.query, "results": combined, "count": len(combined)}

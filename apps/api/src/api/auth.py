@@ -36,6 +36,7 @@ PERMISSIONS = {
 class APIKey:
     id: str
     user_id: str
+    user_name: Optional[str]
     key_hash: str
     key_prefix: str
     name: Optional[str]
@@ -103,6 +104,7 @@ class AuthService:
     async def create_key(
         self,
         user_id: str,
+        user_name: Optional[str] = None,
         name: Optional[str] = None,
         permissions: List[str] = ["read"],
         is_test: bool = False,
@@ -130,12 +132,13 @@ class AuthService:
         await self.db.execute(
             """
             INSERT INTO api_keys (
-                id, user_id, key_hash, key_prefix, name, 
+                id, user_id, user_name, key_hash, key_prefix, name, 
                 permissions, is_active, is_test, expires_at, created_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
             """,
             key_id,
             user_id,
+            user_name,
             key_hash,
             prefix,
             name,
@@ -196,6 +199,7 @@ class AuthService:
         return APIKey(
             id=row["id"],
             user_id=row["user_id"],
+            user_name=row.get("user_name"),
             key_hash=row["key_hash"],
             key_prefix=row["key_prefix"],
             name=row["name"],
@@ -276,7 +280,9 @@ async def get_current_user(
 
     return {
         "user_id": key_info.user_id,
-        "key_id": key_info.id,
+        "user_name": key_info.user_name,
+        "key_id": str(key_info.id),
+        "container_tag": str(key_info.id),  # One API key = one container
         "permissions": key_info.permissions,
         "is_test": key_info.is_test,
     }
@@ -330,10 +336,19 @@ async def check_rate_limit(
     return current_user
 
 
-def verify_container_ownership(container_tag: str, user_id: str) -> str:
-    """Verify that user owns the container."""
-    if not container_tag.startswith(f"{user_id}_") and container_tag != user_id:
-        raise HTTPException(status_code=403, detail="Container ownership mismatch")
+def verify_container_ownership(
+    container_tag: str,
+    api_key_id: str,
+) -> str:
+    """Verify that container_tag matches the API key ID.
+
+    One API key = one container. The container_tag must equal the API key's ID.
+    """
+    if container_tag != api_key_id:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Container access denied. Your API key can only access container '{api_key_id}'.",
+        )
     return container_tag
 
 
