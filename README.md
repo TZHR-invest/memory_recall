@@ -293,9 +293,46 @@ bunx memory-recall-opencode install
 {
     "apiKey": "your-api-key",
     "baseUrl": "http://localhost:8000",
-    "containerTagPrefix": "opencode"
+    "containerTagPrefix": "opencode",
+    "enableGraphRecall": true,
+    "enableEntityRecall": true,
+    "graphMaxDepth": 2,
+    "graphMaxNodes": 5
 }
 ```
+
+### 三层召回机制
+
+插件使用三层召回策略，提供更完整的上下文：
+
+| 召回层 | 权重 | 说明 |
+|--------|------|------|
+| 向量搜索 | 50% | 语义相似度匹配 |
+| 关系扩展 | 30% | 沿 `updates/extends/derives` 边遍历 |
+| 实体关联 | 20% | 共享实体的记忆 |
+
+**评分公式**：
+```
+final_score = vector_similarity × 0.5 + relation_score × 0.3 + entity_match_score × 0.2
+```
+
+### 关系类型优先级
+
+| 关系 | 权重 | 说明 |
+|------|------|------|
+| `updates` | 1.0 | 信息演进链（最高优先级） |
+| `extends` | 0.7 | 信息补充 |
+| `derives` | 0.5 | 信息推断 |
+
+### 实体类型权重
+
+| 实体类型 | 权重 | 示例 |
+|---------|------|------|
+| `person` | 1.0 | 人名匹配 |
+| `organization` | 0.9 | 公司/组织 |
+| `location` | 0.8 | 地点 |
+| `preference` | 0.7 | 偏好 |
+| `time` | 0.5 | 时间 |
 
 ### 统一 Tool
 
