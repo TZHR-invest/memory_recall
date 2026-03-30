@@ -497,7 +497,7 @@ async def create_document(
     container_tag = request.container_tag or current_user["container_tag"]
     verify_container_ownership(container_tag, current_user["key_id"])
 
-    document = await document_store.create(
+    document, is_duplicate = await document_store.create(
         content=request.content,
         container_tag=container_tag,
         title=request.title,
@@ -514,7 +514,53 @@ async def create_document(
         "token_count": document.token_count,
         "chunk_count": document.chunk_count,
         "status": document.status,
+        "is_duplicate": is_duplicate,
         "created_at": document.created_at.isoformat() if document.created_at else None,
+    }
+
+
+class UpdateDocumentRequest(BaseModel):
+    content: str = Field(..., description="Updated document content")
+    title: Optional[str] = Field(None, description="Updated document title")
+    metadata: Optional[Dict[str, Any]] = Field(
+        None, description="Updated metadata (partial update)"
+    )
+
+
+@router.put(
+    "/documents/{document_id}",
+    summary="Update a document",
+    description="Update document content with incremental chunk updates.",
+    responses={
+        200: {"description": "Document updated"},
+        404: {"description": "Not found"},
+    },
+)
+async def update_document(
+    document_id: str,
+    request: UpdateDocumentRequest,
+    current_user: Dict = Depends(require_permission("write")),
+    _: Dict = Depends(check_rate_limit),
+):
+    document, unchanged = await document_store.update(
+        document_id=document_id,
+        content=request.content,
+        title=request.title,
+        metadata=request.metadata,
+    )
+
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    return {
+        "id": document.id,
+        "title": document.title,
+        "container_tag": document.container_tag,
+        "token_count": document.token_count,
+        "chunk_count": document.chunk_count,
+        "content_hash": document.content_hash,
+        "unchanged": unchanged,
+        "updated_at": document.updated_at.isoformat() if document.updated_at else None,
     }
 
 
