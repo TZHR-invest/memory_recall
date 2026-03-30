@@ -134,6 +134,8 @@ export class Logger {
     userCount?: number;
     chunksCount?: number;
     contextLength?: number;
+    graphCount?: number;
+    entityCount?: number;
   }): void {
     this.write("info", "Context injected", {
       session_id: params.sessionId,
@@ -143,6 +145,8 @@ export class Logger {
       user_count: params.userCount || 0,
       chunks_count: params.chunksCount || 0,
       context_length: params.contextLength || 0,
+      graph_count: params.graphCount || 0,
+      entity_count: params.entityCount || 0,
     });
   }
 
