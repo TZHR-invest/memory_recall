@@ -11,7 +11,7 @@ class MemoryRecallClient:
         self,
         base_url: str = "http://localhost:8000",
         api_key: Optional[str] = None,
-        timeout: float = 30.0,
+        timeout: float = 300.0,
     ):
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
@@ -29,7 +29,7 @@ class MemoryRecallClient:
         if self._client is None:
             headers = {}
             if self.api_key:
-                headers["Authorization"] = f"Bearer {self.api_key}"
+                headers["X-API-Key"] = self.api_key
             self._client = httpx.AsyncClient(
                 base_url=self.base_url,
                 headers=headers,
@@ -45,60 +45,61 @@ class MemoryRecallClient:
     async def add_memory(
         self,
         content: str,
-        container_tag: str,
+        container_tag: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
         is_static: bool = False,
+        skip_extraction: bool = False,
     ) -> Dict[str, Any]:
         client = await self._get_client()
-        response = await client.post(
-            "/v1/memories",
-            json={
-                "content": content,
-                "container_tag": container_tag,
-                "is_static": is_static,
-                "metadata": metadata or {},
-            },
-        )
+        body = {
+            "content": content,
+            "is_static": is_static,
+            "metadata": metadata or {},
+            "skip_extraction": skip_extraction,
+        }
+        if container_tag:
+            body["container_tag"] = container_tag
+        response = await client.post("/memories", json=body)
         response.raise_for_status()
         return response.json()
 
     async def search(
         self,
         query: str,
-        container_tag: str,
+        container_tag: Optional[str] = None,
         limit: int = 5,
         threshold: float = 0.6,
     ) -> List[Dict[str, Any]]:
         client = await self._get_client()
-        response = await client.post(
-            "/v1/search",
-            json={
-                "query": query,
-                "container_tag": container_tag,
-                "limit": limit,
-                "threshold": threshold,
-            },
-        )
+        body = {
+            "query": query,
+            "limit": limit,
+            "threshold": threshold,
+        }
+        if container_tag:
+            body["container_tag"] = container_tag
+        response = await client.post("/search", json=body)
         response.raise_for_status()
         return response.json().get("results", [])
 
     async def get_profile(
         self,
-        container_tag: str,
+        container_tag: Optional[str] = None,
         query: Optional[str] = None,
         max_static: int = 10,
         max_dynamic: int = 10,
     ) -> Dict[str, Any]:
         client = await self._get_client()
         params = {
-            "container_tag": container_tag,
             "max_static": max_static,
             "max_dynamic": max_dynamic,
         }
+        if container_tag:
+            params["container_tag"] = container_tag
         if query:
             params["query"] = query
 
-        response = await client.get("/v1/profile", params=params)
+        response = await client.get("/profile", params=params)
         response.raise_for_status()
         return response.json()
 
@@ -109,7 +110,7 @@ class MemoryRecallClient:
     ) -> Dict[str, Any]:
         client = await self._get_client()
         response = await client.post(
-            f"/v1/memories/{memory_id}/forget",
+            f"/memories/{memory_id}/forget",
             json={"container_tag": container_tag} if container_tag else {},
         )
         response.raise_for_status()
@@ -122,7 +123,7 @@ class MemoryRecallClient:
     ) -> Dict[str, Any]:
         client = await self._get_client()
         response = await client.post(
-            f"/v1/memories/{memory_id}/restore",
+            f"/memories/{memory_id}/restore",
             json={"container_tag": container_tag} if container_tag else {},
         )
         response.raise_for_status()
@@ -130,23 +131,20 @@ class MemoryRecallClient:
 
     async def list_memories(
         self,
-        container_tag: str,
+        container_tag: Optional[str] = None,
         limit: int = 20,
     ) -> List[Dict[str, Any]]:
         client = await self._get_client()
-        response = await client.get(
-            "/v1/memories",
-            params={
-                "container_tag": container_tag,
-                "limit": limit,
-            },
-        )
+        params = {"limit": limit}
+        if container_tag:
+            params["container_tag"] = container_tag
+        response = await client.get("/memories", params=params)
         response.raise_for_status()
         return response.json().get("memories", [])
 
     async def get_memory(self, memory_id: str) -> Dict[str, Any]:
         client = await self._get_client()
-        response = await client.get(f"/v1/memories/{memory_id}")
+        response = await client.get(f"/memories/{memory_id}")
         response.raise_for_status()
         return response.json()
 
@@ -157,7 +155,7 @@ class MemoryRecallClient:
     ) -> Dict[str, Any]:
         client = await self._get_client()
         response = await client.post(
-            f"/v1/memories/{memory_id}/update",
+            f"/memories/{memory_id}/update",
             json={"content": new_content},
         )
         response.raise_for_status()
@@ -165,9 +163,38 @@ class MemoryRecallClient:
 
     async def get_history(self, memory_id: str) -> List[Dict[str, Any]]:
         client = await self._get_client()
-        response = await client.get(f"/v1/memories/{memory_id}/history")
+        response = await client.get(f"/memories/{memory_id}/history")
         response.raise_for_status()
         return response.json().get("history", [])
+
+    async def add_document(
+        self,
+        content: str,
+        title: Optional[str] = None,
+        source: Optional[str] = None,
+        doc_type: str = "text",
+    ) -> Dict[str, Any]:
+        client = await self._get_client()
+        response = await client.post(
+            "/documents",
+            json={
+                "content": content,
+                "title": title,
+                "source": source,
+                "doc_type": doc_type,
+            },
+        )
+        response.raise_for_status()
+        return response.json()
+
+    async def list_documents(
+        self,
+        limit: int = 20,
+    ) -> List[Dict[str, Any]]:
+        client = await self._get_client()
+        response = await client.get("/documents", params={"limit": limit})
+        response.raise_for_status()
+        return response.json().get("documents", [])
 
 
 class SyncMemoryRecallClient:
@@ -208,7 +235,7 @@ class SyncMemoryRecallClient:
     ) -> Dict[str, Any]:
         client = self._get_client()
         response = client.post(
-            "/v1/memories",
+            "/memories",
             json={
                 "content": content,
                 "container_tag": container_tag,
@@ -228,7 +255,7 @@ class SyncMemoryRecallClient:
     ) -> List[Dict[str, Any]]:
         client = self._get_client()
         response = client.post(
-            "/v1/search",
+            "/search",
             json={
                 "query": query,
                 "container_tag": container_tag,
@@ -255,7 +282,7 @@ class SyncMemoryRecallClient:
         if query:
             params["query"] = query
 
-        response = client.get("/v1/profile", params=params)
+        response = client.get("/profile", params=params)
         response.raise_for_status()
         return response.json()
 
@@ -266,7 +293,7 @@ class SyncMemoryRecallClient:
     ) -> List[Dict[str, Any]]:
         client = self._get_client()
         response = client.get(
-            "/v1/memories",
+            "/memories",
             params={
                 "container_tag": container_tag,
                 "limit": limit,
