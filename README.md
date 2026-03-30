@@ -391,22 +391,33 @@ client.close()
 
 - **统一 API**: 合并 v1/v2 为单一入口，无版本前缀
 - **完整认证**: API Key + 容器所有权验证 + 速率限制
+- **一键安装**: `python install.py` 自动初始化
 - **知识图谱 API**: `GET /graph` 端点
-- **中文实体提取**: ASMR 6维度实体类型
+- **中文实体提取**: LLM 增强 + 无意义实体过滤
 - **关系检测**: 中文语义标记识别
-- **智能文档分块**: AST-aware chunking（支持 Python/JS/TS 代码）
+- **智能文档分块**: AST-aware chunking + 上下文化嵌入
+- **项目文档跟踪**: 自动导入 README/AGENTS.md 等项目文档
+
+### 架构改进
+
+- **简化容器所有权**: 一个 API Key = 一个 Container
+- **文档分离存储**: documents + chunks 表（与 memories 分离）
+- **上下文化嵌入**: 分块自动添加文件/类型/摘要上下文
+- **自动配置**: 插件首次运行自动初始化
 
 ### Breaking Changes
 
 - 所有端点需要 `X-API-Key` 认证
 - API 路径变更：`/v1/*` → `/*`（根路径）
-- `container_tag` 格式：`{user_id}[_{project}]`（所有权验证）
+- `container_tag` 自动使用 API Key ID
 
 ### 性能提升
 
 - 召回延迟：1.5-4 秒 → ~50ms
 - 数据模型：6+ 表 → 3 核心表
 - API 端点：30+ → 17（精简）
+- 实体提取超时：5s → 300s（支持长文本）
+- 文档向量化：使用上下文化内容，搜索更准确
 
 ---
 
