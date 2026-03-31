@@ -116,10 +116,56 @@ CHINESE_RELATION_DETECTION_PROMPT = """分析新记忆与已有记忆之间的�
 }}"""
 
 
-ENTITY_CONTEXT_PROMPT_SECTION = """
-实体上下文：{entity_context}
+CHINESE_BATCH_RELATION_PROMPT = """分析新记忆与以下候选记忆的关系。
 
-请根据上述上下文调整提取重点。
+新记忆：{new_content}
+
+候选记忆：
+{candidates_section}
+
+关系类型：
+1. updates（更新）：新信息取代旧知识，存在矛盾
+   - 指示词：现在、改、换成、不再、已经
+   - 例："我现在在字节跳动" 更新 "我在阿里巴巴"
+
+2. extends（扩展）：补充丰富现有信息，同一主题
+   - 指示词：而且、另外、还有、同时
+   - 例："我喜欢打篮球" 扩展 "我喜欢运动"
+
+3. null：无明显关系，跳过
+
+返回JSON格式：
+{{
+  "relations": [
+    {{"id": "记忆ID1", "type": "updates", "confidence": 0.9}},
+    {{"id": "记忆ID2", "type": "extends", "confidence": 0.8}},
+    {{"id": "记忆ID3", "type": null}}
+  ]
+}}
+
+注意：
+- 只返回有明显关系的记忆
+- 无关系的记忆返回 type: null
+- confidence 范围 0.0-1.0"""
+
+
+def get_chinese_batch_relation_prompt(
+    new_content: str,
+    candidates: list,
+) -> str:
+    candidates_section = "\n".join(
+        f"{i + 1}. [ID: {c['id']}] {c['content']}" for i, c in enumerate(candidates)
+    )
+    return CHINESE_BATCH_RELATION_PROMPT.format(
+        new_content=new_content,
+        candidates_section=candidates_section,
+    )
+
+
+ENTITY_CONTEXT_PROMPT_SECTION = """
+<extraction_guidance>
+{entity_context}
+</extraction_guidance>
 """
 
 

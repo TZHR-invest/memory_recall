@@ -3,9 +3,10 @@ Core memory storage service for simplified memory architecture.
 """
 
 from typing import Optional, List, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 from dataclasses import dataclass, field
 import json
+import logging
 
 from src.database import db
 from src.embedding.client import get_embedding_client
@@ -14,8 +15,12 @@ from src.services.core.entity_extraction import entity_extractor
 from src.services.core.llm_entity_extraction import (
     llm_entity_extractor,
     LLMEntityExtractor,
+    get_default_entity_context,
 )
+from src.services.core.chinese_prompts import detect_language
 from src.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -50,6 +55,33 @@ class MemoryStore:
             )
         return self._llm_extractor
 
+    async def _get_entity_context(
+        self,
+        content: str,
+        container_tag: str,
+        entity_context: Optional[str] = None,
+    ) -> str:
+        """
+        Get entity context using three-tier priority:
+        1. Parameter (highest priority)
+        2. Profile storage
+        3. Default value (lowest priority)
+        """
+        if not settings.USE_DEFAULT_ENTITY_CONTEXT:
+            return entity_context or ""
+
+        if entity_context:
+            return entity_context
+
+        from src.services.core.profile_service import profile_service
+
+        stored = await profile_service.get_entity_context(container_tag)
+        if stored:
+            return stored
+
+        language = detect_language(content)
+        return get_default_entity_context(language)
+
     async def create(
         self,
         content: str,
@@ -63,6 +95,7 @@ class MemoryStore:
         entity_context: Optional[str] = None,
         parent_memory_id: Optional[str] = None,
         is_inference: bool = False,
+        check_merge: bool = True,
     ) -> Memory:
         if use_llm_extraction is None:
             use_llm_extraction = settings.USE_LLM_EXTRACTION
@@ -70,6 +103,25 @@ class MemoryStore:
         embedding = None
         if generate_embedding:
             embedding = await self._generate_embedding(content)
+
+        if check_merge and not parent_memory_id and embedding:
+            similar = await self._check_similar_memory(
+                content, container_tag, embedding=embedding
+            )
+            if similar:
+                logger.info(
+                    f"Memory merge: found similar memory {similar['id']} "
+                    f"(similarity={similar['similarity']:.3f}) for container {container_tag}"
+                )
+                await self.merge_similar_memory(similar["id"], content)
+                existing = await self.get_by_id(similar["id"])
+                if existing:
+                    return existing
+
+        if entity_context is None and extract_entities:
+            entity_context = await self._get_entity_context(
+                content, container_tag, entity_context
+            )
 
         # Database JSONB may return as string
         final_metadata = metadata or {}
@@ -416,19 +468,87 @@ class MemoryStore:
 
         return new_memory
 
-    async def _generate_embedding(self, text: str) -> List[float]:
+    async def _generate_embedding(self, text: str) -> Optional[List[float]]:
         if not self.embedding_client:
-            return []
+            return None
         try:
             result = await self.embedding_client.embed(text)
             return result
         except Exception:
-            return []
+            return None
 
     def _embedding_to_str(self, embedding: Optional[List[float]]) -> Optional[str]:
         if not embedding:
             return None
         return "[" + ",".join(map(str, embedding)) + "]"
+
+    async def _check_similar_memory(
+        self,
+        content: str,
+        container_tag: str,
+        threshold: Optional[float] = None,
+        embedding: Optional[List[float]] = None,
+    ) -> Optional[Dict[str, Any]]:
+        if threshold is None:
+            threshold = settings.MEMORY_MERGE_THRESHOLD
+
+        if embedding is None:
+            query_embedding = await self._generate_embedding(content)
+            if not query_embedding:
+                return None
+        else:
+            query_embedding = embedding
+
+        row = await db.fetchrow(
+            """
+            SELECT id, content, metadata,
+                   1 - (embedding <=> $1::vector) as similarity
+            FROM memories
+            WHERE container_tag = $2
+            AND is_latest = TRUE
+            AND is_forgotten = FALSE
+            AND 1 - (embedding <=> $1::vector) >= $3
+            ORDER BY similarity DESC
+            LIMIT 1
+            """,
+            self._embedding_to_str(query_embedding),
+            container_tag,
+            threshold,
+        )
+
+        if row:
+            return {
+                "id": row["id"],
+                "content": row["content"],
+                "similarity": float(row["similarity"]),
+                "metadata": row["metadata"],
+            }
+        return None
+
+    async def merge_similar_memory(
+        self,
+        existing_memory_id: str,
+        new_content: Optional[str] = None,
+    ) -> bool:
+        """
+        Merge a new memory into an existing one by updating metadata.
+
+        Args:
+            existing_memory_id: ID of the existing memory to merge into
+            new_content: Content being merged (not stored, for logging)
+
+        Returns:
+            True if merge successful, False otherwise
+        """
+        memory = await self.get_by_id(existing_memory_id)
+        if not memory:
+            return False
+
+        metadata = memory.metadata.copy()
+        metadata["merged_count"] = metadata.get("merged_count", 0) + 1
+        metadata["last_merged_at"] = datetime.now(timezone.utc).isoformat()
+
+        return await self.update_metadata(existing_memory_id, metadata)
 
     def _row_to_memory(self, row: Dict) -> Memory:
         metadata = row.get("metadata", {}) or {}
