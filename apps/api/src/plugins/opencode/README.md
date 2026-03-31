@@ -173,6 +173,22 @@ bun run dist/install.js --help
 
 ## 常见问题
 
+### 什么是管理员 API Key？
+
+首次通过"首次注册"选项创建的 API Key 具有**管理员权限**，可以：
+
+1. 读写删除记忆数据
+2. **创建新的 API Key**
+
+权限级别：
+
+| 权限 | 能力 |
+|------|------|
+| `read` | 只读 |
+| `write` | 读取 + 写入 |
+| `delete` | 读取 + 写入 + 删除 |
+| `admin` | 全部权限 + 创建新 API Key |
+
 ### API 服务未运行
 
 **问题**：安装脚本提示无法连接到服务器
@@ -198,16 +214,28 @@ bun run dist/install.js --help
 
 ### 如何获取 API Key
 
-**方法 1：自动注册（推荐）**
+**场景 1：服务器没有任何 API Key（首次使用）**
 
-运行安装脚本，选择"新用户"选项。
+运行安装脚本，选择"首次注册"选项。创建的 Key 将具有管理员权限。
 
-**方法 2：手动创建**
+**场景 2：服务器已有 API Key**
+
+- **选项 1**：使用已有的 API Key（如果您知道它）
+- **选项 2**：使用首次注册时获得的管理员 Key 创建新 Key
+
+**手动创建（命令行）：**
 
 ```bash
+# 首次注册（无认证）
 curl -X POST http://localhost:8000/auth/initialize \
   -H "Content-Type: application/json" \
   -d '{"user_name": "your-name", "plugin_name": "opencode-plugin"}'
+
+# 使用管理员 Key 创建新 Key
+curl -X POST http://localhost:8000/auth/api-keys \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: rk_live_your_admin_key" \
+  -d '{"name": "my-plugin", "permissions": ["read", "write", "delete", "admin"]}'
 ```
 
 ## 许可证

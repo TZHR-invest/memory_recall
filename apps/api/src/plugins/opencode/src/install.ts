@@ -496,7 +496,10 @@ async function newUserFlow(rl: readline.Interface, baseUrl: string): Promise<Con
 
 async function createNewApiKeyFlow(rl: readline.Interface, baseUrl: string): Promise<Config | null> {
   console.log("\n=== 创建新 API Key ===\n");
-  console.log("此选项需要使用已有管理员 API Key 来创建新的 API Key。\n");
+  console.log("管理员 API Key 说明:");
+  console.log("  - 首次注册时创建的 API Key 默认具有管理员权限");
+  console.log("  - 具有 admin 权限的 Key 可以创建新的 API Key");
+  console.log("  - 如果您是首次使用此服务器，请选择'首次注册'选项\n");
   
   const adminApiKey = await question(rl, "请输入管理员 API Key: ");
   if (!adminApiKey) {
@@ -603,11 +606,12 @@ async function doInstall(): Promise<void> {
     } else if (serverStatus.hasKey) {
       console.log("✓ 服务器已有 API Key 注册");
       console.log("\n可用选项:");
-      console.log("  1. 使用已有 API Key - 直接使用现有的 Key");
-      console.log("  2. 创建新 API Key - 使用管理员 Key 创建新 Key");
+      console.log("  1. 使用已有 API Key - 输入您现有的 API Key");
+      console.log("  2. 创建新 API Key - 使用首次注册时获得的 Key 创建新 Key");
       console.log("  3. 取消");
+      console.log("\n提示: 首次注册时创建的 Key 具有管理员权限，可用于创建新 Key");
       
-      const choice = await question(rl, "请选择 (1-3): ");
+      const choice = await question(rl, "\n请选择 (1-3): ");
       
       if (choice === "1") {
         const config = await existingUserFlow(rl, baseUrl);
