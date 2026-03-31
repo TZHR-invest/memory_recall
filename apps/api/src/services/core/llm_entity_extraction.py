@@ -40,7 +40,7 @@ class ExtractedFact:
     entity_context: Optional[str] = None
 
 
-DEFAULT_TIMEOUT = 5.0
+DEFAULT_TIMEOUT = 30.0
 
 # =============================================================================
 # Default Entity Context Constants (Supermemory-style extraction guidance)
@@ -129,33 +129,54 @@ MEANINGLESS_ENTITIES = {
 # 不需要的实体类型
 SKIP_ENTITY_TYPES = {"time", "number", "activity"}
 
-ENGLISH_ENTITY_EXTRACTION_PROMPT = """Extract entities and facts from the following text.
+ENGLISH_ENTITY_EXTRACTION_PROMPT = """You are an entity extraction expert. Extract entities from text and return JSON.
 
 Text: {text}
 {context_section}
 
-Extract:
-1. Entities with their types (person, location, organization, time, preference, contact, activity)
-2. Whether this is a static fact (permanent trait like name, preference) or dynamic fact (recent activity)
-3. Confidence score (0.0-1.0)
+【Extraction Examples】
 
-Return JSON format:
+"I work at Google" → {{"organization": ["Google"]}}
+"I joined Meta last year" → {{"organization": ["Meta"]}}
+"I live in Beijing" → {{"location": ["Beijing"]}}
+"I live in San Francisco" → {{"location": ["San Francisco"]}}
+"Meeting with John tomorrow" → {{"person": ["John"]}}
+"I like coffee" → {{"preference": ["like coffee"]}}
+"I don't eat spicy food" → {{"preference": ["don't eat spicy food"]}}
+"I'm a vegetarian" → {{"preference": ["vegetarian"]}}
+"I prefer dark mode" → {{"preference": ["prefer dark mode"]}}
+
+【Boundary Rules】
+
+1. organization (company/school):
+   - Extract name only: "Google" not "work at Google" or "joined Google"
+   - Rule: "work at X/joined X/at X" → X is organization
+
+2. location (place):
+   - Rule: "live in X/from X" → X is location
+
+3. preference (preference):
+   - Extract complete phrase: "like coffee" not "like"
+   - Extract complete phrase: "don't eat spicy food" not "don't"
+
+【Entity Types】
+- organization: companies, schools (Google, Meta, Stanford, MIT)
+- location: cities, regions (Beijing, San Francisco, Manhattan)
+- person: names (John, Sarah, Mike)
+- preference: preferences (like coffee, vegetarian, prefer dark mode)
+- skill: skills (Python, React, machine learning)
+- contact: contact info (phone, email, WeChat)
+- occupation: jobs (engineer, product manager, designer)
+
+【Don't Extract】
+Pronouns (I, you, he), vague time (recently, currently)
+
+【Return Format】
 {{
-  "entities": {{
-    "location": ["Beijing"],
-    "organization": ["Google"],
-    "person": ["John"],
-    "time": ["tomorrow"],
-    "preference": ["likes coffee"],
-    "contact": ["email@example.com"],
-    "activity": ["working on project"]
-  }},
+  "entities": {{"organization": ["Google"], "person": ["John"]}},
   "is_static": true,
-  "confidence": 0.9,
-  "key_facts": ["User works at Google", "User lives in Beijing"]
-}}
-
-Only include non-empty entity types. Be concise and accurate."""
+  "confidence": 0.9
+}}"""
 
 
 ENGLISH_BATCH_RELATION_PROMPT = """Analyze the relationship between a new memory and candidate memories.
@@ -653,3 +674,11 @@ Return JSON:
 
 
 llm_entity_extractor = LLMEntityExtractor()
+
+# 使用配置项覆盖默认 timeout
+try:
+    from src.config import settings
+
+    llm_entity_extractor.timeout = settings.LLM_EXTRACTION_TIMEOUT
+except Exception:
+    pass
