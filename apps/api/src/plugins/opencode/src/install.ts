@@ -2,13 +2,10 @@
 /**
  * Memory Recall OpenCode Plugin - Installation Script
  * 
- * Usage: bunx memory-recall-opencode install
- * 
- * This script guides users through:
- * - Detecting existing configuration
- * - Setting up for existing users (with API Key)
- * - Registering new users (via /auth/initialize API)
- * - Generating configuration file
+ * Usage:
+ *   bunx memory-recall-opencode install    - 安装插件
+ *   bunx memory-recall-opencode uninstall  - 卸载插件
+ *   bunx memory-recall-opencode reinstall  - 重新安装
  */
 
 import * as fs from "fs";
@@ -184,6 +181,20 @@ function readExistingConfig(): Config | null {
   }
 }
 
+function configExists(): boolean {
+  return fs.existsSync(getConfigPath());
+}
+
+function deleteConfig(): boolean {
+  const configPath = getConfigPath();
+  if (fs.existsSync(configPath)) {
+    fs.unlinkSync(configPath);
+    console.log(`✓ 已删除配置文件: ${configPath}`);
+    return true;
+  }
+  return false;
+}
+
 function writeConfig(config: Config): void {
   ensureConfigDir();
   const configPath = getConfigPath();
@@ -318,7 +329,6 @@ async function registerNewUser(
       const data = (await response.json()) as InitializeResponse;
       return { success: true, data };
     } else if (response.status === 403) {
-      const errorData = await response.json();
       return { 
         success: false, 
         error: "已有 API Key 存在，请使用'现有用户'选项，或检查服务器配置。" 
@@ -336,7 +346,7 @@ async function registerNewUser(
 }
 
 // ============================================================================
-// Main Installation Flow
+// Installation Flows
 // ============================================================================
 
 async function existingUserFlow(rl: readline.Interface, baseUrl: string): Promise<Config | null> {
@@ -364,7 +374,6 @@ async function existingUserFlow(rl: readline.Interface, baseUrl: string): Promis
   console.log("✓ API Key 验证成功");
 
   const userName = await questionWithDefault(rl, "请输入您的用户名", "User");
-  const apiKeyName = await questionWithDefault(rl, "请输入 API Key 名称", "memory-recall-plugin");
 
   return {
     ...DEFAULT_CONFIG,
@@ -435,24 +444,29 @@ async function displayConfig(config: Config): Promise<void> {
   console.log(`  注入策略: ${config.injectionStrategy}`);
 }
 
-async function main(): Promise<void> {
-  console.log("\n========================================");
-  console.log("  Memory Recall OpenCode 插件安装向导");
-  console.log("========================================\n");
-
+async function doInstall(): Promise<void> {
   const rl = createReadlineInterface();
 
   try {
-    // Check existing config
-    const existingConfig = readExistingConfig();
-    
-    if (existingConfig) {
+    if (configExists()) {
+      const existingConfig = readExistingConfig();
       console.log("检测到已有配置文件:");
-      await displayConfig(existingConfig);
+      if (existingConfig) {
+        await displayConfig(existingConfig);
+      }
       
-      const update = await confirm(rl, "\n是否要更新配置?");
-      if (!update) {
-        console.log("\n安装已取消。当前配置保持不变。");
+      console.log("\n请选择操作:");
+      console.log("  1. 更新配置 (保留部分设置)");
+      console.log("  2. 重新安装 (删除旧配置)");
+      console.log("  3. 取消");
+      
+      const choice = await question(rl, "请选择 (1-3): ");
+      
+      if (choice === "2") {
+        console.log("\n=== 重新安装 ===\n");
+        deleteConfig();
+      } else if (choice === "3") {
+        console.log("\n安装已取消。");
         return;
       }
     }
@@ -504,8 +518,103 @@ async function main(): Promise<void> {
   }
 }
 
-// Run main
+async function doUninstall(): Promise<void> {
+  const rl = createReadlineInterface();
+
+  try {
+    if (!configExists()) {
+      console.log("\n未检测到配置文件，无需卸载。\n");
+      return;
+    }
+
+    const existingConfig = readExistingConfig();
+    console.log("\n=== 卸载 Memory Recall 插件 ===\n");
+    if (existingConfig) {
+      await displayConfig(existingConfig);
+    }
+
+    const confirmUninstall = await confirm(rl, "\n确定要卸载插件配置吗?");
+    if (!confirmUninstall) {
+      console.log("\n卸载已取消。");
+      return;
+    }
+
+    deleteConfig();
+
+    console.log("\n========================================");
+    console.log("✓ 卸载完成!");
+    console.log("========================================");
+    console.log("\n如需重新安装，请运行:");
+    console.log("  bunx memory-recall-opencode install\n");
+
+  } finally {
+    rl.close();
+  }
+}
+
+async function doReinstall(): Promise<void> {
+  console.log("\n=== 重新安装 Memory Recall 插件 ===\n");
+  
+  if (configExists()) {
+    console.log("正在删除旧配置...\n");
+    deleteConfig();
+  }
+
+  await doInstall();
+}
+
+function printHelp(): void {
+  console.log(`
+Memory Recall OpenCode 插件
+
+用法:
+  bunx memory-recall-opencode install    安装插件
+  bunx memory-recall-opencode uninstall  卸载插件
+  bunx memory-recall-opencode reinstall  重新安装
+  bunx memory-recall-opencode --help     显示帮助
+
+配置文件位置:
+  ~/.config/opencode/memory-recall.jsonc
+`);
+}
+
+// ============================================================================
+// Main
+// ============================================================================
+
+async function main(): Promise<void> {
+  const args = process.argv.slice(2);
+  const command = args[0] || "install";
+
+  switch (command) {
+    case "install":
+    case "i":
+      await doInstall();
+      break;
+    case "uninstall":
+    case "u":
+      console.log("\n========================================");
+      console.log("  Memory Recall OpenCode 插件卸载");
+      console.log("========================================\n");
+      await doUninstall();
+      break;
+    case "reinstall":
+    case "r":
+      await doReinstall();
+      break;
+    case "--help":
+    case "-h":
+    case "help":
+      printHelp();
+      break;
+    default:
+      console.log(`未知命令: ${command}`);
+      printHelp();
+      process.exit(1);
+  }
+}
+
 main().catch((error) => {
-  console.error("安装过程出错:", error);
+  console.error("执行出错:", error);
   process.exit(1);
 });
