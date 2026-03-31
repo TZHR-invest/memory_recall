@@ -1,21 +1,26 @@
 {
   "name": "memory-recall-opencode",
-  "version": "1.1.0",
+  "version": "1.2.1",
   "description": "Memory Recall plugin for OpenCode - persistent memory across sessions",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "memory-recall-opencode": "./dist/install.js"
+    "memory-recall-opencode": "./dist/cli.js"
+  },
+  "opencode": {
+    "type": "plugin",
+    "hooks": [
+      "chat.message",
+      "event",
+      "experimental.session.compacting"
+    ]
   },
   "files": [
     "dist",
     "README.md"
   ],
   "scripts": {
-    "build": "bun build ./src/index.ts ./src/install.ts --outdir ./dist --target bun --external @opencode-ai/plugin --external @opencode-ai/sdk",
-    "build:install": "bun build ./src/install.ts --outdir ./dist --target bun",
-    "dev": "bun build ./src/index.ts --outdir ./dist --target bun --watch",
-    "typecheck": "tsc --noEmit",
+    "build": "bun build ./src/index.ts --outdir ./dist --target node --external @opencode-ai/plugin --external @opencode-ai/sdk && bun build ./src/cli.ts --outfile ./dist/cli.js --target node",
     "prepublishOnly": "bun run build"
   },
   "peerDependencies": {
@@ -36,13 +41,5 @@
     "context",
     "recall"
   ],
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/ohmyopencode/memory-recall"
-  },
-  "homepage": "https://github.com/ohmyopencode/memory-recall#readme",
-  "bugs": {
-    "url": "https://github.com/ohmyopencode/memory-recall/issues"
-  }
+  "license": "MIT"
 }

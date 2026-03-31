@@ -3,6 +3,13 @@ import * as path from "path";
 
 export type Locale = "en_US" | "zh_CN";
 
+// Use import.meta.dir for runtime path resolution (works in both dev and bundled mode)
+const getBaseDir = (): string => {
+  // In bundled mode, import.meta.dir points to the dist directory
+  // In dev mode, it points to src directory
+  return import.meta.dir;
+};
+
 export interface LocaleData {
   locale: Locale;
   keywords: string[];
@@ -41,7 +48,8 @@ function loadLocaleFile(locale: Locale): LocaleData {
   const cached = localeCache.get(locale);
   if (cached) return cached;
 
-  const filePath = path.join(__dirname, "i18n", `${locale}.json`);
+  const baseDir = getBaseDir();
+  const filePath = path.join(baseDir, "i18n", `${locale}.json`);
   try {
     const content = fs.readFileSync(filePath, "utf-8");
     const data = JSON.parse(content) as LocaleData;
