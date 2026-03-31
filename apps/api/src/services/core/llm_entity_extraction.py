@@ -195,21 +195,27 @@ Relation Types:
    - Markers: "also", "additionally", "furthermore", "besides"
    - Example: "I like basketball" extends "I like sports"
 
-3. null: No significant relation, skip
+3. derives: Infers new knowledge from existing memory
+   - Markers: "so", "therefore", "can infer", "thus"
+   - Example: "So I drink coffee often" derives from "I work long hours"
+
+4. null: No significant relation, skip
 
 Return JSON format:
 {{
   "relations": [
     {{"id": "memory_id_1", "type": "updates", "confidence": 0.9}},
     {{"id": "memory_id_2", "type": "extends", "confidence": 0.8}},
-    {{"id": "memory_id_3", "type": null}}
+    {{"id": "memory_id_3", "type": "derives", "confidence": 0.7}},
+    {{"id": "memory_id_4", "type": null}}
   ]
 }}
 
 Note:
 - Only return memories with clear relations
 - Return type: null for no relation
-- Confidence range: 0.0-1.0"""
+- Confidence range: 0.0-1.0
+- Use derives for causal relationships or inferences, not for supplementary information"""
 
 
 @dataclass
