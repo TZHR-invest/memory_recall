@@ -40,8 +40,9 @@ bun run dist/install.js
 安装脚本会引导您：
 
 1. **选择用户类型**
-   - 现有用户：输入 API Key
-   - 新用户：自动注册获取 API Key
+   - 使用已有 API Key：直接使用现有的 Key
+   - 创建新 API Key：使用管理员 Key 创建新 Key
+   - 首次注册：仅限服务器没有任何 API Key 时
 
 2. **输入 API 服务地址**（默认 `http://localhost:8000`）
 
