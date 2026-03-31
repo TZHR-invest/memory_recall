@@ -7,8 +7,10 @@ from datetime import datetime
 from dataclasses import dataclass
 from enum import Enum
 import re
+import logging
 
 from src.database import db
+from src.config import settings
 from src.services.core.llm_entity_extraction import llm_entity_extractor
 from src.services.core.chinese_entity_types import (
     has_update_marker,
@@ -16,6 +18,8 @@ from src.services.core.chinese_entity_types import (
     has_derive_marker,
 )
 from src.embedding.client import get_embedding_client
+
+logger = logging.getLogger(__name__)
 
 
 class RelationType(Enum):
@@ -331,7 +335,7 @@ class RelationService:
         if not self.embedding_client:
             return []
 
-        query_embedding = self.embedding_client.embed(content)
+        query_embedding = await self.embedding_client.embed(content)
         if not query_embedding:
             return []
 
@@ -364,11 +368,17 @@ class RelationService:
         new_content: str,
         container_tag: str,
         is_static: bool = False,
-        use_llm: bool = False,
+        use_llm: Optional[bool] = None,
         similarity_threshold: float = 0.4,
-        max_candidates: int = 20,
+        max_candidates: Optional[int] = None,
     ) -> List[MemoryRelation]:
         relations = []
+
+        if max_candidates is None:
+            max_candidates = settings.BATCH_DETECTION_MAX_CANDIDATES
+
+        if use_llm is None:
+            use_llm = settings.USE_BATCH_RELATION_DETECTION
 
         rows = await self._get_semantic_similar_memories(
             content=new_content,
@@ -378,6 +388,35 @@ class RelationService:
             threshold=similarity_threshold,
         )
 
+        if not rows:
+            return relations
+
+        if settings.USE_BATCH_RELATION_DETECTION and use_llm:
+            logger.debug(f"Using batch relation detection for {len(rows)} candidates")
+            batch_results = await llm_entity_extractor.detect_relations_batch(
+                new_content=new_content,
+                candidates=[{"id": r["id"], "content": r["content"]} for r in rows],
+            )
+
+            for result in batch_results:
+                if result.relation_type is None:
+                    continue
+
+                relation = await self.create(
+                    from_memory_id=new_memory_id,
+                    to_memory_id=result.memory_id,
+                    relation_type=result.relation_type,
+                    confidence=result.confidence,
+                )
+                relations.append(relation)
+
+                if result.relation_type == RelationType.UPDATES.value:
+                    await self._mark_not_latest(result.memory_id)
+
+            logger.debug(f"Batch detection created {len(relations)} relations")
+            return relations
+
+        logger.debug(f"Using serial relation detection for {len(rows)} candidates")
         for row in rows:
             existing_id = row["id"]
             existing_content = row["content"]

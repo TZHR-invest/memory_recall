@@ -42,6 +42,39 @@ class ExtractedFact:
 
 DEFAULT_TIMEOUT = 5.0
 
+# =============================================================================
+# Default Entity Context Constants (Supermemory-style extraction guidance)
+# =============================================================================
+
+DEFAULT_ENTITY_CONTEXT_CN = """记忆提取规则：
+记住：永久性个人事实 — 饮食偏好、工作地点、技能、长期项目、明确要求
+不记：临时任务、一次性请求、助手行为、对话填充词
+规则：
+- 只有明确表达偏好才记录（"我喜欢..."、"我偏好..."）
+- 不确定时不创建记忆，宁缺毋滥"""
+
+DEFAULT_ENTITY_CONTEXT_EN = """REMEMBER: lasting personal facts — dietary restrictions, preferences, personal details, workplace, location, tools, ongoing projects, routines, explicit "remember this" requests.
+DO NOT REMEMBER: temporary intents, one-time tasks, assistant actions (searching, writing files, generating code), assistant suggestions, implementation details, in-progress task status.
+RULES:
+- Only store preferences explicitly stated ("I like...", "I prefer...", "I always...")
+- When in doubt, do NOT create a memory. Less is more."""
+
+
+def get_default_entity_context(language: str = "english") -> str:
+    """
+    Get the default entity context based on language.
+
+    Args:
+        language: "chinese" or "english" (default)
+
+    Returns:
+        Default entity context string for memory extraction guidance.
+    """
+    if language == "chinese":
+        return DEFAULT_ENTITY_CONTEXT_CN
+    return DEFAULT_ENTITY_CONTEXT_EN
+
+
 # 无意义实体黑名单
 MEANINGLESS_ENTITIES = {
     # 代词
@@ -125,6 +158,67 @@ Return JSON format:
 Only include non-empty entity types. Be concise and accurate."""
 
 
+ENGLISH_BATCH_RELATION_PROMPT = """Analyze the relationship between a new memory and candidate memories.
+
+New Memory: {new_content}
+
+Candidate Memories:
+{candidates_section}
+
+Relation Types:
+1. updates: New information contradicts/replaces old knowledge
+   - Markers: "now", "changed", "switched to", "no longer", "already"
+   - Example: "I now work at Google" updates "I work at Meta"
+
+2. extends: Enriches/supplements existing information, same topic
+   - Markers: "also", "additionally", "furthermore", "besides"
+   - Example: "I like basketball" extends "I like sports"
+
+3. null: No significant relation, skip
+
+Return JSON format:
+{{
+  "relations": [
+    {{"id": "memory_id_1", "type": "updates", "confidence": 0.9}},
+    {{"id": "memory_id_2", "type": "extends", "confidence": 0.8}},
+    {{"id": "memory_id_3", "type": null}}
+  ]
+}}
+
+Note:
+- Only return memories with clear relations
+- Return type: null for no relation
+- Confidence range: 0.0-1.0"""
+
+
+@dataclass
+class BatchRelationResult:
+    memory_id: str
+    relation_type: Optional[str]
+    confidence: float
+
+
+def get_batch_relation_prompt(
+    new_content: str,
+    candidates: List[Dict[str, Any]],
+    language: str = "english",
+) -> str:
+    candidates_section = "\n".join(
+        f"{i + 1}. [ID: {c['id']}] {c['content'][:200]}"
+        for i, c in enumerate(candidates)
+    )
+
+    if language == "chinese":
+        from src.services.core.chinese_prompts import get_chinese_batch_relation_prompt
+
+        return get_chinese_batch_relation_prompt(new_content, candidates)
+
+    return ENGLISH_BATCH_RELATION_PROMPT.format(
+        new_content=new_content,
+        candidates_section=candidates_section,
+    )
+
+
 class LLMEntityExtractor:
     def __init__(self, timeout: float = DEFAULT_TIMEOUT):
         self.llm_client = None
@@ -200,7 +294,11 @@ class LLMEntityExtractor:
 
         context_section = ""
         if entity_context:
-            context_section = f"\nEntity Context: {entity_context}\nPlease adjust extraction focus based on the context above."
+            context_section = f"""
+<extraction_guidance>
+{entity_context}
+</extraction_guidance>
+"""
 
         return ENGLISH_ENTITY_EXTRACTION_PROMPT.format(
             text=text,
@@ -436,6 +534,122 @@ Return JSON:
             return (None, 0.0, "")
         except Exception:
             return (None, 0.0, "")
+
+    async def detect_relations_batch(
+        self,
+        new_content: str,
+        candidates: List[Dict[str, Any]],
+        language: Optional[str] = None,
+    ) -> List[BatchRelationResult]:
+        """
+        Detect relations between a new memory and multiple candidates in a single LLM call.
+
+        Args:
+            new_content: The new memory content
+            candidates: List of candidate memories with 'id' and 'content' keys
+            language: Language hint ('chinese' or 'english'), auto-detected if None
+
+        Returns:
+            List of BatchRelationResult with memory_id, relation_type, and confidence
+        """
+        if not self.llm_client or not candidates:
+            return []
+
+        # Auto-detect language if not provided
+        if language is None:
+            language = detect_language(new_content)
+
+        try:
+            # Generate batch prompt
+            prompt = get_batch_relation_prompt(new_content, candidates, language)
+
+            result = await asyncio.wait_for(
+                asyncio.to_thread(
+                    self.llm_client.extract_json,
+                    prompt,
+                    0.3,
+                ),
+                timeout=self.timeout,
+            )
+
+            if result and "relations" in result:
+                return self._parse_batch_relations(result["relations"])
+
+            # Fallback to rule-based detection if no valid response
+            return self._fallback_batch_detection(new_content, candidates)
+
+        except asyncio.TimeoutError:
+            # Fallback to rule-based detection on timeout
+            return self._fallback_batch_detection(new_content, candidates)
+        except Exception:
+            # Fallback to rule-based detection on any error
+            return self._fallback_batch_detection(new_content, candidates)
+
+    def _parse_batch_relations(
+        self, relations_data: List[Dict[str, Any]]
+    ) -> List[BatchRelationResult]:
+        """Parse batch LLM response into BatchRelationResult objects."""
+        results = []
+        for item in relations_data:
+            memory_id = item.get("id", "")
+            relation_type = item.get("type")
+            confidence = item.get("confidence", 0.5)
+
+            # Only include valid relation types
+            if relation_type in ("updates", "extends", "derives"):
+                results.append(
+                    BatchRelationResult(
+                        memory_id=memory_id,
+                        relation_type=relation_type,
+                        confidence=float(confidence),
+                    )
+                )
+            # Skip null relations (no significant relation)
+
+        return results
+
+    def _fallback_batch_detection(
+        self,
+        new_content: str,
+        candidates: List[Dict[str, Any]],
+    ) -> List[BatchRelationResult]:
+        """Fallback to rule-based detection when LLM fails."""
+        from src.services.core.chinese_entity_types import (
+            has_update_marker,
+            has_extend_marker,
+            has_derive_marker,
+        )
+
+        results = []
+
+        for candidate in candidates:
+            memory_id = candidate.get("id", "")
+            existing_content = candidate.get("content", "")
+
+            # Rule-based detection using markers
+            relation_type = None
+            confidence = 0.5
+
+            if has_update_marker(new_content):
+                relation_type = "updates"
+                confidence = 0.7
+            elif has_extend_marker(new_content):
+                relation_type = "extends"
+                confidence = 0.6
+            elif has_derive_marker(new_content):
+                relation_type = "derives"
+                confidence = 0.6
+
+            if relation_type:
+                results.append(
+                    BatchRelationResult(
+                        memory_id=memory_id,
+                        relation_type=relation_type,
+                        confidence=confidence,
+                    )
+                )
+
+        return results
 
 
 llm_entity_extractor = LLMEntityExtractor()

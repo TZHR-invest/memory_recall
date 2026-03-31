@@ -263,6 +263,112 @@ curl "http://localhost:8000/api/stats/people?limit=20"
 
 ## 错误处理
 
+### Entity Context（记忆提取指导）
+
+Entity Context 用于指导 LLM 提取记忆时应该记住什么、忽略什么，有效减少噪声记忆。
+
+#### 获取 Entity Context
+
+```bash
+curl "http://localhost:8000/api/v1/profile/entity-context?container_tag=user_001" \
+  -H "X-API-Key: your-api-key"
+```
+
+**响应示例**：
+```json
+{
+  "container_tag": "user_001",
+  "entity_context": "记忆提取规则：\n记住：永久性个人事实...",
+  "source": "stored"
+}
+```
+
+- `source`: "stored" 表示用户自定义，"default" 表示使用系统默认值
+
+#### 设置 Entity Context
+
+```bash
+curl -X PUT "http://localhost:8000/api/v1/profile/entity-context?container_tag=user_001" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your-api-key" \
+  -d '{
+    "entity_context": "设计探索对话，关注用户的UI偏好和品牌需求"
+  }'
+```
+
+#### 三层优先级机制
+
+Entity Context 按以下优先级获取：
+
+1. **参数传入**（最高）：创建记忆时显式传入 `entity_context` 参数
+2. **Profile 存储**（中等）：通过 API 设置的容器级别 context
+3. **默认值**（最低）：系统内置的中英文默认指导规则
+
+#### 默认 Entity Context 示例
+
+**中文版本**：
+```
+记忆提取规则：
+记住：永久性个人事实 — 饮食偏好、工作地点、技能、长期项目、明确要求
+不记：临时任务、一次性请求、助手行为、对话填充词
+规则：
+- 只有明确表达偏好才记录（"我喜欢..."、"我偏好..."）
+- 不确定时不创建记忆，宁缺毋滥
+```
+
+**英文版本**：
+```
+REMEMBER: lasting personal facts — dietary restrictions, preferences, personal details...
+DO NOT REMEMBER: temporary intents, one-time tasks, assistant actions...
+RULES:
+- Only store preferences explicitly stated ("I like...", "I prefer...")
+- When in doubt, do NOT create a memory. Less is more.
+```
+
+### 批量关系检测（Batch Relation Detection）
+
+系统支持批量 LLM 关系检测，将多个候选记忆打包到单个 LLM 请求中，显著降低延迟。
+
+#### 配置选项
+
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| `USE_BATCH_RELATION_DETECTION` | `True` | 启用批量关系检测 |
+| `BATCH_DETECTION_MAX_CANDIDATES` | `10` | 单次批量检测的最大候选数 |
+| `MEMORY_MERGE_THRESHOLD` | `0.95` | 记忆合并的相似度阈值 |
+
+#### 工作原理
+
+**批量检测流程**：
+1. 查询相似记忆（最多 10 个）
+2. 构建批量 Prompt：新记忆 + 所有候选记忆
+3. 单次 LLM 调用返回所有关系
+4. 失败时自动降级到规则检测
+
+**性能对比**：
+- 串行检测：10 个候选 × 2s = ~20s
+- 批量检测：1 次 LLM 调用 = ~2s
+
+#### 记忆合并
+
+当新记忆与现有记忆相似度 > 0.95 时，系统自动合并到现有记忆而非创建新记录：
+
+```json
+{
+  "id": "mem_abc123",
+  "content": "我是素食主义者",
+  "metadata": {
+    "merged_count": 3,
+    "last_merged_at": "2024-01-15T10:30:00Z"
+  }
+}
+```
+
+**合并规则**：
+- 仅合并同一容器内的记忆
+- 原始内容保持不变
+- 更新 `merged_count` 和 `last_merged_at` 元数据
+
 ### 错误响应格式
 
 ```json

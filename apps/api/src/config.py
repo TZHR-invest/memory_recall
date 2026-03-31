@@ -45,6 +45,14 @@ class Settings(BaseSettings):
     LLM_EXTRACTION_TIMEOUT: float = 300.0  # LLM提取超时时间（秒）
     USE_LLM_EXTRACTION: bool = True  # 默认使用LLM提取
     USE_LAC_EXTRACTOR: bool = False  # LAC提取器（可选）
+    USE_DEFAULT_ENTITY_CONTEXT: bool = True  # 默认使用entity_context自动注入
+
+    # 批量关系检测配置
+    USE_BATCH_RELATION_DETECTION: bool = True  # 默认使用批量关系检测
+    BATCH_DETECTION_MAX_CANDIDATES: int = 10  # 批量检测最大候选数
+
+    # 记忆合并配置
+    MEMORY_MERGE_THRESHOLD: float = 0.95  # 记忆合并相似度阈值
 
     class Config:
         env_file = ".env"

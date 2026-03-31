@@ -64,34 +64,39 @@ class TestMemoryStoreAsync:
         ) as mock_embed:
             mock_embed.return_value = [0.1] * 1024
 
-            with patch("src.services.core.memory_store.db") as mock_db:
-                mock_db.fetchrow = AsyncMock(
-                    return_value={
-                        "id": "mem_test123",
-                        "container_tag": "user_001",
-                        "content": "Test content",
-                        "embedding": "[0.1,0.2]",
-                        "is_static": True,
-                        "is_latest": True,
-                        "valid_from": None,
-                        "valid_until": None,
-                        "metadata": {},
-                        "confidence": 0.8,
-                        "created_at": None,
-                        "is_forgotten": False,
-                    }
-                )
+            with patch.object(
+                self.store, "_check_similar_memory", new_callable=AsyncMock
+            ) as mock_check:
+                mock_check.return_value = None
 
-                memory = await self.store.create(
-                    content="Test content",
-                    container_tag="user_001",
-                    is_static=True,
-                )
+                with patch("src.services.core.memory_store.db") as mock_db:
+                    mock_db.fetchrow = AsyncMock(
+                        return_value={
+                            "id": "mem_test123",
+                            "container_tag": "user_001",
+                            "content": "Test content",
+                            "embedding": "[0.1,0.2]",
+                            "is_static": True,
+                            "is_latest": True,
+                            "valid_from": None,
+                            "valid_until": None,
+                            "metadata": {},
+                            "confidence": 0.8,
+                            "created_at": None,
+                            "is_forgotten": False,
+                        }
+                    )
 
-                assert memory.id == "mem_test123"
-                assert memory.container_tag == "user_001"
-                assert memory.content == "Test content"
-                assert memory.is_static is True
+                    memory = await self.store.create(
+                        content="Test content",
+                        container_tag="user_001",
+                        is_static=True,
+                    )
+
+                    assert memory.id == "mem_test123"
+                    assert memory.container_tag == "user_001"
+                    assert memory.content == "Test content"
+                    assert memory.is_static is True
 
     @pytest.mark.asyncio
     async def test_get_by_id_mock(self):
