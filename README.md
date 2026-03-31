@@ -294,10 +294,80 @@ bunx memory-recall-opencode install
     "apiKey": "your-api-key",
     "baseUrl": "http://localhost:8000",
     "containerTagPrefix": "opencode",
+    "injectionStrategy": "smart",
+    "initialInjection": {
+        "profile": true,
+        "projectMemories": true,
+        "chunks": true,
+        "maxChunks": 3
+    },
+    "smartRecall": {
+        "enabled": true,
+        "keywords": ["记得", "recall", "之前"],
+        "maxAdditionalMemories": 3,
+        "maxAdditionalChunks": 2
+    },
     "enableGraphRecall": true,
     "enableEntityRecall": true,
     "graphMaxDepth": 2,
     "graphMaxNodes": 5
+}
+```
+
+### 智能注入策略
+
+插件支持三种注入策略，优化 token 消耗和上下文相关性：
+
+| 策略 | 说明 |
+|------|------|
+| `once` | 仅在 session 首条消息注入上下文 |
+| `smart` | 首次注入 + 关键词触发召回（**默认**） |
+| `always` | 每条消息都注入上下文（旧行为） |
+
+**首次注入配置**：
+
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| `initialInjection.profile` | `true` | 是否注入用户画像 |
+| `initialInjection.projectMemories` | `true` | 是否注入项目记忆 |
+| `initialInjection.chunks` | `true` | 是否注入文档 chunks |
+| `initialInjection.maxChunks` | `3` | 首次注入的最大 chunks 数量 |
+
+**智能召回配置**：
+
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| `smartRecall.enabled` | `true` | 是否启用智能召回 |
+| `smartRecall.keywords` | 内置关键词 | 触发召回的关键词列表 |
+| `smartRecall.maxAdditionalMemories` | `3` | 每次召回的最大记忆数 |
+| `smartRecall.maxAdditionalChunks` | `2` | 每次召回的最大 chunks 数 |
+
+**默认召回关键词**：
+```
+中文：记得、之前、上次、以前、回忆、记忆
+英文：recall、remember、previous、earlier
+```
+
+**迁移指南**：
+
+旧配置（已废弃）：
+```json
+{
+    "enableSmartRecall": true
+}
+```
+
+新配置：
+```json
+{
+    "injectionStrategy": "smart"
+}
+```
+
+保持旧行为：
+```json
+{
+    "injectionStrategy": "always"
 }
 ```
 

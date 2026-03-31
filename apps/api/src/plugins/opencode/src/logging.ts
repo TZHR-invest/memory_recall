@@ -138,6 +138,9 @@ export class Logger {
     entityCount?: number;
     filteredCount?: number;
     dynamicRecall?: boolean;
+    injectionStrategy?: string;
+    isInitial?: boolean;
+    triggerKeyword?: string | null;
   }): void {
     this.write("info", "Context injected", {
       session_id: params.sessionId,
@@ -151,6 +154,9 @@ export class Logger {
       entity_count: params.entityCount || 0,
       filtered_count: params.filteredCount || 0,
       dynamic_recall: params.dynamicRecall || false,
+      injection_strategy: params.injectionStrategy || "smart",
+      is_initial: params.isInitial ?? true,
+      trigger_keyword: params.triggerKeyword || null,
     });
   }
 

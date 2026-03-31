@@ -4,6 +4,7 @@ import type { ExpandedMemory } from "./context";
 export class InjectedMemoryTracker {
   private injectedIds: Map<string, number> = new Map();
   private maxSize: number;
+  private hasInitialInjection: boolean = false;
 
   constructor(maxSize: number = 100) {
     this.maxSize = maxSize;
@@ -38,10 +39,19 @@ export class InjectedMemoryTracker {
 
   clear(): void {
     this.injectedIds.clear();
+    this.hasInitialInjection = false;
   }
 
   size(): number {
     return this.injectedIds.size;
+  }
+
+  markInitialInjected(): void {
+    this.hasInitialInjection = true;
+  }
+
+  needsInitialInjection(): boolean {
+    return !this.hasInitialInjection;
   }
 
   filterNew<T extends { id: string }>(items: T[]): T[] {
