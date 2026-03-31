@@ -585,71 +585,12 @@ async function doInstall(): Promise<void> {
     // Select user type
     const userTypes = [
       "使用已有 API Key", 
-      "创建新 API Key (需要管理员 Key)",
-      "首次注册 (仅限服务器无 Key 时)"
+      "注册新用户 (开发环境可用)",
+      "创建新 API Key (需要管理员 Key)"
     ];
 
-    // Get server URL first
+    // Get server URL
     const baseUrl = await questionWithDefault(rl, "\n请输入 API 服务地址", DEFAULT_BASE_URL);
-
-    // Check server status
-    console.log("\n正在检查服务器状态...");
-    const serverStatus = await checkServerHasApiKey(baseUrl);
-    
-    if (serverStatus.error) {
-      console.log(`✗ 无法连接到服务器: ${serverStatus.error}`);
-      const continueAnyway = await confirm(rl, "是否继续配置?");
-      if (!continueAnyway) {
-        console.log("\n安装已取消。");
-        return;
-      }
-    } else if (serverStatus.hasKey) {
-      console.log("✓ 服务器已有 API Key 注册");
-      console.log("\n可用选项:");
-      console.log("  1. 使用已有 API Key - 输入您现有的 API Key");
-      console.log("  2. 创建新 API Key - 使用首次注册时获得的 Key 创建新 Key");
-      console.log("  3. 取消");
-      console.log("\n提示: 首次注册时创建的 Key 具有管理员权限，可用于创建新 Key");
-      
-      const choice = await question(rl, "\n请选择 (1-3): ");
-      
-      if (choice === "1") {
-        const config = await existingUserFlow(rl, baseUrl);
-        if (!config) {
-          console.log("\n安装已取消。");
-          return;
-        }
-        await displayConfig(config);
-        const confirmSave = await confirm(rl, "\n是否保存配置?");
-        if (!confirmSave) {
-          console.log("\n安装已取消。");
-          return;
-        }
-        writeConfig(config);
-        console.log("\n✓ 安装完成！");
-        return;
-      } else if (choice === "2") {
-        const config = await createNewApiKeyFlow(rl, baseUrl);
-        if (!config) {
-          console.log("\n安装已取消。");
-          return;
-        }
-        await displayConfig(config);
-        const confirmSave = await confirm(rl, "\n是否保存配置?");
-        if (!confirmSave) {
-          console.log("\n安装已取消。");
-          return;
-        }
-        writeConfig(config);
-        console.log("\n✓ 安装完成！");
-        return;
-      } else {
-        console.log("\n安装已取消。");
-        return;
-      }
-    } else {
-      console.log("✓ 服务器尚未注册，可进行首次注册");
-    }
 
     const selectedType = await selectOption(rl, "请选择用户类型:", userTypes);
 
@@ -659,9 +600,9 @@ async function doInstall(): Promise<void> {
     if (selectedType === 0) {
       config = await existingUserFlow(rl, baseUrl);
     } else if (selectedType === 1) {
-      config = await createNewApiKeyFlow(rl, baseUrl);
-    } else {
       config = await newUserFlow(rl, baseUrl);
+    } else {
+      config = await createNewApiKeyFlow(rl, baseUrl);
     }
 
     if (!config) {

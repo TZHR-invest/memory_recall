@@ -4,12 +4,14 @@ API Key Management Endpoints
 POST /v1/auth/api-keys          - Create a new API key
 GET  /v1/auth/api-keys          - List user's API keys
 DELETE /v1/auth/api-keys/{id}   - Revoke an API key
+POST /v1/auth/initialize        - Register new user (dev mode allows multiple)
 """
 
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 from datetime import datetime
+import os
 
 from src.api.auth import (
     AuthService,
@@ -142,41 +144,53 @@ async def revoke_api_key(
     "/initialize",
     response_model=InitializePluginResponse,
     summary="Initialize Plugin",
-    description="""Create an API key for first-time setup.
+    description="""Create an API key for setup.
+
+**Development Mode** (APP_ENV=development):
+- Allows multiple users to register without admin key
+- Each user gets their own API key and container
+
+**Production Mode** (APP_ENV=production):
+- Only allows first-time registration
+- Subsequent registrations require admin API key
 
 **One API Key = One Container**:
 - Each API key has a unique container_tag (the key's ID)
 - All memories created with this key are stored in that container
-- No need to specify container_tag - it's automatic
-
-**First-Time Setup**:
-- This endpoint requires no authentication
-- Only works if no API keys exist yet
-- Specify your user_name (a readable name for yourself)
-
-**Example**:
-- user_name = "John Doe"
-- Creates API key with container_tag = key_id
-- All your memories are automatically stored in your container
 """,
 )
 async def initialize_plugin(request: InitializePluginRequest):
     auth_service = AuthService()
     from src.database import db
 
+    app_env = os.getenv("APP_ENV", "development")
+    is_dev_mode = app_env in ("development", "dev", "test")
+
     existing_keys = await db.fetch(
         "SELECT id FROM api_keys WHERE is_active = TRUE LIMIT 1"
     )
 
-    if len(existing_keys) > 0:
+    if len(existing_keys) > 0 and not is_dev_mode:
         raise HTTPException(
             status_code=403,
             detail="API keys already exist. Use /auth/api-keys with admin authentication instead.",
         )
 
+    user_id = request.user_name.lower().replace(" ", "-")
+
+    # In dev mode, append suffix if user_id already exists
+    if is_dev_mode and len(existing_keys) > 0:
+        existing_user = await db.fetchrow(
+            "SELECT id FROM api_keys WHERE user_id = $1 AND is_active = TRUE", user_id
+        )
+        if existing_user:
+            import uuid
+
+            user_id = f"{user_id}-{uuid.uuid4().hex[:8]}"
+
     try:
         result = await auth_service.create_key(
-            user_id=request.user_name.lower().replace(" ", "-"),
+            user_id=user_id,
             user_name=request.user_name,
             name=request.plugin_name,
             permissions=request.permissions,
@@ -186,7 +200,7 @@ async def initialize_plugin(request: InitializePluginRequest):
         return InitializePluginResponse(
             api_key=result.key,
             key_id=result.id,
-            user_id=request.user_name.lower().replace(" ", "-"),
+            user_id=user_id,
             user_name=request.user_name,
             container_tag=result.id,
             config_example={
@@ -200,7 +214,7 @@ async def initialize_plugin(request: InitializePluginRequest):
                 "compactionThreshold": 0.8,
                 "enableSummaryCapture": True,
                 "enableDocumentTracking": True,
-                "trackedDocPatterns": ["README*.md", "docs/**/*.md", "AGENTS.md"],
+                "trackedDocPatterns": ["README*.md", "docs/*.md", "AGENTS.md"],
                 "language": "auto",
                 "logLevel": "info",
             },
