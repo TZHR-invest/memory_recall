@@ -2,41 +2,68 @@
 
 为 OpenCode 提供持久化记忆能力，支持跨会话上下文召回。
 
-## 快速开始
+## 安装
 
-### 安装
+### 前置要求
+
+- Bun 运行时环境
+- Memory Recall API 服务
+
+### 安装 Bun
 
 ```bash
-bunx memory-recall-opencode install
+curl -fsSL https://bun.sh/install | bash
 ```
 
-安装脚本会引导您完成配置：
+### 安装插件
 
-1. **现有用户**：输入 API Key 和用户信息
-2. **新用户**：自动注册并获取 API Key
+**Step 1: 获取打包文件**
+
+从项目获取 `memory-recall-opencode-1.1.0.tar.gz` 文件。
+
+**Step 2: 解压并安装**
+
+```bash
+# 解压
+mkdir -p memory-recall-opencode
+tar -xzvf memory-recall-opencode-1.1.0.tar.gz -C memory-recall-opencode
+
+# 进入目录
+cd memory-recall-opencode
+
+# 运行安装脚本
+bun run dist/install.js
+```
+
+**Step 3: 按提示完成配置**
+
+安装脚本会引导您：
+
+1. **选择用户类型**
+   - 现有用户：输入 API Key
+   - 新用户：自动注册获取 API Key
+
+2. **输入 API 服务地址**（默认 `http://localhost:8000`）
+
+3. **确认并保存配置**
 
 ### 卸载
 
 ```bash
-bunx memory-recall-opencode uninstall
+bun run dist/install.js uninstall
 ```
 
 ### 重新安装
 
 ```bash
-bunx memory-recall-opencode reinstall
+bun run dist/install.js reinstall
 ```
 
 ### 查看帮助
 
 ```bash
-bunx memory-recall-opencode --help
+bun run dist/install.js --help
 ```
-
-### 前置要求
-
-- Memory Recall API 服务正在运行
-- Bun 运行时环境
 
 ## 配置
 
@@ -160,7 +187,7 @@ bunx memory-recall-opencode --help
 
 **解决**：
 1. 检查 API Key 是否正确
-2. 重新运行 `bunx memory-recall-opencode install` 更新配置
+2. 重新运行安装脚本更新配置
 3. 确认 API Key 未过期
 
 ### 配置文件位置
@@ -171,31 +198,15 @@ bunx memory-recall-opencode --help
 ### 如何获取 API Key
 
 **方法 1：自动注册（推荐）**
-```bash
-bunx memory-recall-opencode install
-# 选择 "新用户"
-```
+
+运行安装脚本，选择"新用户"选项。
 
 **方法 2：手动创建**
+
 ```bash
 curl -X POST http://localhost:8000/auth/initialize \
   -H "Content-Type: application/json" \
   -d '{"user_name": "your-name", "plugin_name": "opencode-plugin"}'
-```
-
-## 开发
-
-### 构建
-
-```bash
-cd apps/api/src/plugins/opencode
-bun run build
-```
-
-### 本地测试
-
-```bash
-bun run src/install.ts
 ```
 
 ## 许可证
