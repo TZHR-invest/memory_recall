@@ -440,6 +440,84 @@ async def get_profile(
     return profile
 
 
+class EntityContextResponse(BaseModel):
+    container_tag: str = Field(..., description="Container tag")
+    entity_context: Optional[str] = Field(None, description="Current entity context")
+    source: str = Field(
+        "stored", description="Source of entity context: 'stored' or 'default'"
+    )
+
+
+class SetEntityContextRequest(BaseModel):
+    entity_context: str = Field(
+        ...,
+        description="Entity context to set (max 1500 chars)",
+        examples=["设计探索对话，关注用户的UI偏好和品牌需求"],
+    )
+
+
+@router.get(
+    "/profile/entity-context",
+    summary="Get entity context",
+    description="Get the current entity context for a container. Returns the stored context or indicates default is being used.",
+    response_model=EntityContextResponse,
+)
+async def get_entity_context(
+    container_tag: str = Query(..., description="Container tag"),
+    current_user: Dict = Depends(require_permission("read")),
+    _: Dict = Depends(check_rate_limit),
+):
+    verify_container_ownership(container_tag, current_user["key_id"])
+
+    stored_context = await profile_service.get_entity_context(container_tag)
+
+    if stored_context:
+        return EntityContextResponse(
+            container_tag=container_tag,
+            entity_context=stored_context,
+            source="stored",
+        )
+
+    from src.services.core.llm_entity_extraction import get_default_entity_context
+    from src.services.core.chinese_prompts import detect_language
+
+    default_context = get_default_entity_context("english")
+
+    return EntityContextResponse(
+        container_tag=container_tag,
+        entity_context=default_context,
+        source="default",
+    )
+
+
+@router.put(
+    "/profile/entity-context",
+    summary="Set entity context",
+    description="Set the entity context for a container. This context will be used to guide memory extraction for all subsequent memories in this container.",
+    response_model=EntityContextResponse,
+)
+async def set_entity_context(
+    request: SetEntityContextRequest,
+    container_tag: str = Query(..., description="Container tag"),
+    current_user: Dict = Depends(require_permission("write")),
+    _: Dict = Depends(check_rate_limit),
+):
+    verify_container_ownership(container_tag, current_user["key_id"])
+
+    await profile_service.set_entity_context(
+        container_tag=container_tag,
+        entity_context=request.entity_context,
+    )
+
+    await profile_service.invalidate_cache(container_tag)
+
+    return EntityContextResponse(
+        container_tag=container_tag,
+        entity_context=request.entity_context,
+        source="stored",
+    )
+
+
 @router.post(
     "/search",
     summary="Search memories",
