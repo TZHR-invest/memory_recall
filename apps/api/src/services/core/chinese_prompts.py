@@ -144,21 +144,27 @@ CHINESE_BATCH_RELATION_PROMPT = """分析新记忆与以下候选记忆的关系
    - 指示词：而且、另外、还有、同时
    - 例："我喜欢打篮球" 扩展 "我喜欢运动"
 
-3. null：无明显关系，跳过
+3. derives（推断）：从现有记忆推断出新知识
+   - 指示词：所以、因此、可以推断、由此可见
+   - 例："所以我经常喝咖啡" 推断自 "我工作很忙，经常加班"
+
+4. null：无明显关系，跳过
 
 返回JSON格式：
 {{
   "relations": [
     {{"id": "记忆ID1", "type": "updates", "confidence": 0.9}},
     {{"id": "记忆ID2", "type": "extends", "confidence": 0.8}},
-    {{"id": "记忆ID3", "type": null}}
+    {{"id": "记忆ID3", "type": "derives", "confidence": 0.7}},
+    {{"id": "记忆ID4", "type": null}}
   ]
 }}
 
 注意：
 - 只返回有明显关系的记忆
 - 无关系的记忆返回 type: null
-- confidence 范围 0.0-1.0"""
+- confidence 范围 0.0-1.0
+- derives 用于因果关系或推断，不是补充信息"""
 
 
 def get_chinese_batch_relation_prompt(
