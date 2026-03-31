@@ -3,6 +3,46 @@ import { getAllKeywords, getLocale, type Locale } from "./i18n";
 
 const keywordPattern = new RegExp(getAllKeywords().join("|"), "i");
 
+export function computeContentHash(content: string): string {
+  return Bun.hash(content).toString(16).padStart(16, "0");
+}
+
+export interface CrossScopeDedupResult {
+  staticFacts: string[];
+  dynamicFacts: string[];
+  dedupedProjectMemories: Memory[];
+  dedupStats: {
+    projectMemoriesFiltered: number;
+  };
+}
+
+export function deduplicateAcrossScopes(
+  profile: Profile | null,
+  projectMemories: Memory[]
+): CrossScopeDedupResult {
+  const userContentHashes = new Set<string>();
+  
+  const staticFacts = profile?.static || [];
+  const dynamicFacts = profile?.dynamic || [];
+  
+  staticFacts.forEach(fact => userContentHashes.add(computeContentHash(fact)));
+  dynamicFacts.forEach(fact => userContentHashes.add(computeContentHash(fact)));
+  
+  const dedupedProjectMemories = projectMemories.filter(m => {
+    const hash = computeContentHash(m.content);
+    return !userContentHashes.has(hash);
+  });
+  
+  return {
+    staticFacts,
+    dynamicFacts,
+    dedupedProjectMemories,
+    dedupStats: {
+      projectMemoriesFiltered: projectMemories.length - dedupedProjectMemories.length,
+    },
+  };
+}
+
 export const RELATION_WEIGHTS: Record<string, number> = {
   updates: 1.0,
   extends: 0.7,
@@ -338,29 +378,27 @@ export function formatContext(options: ContextOptions): string {
   lines.push(sectionTitle);
   lines.push("");
 
-  if (profile) {
-    const staticFacts = profile.static.slice(0, maxProfileItems);
-    const dynamicFacts = profile.dynamic.slice(0, maxProfileItems);
+  const deduped = deduplicateAcrossScopes(profile, projectMemories);
+  const { staticFacts, dynamicFacts, dedupedProjectMemories } = deduped;
 
-    if (staticFacts.length > 0) {
-      const staticTitle = isZh ? "### 永久特征" : "### Static Facts";
-      lines.push(staticTitle);
-      staticFacts.forEach((fact) => lines.push("- " + fact));
-      lines.push("");
-    }
-
-    if (dynamicFacts.length > 0) {
-      const dynamicTitle = isZh ? "### 最近活动" : "### Recent Activities";
-      lines.push(dynamicTitle);
-      dynamicFacts.forEach((fact) => lines.push("- " + fact));
-      lines.push("");
-    }
+  if (staticFacts.length > 0) {
+    const staticTitle = isZh ? "### 永久特征" : "### Static Facts";
+    lines.push(staticTitle);
+    staticFacts.slice(0, maxProfileItems).forEach((fact) => lines.push("- " + fact));
+    lines.push("");
   }
 
-  if (projectMemories.length > 0) {
+  if (dynamicFacts.length > 0) {
+    const dynamicTitle = isZh ? "### 最近活动" : "### Recent Activities";
+    lines.push(dynamicTitle);
+    dynamicFacts.slice(0, maxProfileItems).forEach((fact) => lines.push("- " + fact));
+    lines.push("");
+  }
+
+  if (dedupedProjectMemories.length > 0) {
     const projectTitle = isZh ? "### 项目记忆" : "### Project Memories";
     lines.push(projectTitle);
-    projectMemories.slice(0, maxProjectItems).forEach((m) => {
+    dedupedProjectMemories.slice(0, maxProjectItems).forEach((m) => {
       lines.push("- " + m.content);
     });
     lines.push("");

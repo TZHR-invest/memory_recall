@@ -160,10 +160,10 @@ async function server(input: PluginInput, options: Record<string, unknown> = {})
       const result = await injectContext(client, userMessage, userTag, projectTag, {
         injectProfile: isInitialInjection ? config.initialInjection.profile : false,
         maxProfileItems: config.maxProfileItems,
-        maxProjectMemories: isInitialInjection ? config.maxProjectMemories : 0,
+        maxProjectMemories: isInitialInjection ? config.maxProjectMemories : config.smartRecall.maxAdditionalMemories,
         maxMemories: dynamicMaxMemories,
         language: config.language,
-        enableChunksSearch: isInitialInjection ? config.initialInjection.chunks : config.enableChunksSearch,
+        enableChunksSearch: true,
         maxChunks: maxChunksToUse,
         chunksSimilarityThreshold: config.chunksSimilarityThreshold,
         chunksDocTypes: config.chunksDocTypes,
