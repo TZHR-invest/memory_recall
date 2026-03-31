@@ -135,6 +135,79 @@ function ensureConfigDir(): void {
   }
 }
 
+function getPluginSourcePath(): string {
+  const distDir = path.dirname(new URL(import.meta.url).pathname);
+  return path.dirname(distDir);
+}
+
+function getPluginInstallPath(): string {
+  return path.join(os.homedir(), CONFIG_DIR, OPENCODE_DIR, "node_modules", "memory-recall-opencode");
+}
+
+function getPluginNodeModulesPath(): string {
+  return path.join(os.homedir(), CONFIG_DIR, OPENCODE_DIR, "node_modules");
+}
+
+function getPackageJsonPath(): string {
+  return path.join(os.homedir(), CONFIG_DIR, OPENCODE_DIR, "package.json");
+}
+
+function installPluginFiles(): { success: boolean; error?: string } {
+  const nodeModulesPath = getPluginNodeModulesPath();
+  const pluginPath = getPluginInstallPath();
+  const sourcePath = getPluginSourcePath();
+
+  if (!fs.existsSync(nodeModulesPath)) {
+    try {
+      fs.mkdirSync(nodeModulesPath, { recursive: true });
+      console.log(`✓ 创建插件目录: ${nodeModulesPath}`);
+    } catch (error) {
+      return { success: false, error: `创建插件目录失败: ${error}` };
+    }
+  }
+
+  if (!fs.existsSync(sourcePath)) {
+    return { success: false, error: `插件源目录不存在: ${sourcePath}` };
+  }
+
+  const distPath = path.join(sourcePath, "dist");
+  if (!fs.existsSync(distPath)) {
+    return { success: false, error: `插件未构建，请先运行: cd ${sourcePath} && bun run build` };
+  }
+
+  if (fs.existsSync(pluginPath)) {
+    try {
+      fs.rmSync(pluginPath, { recursive: true, force: true });
+      console.log(`✓ 已删除旧插件: ${pluginPath}`);
+    } catch (error) {
+      return { success: false, error: `删除旧插件失败: ${error}` };
+    }
+  }
+
+  try {
+    fs.cpSync(sourcePath, pluginPath, { recursive: true });
+    console.log(`✓ 插件已安装到: ${pluginPath}`);
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: `复制插件文件失败: ${error}` };
+  }
+}
+
+function uninstallPluginFiles(): boolean {
+  const pluginPath = getPluginInstallPath();
+  if (fs.existsSync(pluginPath)) {
+    try {
+      fs.rmSync(pluginPath, { recursive: true, force: true });
+      console.log(`✓ 已删除插件文件: ${pluginPath}`);
+      return true;
+    } catch (error) {
+      console.error(`✗ 删除插件文件失败: ${error}`);
+      return false;
+    }
+  }
+  return true;
+}
+
 function parseJsonc(content: string): Record<string, unknown> {
   const protectedStrings: string[] = [];
   const STRING_PLACEHOLDER_PREFIX = "__JSONC_STR_";
@@ -193,6 +266,167 @@ function deleteConfig(): boolean {
     return true;
   }
   return false;
+}
+
+function getOpencodeConfigPath(): string {
+  return path.join(os.homedir(), CONFIG_DIR, OPENCODE_DIR, "opencode.json");
+}
+
+function registerPluginToOpencode(): boolean {
+  const opencodePath = getOpencodeConfigPath();
+  const PLUGIN_NAME = "memory-recall-opencode";
+  
+  if (!fs.existsSync(opencodePath)) {
+    const defaultConfig = {
+      "$schema": "https://opencode.ai/config.json",
+      "plugin": [PLUGIN_NAME]
+    };
+    fs.writeFileSync(opencodePath, JSON.stringify(defaultConfig, null, 2), "utf-8");
+    console.log(`✓ 已创建 opencode.json 并注册插件: ${PLUGIN_NAME}`);
+    return true;
+  }
+  
+  try {
+    const content = fs.readFileSync(opencodePath, "utf-8");
+    const config = parseJsonc(content);
+    
+    if (!config.plugin) {
+      config.plugin = [];
+    }
+    
+    if (!Array.isArray(config.plugin)) {
+      console.warn("⚠️  opencode.json 中 plugin 字段不是数组，跳过注册");
+      return false;
+    }
+    
+    if (config.plugin.includes(PLUGIN_NAME)) {
+      console.log(`✓ 插件已在 opencode.json 中注册: ${PLUGIN_NAME}`);
+      return true;
+    }
+    
+    config.plugin.push(PLUGIN_NAME);
+    fs.writeFileSync(opencodePath, JSON.stringify(config, null, 2), "utf-8");
+    console.log(`✓ 已注册插件到 opencode.json: ${PLUGIN_NAME}`);
+    return true;
+  } catch (error) {
+    console.error(`✗ 注册插件失败: ${error}`);
+    return false;
+  }
+}
+
+function unregisterPluginFromOpencode(): boolean {
+  const opencodePath = getOpencodeConfigPath();
+  const PLUGIN_NAME = "memory-recall-opencode";
+  
+  if (!fs.existsSync(opencodePath)) {
+    return true;
+  }
+  
+  try {
+    const content = fs.readFileSync(opencodePath, "utf-8");
+    const config = parseJsonc(content);
+    
+    if (!config.plugin || !Array.isArray(config.plugin)) {
+      return true;
+    }
+    
+    const index = config.plugin.indexOf(PLUGIN_NAME);
+    if (index === -1) {
+      return true;
+    }
+    
+    config.plugin.splice(index, 1);
+    fs.writeFileSync(opencodePath, JSON.stringify(config, null, 2), "utf-8");
+    console.log(`✓ 已从 opencode.json 移除插件: ${PLUGIN_NAME}`);
+    return true;
+  } catch (error) {
+    console.error(`✗ 移除插件注册失败: ${error}`);
+    return false;
+  }
+}
+
+/**
+ * Register plugin to package.json dependencies
+ * This is critical for OpenCode to properly load the plugin
+ */
+function registerPluginToPackageJson(): boolean {
+  const packageJsonPath = getPackageJsonPath();
+  const PLUGIN_NAME = "memory-recall-opencode";
+  const PLUGIN_TARBALL = `${PLUGIN_NAME}-1.1.0.tar.gz`;
+  
+  // The tarball path relative to node_modules
+  const tarballPath = `file:node_modules/${PLUGIN_NAME}/${PLUGIN_TARBALL}`;
+  
+  if (!fs.existsSync(packageJsonPath)) {
+    // Create package.json if it doesn't exist
+    const defaultPackageJson = {
+      dependencies: {
+        [PLUGIN_NAME]: tarballPath
+      }
+    };
+    fs.writeFileSync(packageJsonPath, JSON.stringify(defaultPackageJson, null, 2), "utf-8");
+    console.log(`✓ 已创建 package.json 并注册插件依赖: ${PLUGIN_NAME}`);
+    return true;
+  }
+  
+  try {
+    const content = fs.readFileSync(packageJsonPath, "utf-8");
+    const packageJson = JSON.parse(content);
+    
+    if (!packageJson.dependencies) {
+      packageJson.dependencies = {};
+    }
+    
+    if (packageJson.dependencies[PLUGIN_NAME]) {
+      console.log(`✓ 插件已在 package.json 中注册: ${PLUGIN_NAME}`);
+      return true;
+    }
+    
+    packageJson.dependencies[PLUGIN_NAME] = tarballPath;
+    
+    // Sort dependencies alphabetically
+    const sortedDeps: Record<string, string> = {};
+    Object.keys(packageJson.dependencies).sort().forEach(key => {
+      sortedDeps[key] = packageJson.dependencies[key];
+    });
+    packageJson.dependencies = sortedDeps;
+    
+    fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2), "utf-8");
+    console.log(`✓ 已注册插件到 package.json dependencies: ${PLUGIN_NAME}`);
+    return true;
+  } catch (error) {
+    console.error(`✗ 注册插件到 package.json 失败: ${error}`);
+    return false;
+  }
+}
+
+/**
+ * Unregister plugin from package.json dependencies
+ */
+function unregisterPluginFromPackageJson(): boolean {
+  const packageJsonPath = getPackageJsonPath();
+  const PLUGIN_NAME = "memory-recall-opencode";
+  
+  if (!fs.existsSync(packageJsonPath)) {
+    return true;
+  }
+  
+  try {
+    const content = fs.readFileSync(packageJsonPath, "utf-8");
+    const packageJson = JSON.parse(content);
+    
+    if (!packageJson.dependencies || !packageJson.dependencies[PLUGIN_NAME]) {
+      return true;
+    }
+    
+    delete packageJson.dependencies[PLUGIN_NAME];
+    fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2), "utf-8");
+    console.log(`✓ 已从 package.json 移除插件: ${PLUGIN_NAME}`);
+    return true;
+  } catch (error) {
+    console.error(`✗ 从 package.json 移除插件失败: ${error}`);
+    return false;
+  }
 }
 
 function writeConfig(config: Config): void {
@@ -556,6 +790,19 @@ async function displayConfig(config: Config): Promise<void> {
 }
 
 async function doInstall(): Promise<void> {
+  console.log("\n========================================");
+  console.log("  Memory Recall OpenCode 插件安装");
+  console.log("========================================\n");
+
+  console.log("步骤 1: 安装插件文件...\n");
+  const installResult = installPluginFiles();
+  if (!installResult.success) {
+    console.log(`✗ 插件文件安装失败: ${installResult.error}`);
+    return;
+  }
+
+  console.log("\n步骤 2: 配置插件...\n");
+
   const rl = createReadlineInterface();
 
   try {
@@ -621,11 +868,18 @@ async function doInstall(): Promise<void> {
 
     // Save config
     writeConfig(config);
+    
+    // Register plugin to opencode.json
+    registerPluginToOpencode();
+    
+    // Register plugin to package.json (critical for OpenCode to load the plugin)
+    registerPluginToPackageJson();
 
     console.log("\n========================================");
     console.log("✓ 安装完成!");
     console.log("========================================");
     console.log(`\n配置文件位置: ${getConfigPath()}`);
+    console.log(`插件安装位置: ${getPluginInstallPath()}`);
     console.log("\n下一步:");
     console.log("  1. 确保 Memory Recall API 服务正在运行");
     console.log("  2. 重启 OpenCode 以加载插件");
@@ -651,13 +905,16 @@ async function doUninstall(): Promise<void> {
       await displayConfig(existingConfig);
     }
 
-    const confirmUninstall = await confirm(rl, "\n确定要卸载插件配置吗?");
+    const confirmUninstall = await confirm(rl, "\n确定要卸载插件配置和插件文件吗?");
     if (!confirmUninstall) {
       console.log("\n卸载已取消。");
       return;
     }
 
     deleteConfig();
+    unregisterPluginFromOpencode();
+    unregisterPluginFromPackageJson();
+    uninstallPluginFiles();
 
     console.log("\n========================================");
     console.log("✓ 卸载完成!");
@@ -672,12 +929,34 @@ async function doUninstall(): Promise<void> {
 
 async function doReinstall(): Promise<void> {
   console.log("\n=== 重新安装 Memory Recall 插件 ===\n");
+
+  const existingConfig = readExistingConfig();
+  if (existingConfig) {
+    await displayConfig(existingConfig);
+  }
+
+  const rl = createReadlineInterface();
+  try {
+    const confirmReinstall = await confirm(rl, "\n确定要重新安装吗? (将删除配置和插件文件)");
+    if (!confirmReinstall) {
+      console.log("\n已取消。");
+      return;
+    }
+  } finally {
+    rl.close();
+  }
   
   if (configExists()) {
-    console.log("正在删除旧配置...\n");
+    console.log("\n正在删除旧配置...");
     deleteConfig();
   }
 
+  console.log("正在删除旧插件文件...");
+  uninstallPluginFiles();
+  unregisterPluginFromOpencode();
+  unregisterPluginFromPackageJson();
+
+  console.log("\n");
   await doInstall();
 }
 
