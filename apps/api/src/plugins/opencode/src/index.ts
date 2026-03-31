@@ -1,5 +1,5 @@
 import type { Plugin, PluginInput, Hooks } from "@opencode-ai/plugin";
-import { loadConfig, isConfigured, getUserTag, getProjectTag } from "./config";
+import { loadConfig, isConfigured, getUserTag, getProjectTag, type InjectionStrategy } from "./config";
 import { ApiClient } from "./client";
 import { createTool, detectMemoryKeyword } from "./tool";
 import { injectContext, getMemoryNudge, type ContextResult, type ExpandedMemory } from "./context";
@@ -15,6 +15,7 @@ import {
   filterMemoriesForInjection,
   type ConversationMessage 
 } from "./tracker";
+import { shouldTriggerRecall, findTriggerKeyword } from "./recall-trigger";
 
 const sessionTrackerManager = new SessionTrackerManager();
 
@@ -47,6 +48,12 @@ async function server(input: PluginInput, options: Record<string, unknown> = {})
 
   if (!isConfigured(config)) {
     logger.warn("API key not configured", { hint: "Set MEMORY_RECALL_API_KEY or add apiKey to config" });
+  }
+
+  if (options.enableSmartRecall !== undefined && options.injectionStrategy === undefined) {
+    logger.warn("Config deprecation: 'enableSmartRecall' is deprecated. Use 'injectionStrategy' instead.", {
+      hint: "Set 'injectionStrategy: \"smart\"' for smart recall, or 'injectionStrategy: \"always\"' for legacy behavior"
+    });
   }
 
   let documentTracker: DocumentTracker | null = null;
@@ -112,26 +119,55 @@ async function server(input: PluginInput, options: Record<string, unknown> = {})
       logger.keywordDetected({ sessionId, keyword: "detected", language: locale });
     }
 
-    if (!config.enableSmartRecall) {
-      const tracker = sessionTrackerManager.getTracker(sessionId);
-      if (tracker.size() > 0) return;
+    const tracker = sessionTrackerManager.getTracker(sessionId);
+    const strategy = config.injectionStrategy;
+    
+    let shouldInject = false;
+    let isInitialInjection = false;
+    let triggerKeyword: string | null = null;
+    
+    if (strategy === "once") {
+      if (tracker.needsInitialInjection()) {
+        shouldInject = true;
+        isInitialInjection = true;
+      }
+    } else if (strategy === "smart") {
+      if (tracker.needsInitialInjection()) {
+        shouldInject = true;
+        isInitialInjection = true;
+      } else if (shouldTriggerRecall(userMessage, config.smartRecall)) {
+        shouldInject = true;
+        isInitialInjection = false;
+        triggerKeyword = findTriggerKeyword(userMessage, config.smartRecall);
+      }
+    } else {
+      shouldInject = true;
+      isInitialInjection = tracker.needsInitialInjection();
     }
 
-    const tracker = sessionTrackerManager.getTracker(sessionId);
+    if (!shouldInject) return;
+
+    const maxMemoriesToUse = isInitialInjection 
+      ? config.maxMemories 
+      : config.smartRecall.maxAdditionalMemories;
     
+    const maxChunksToUse = isInitialInjection 
+      ? config.initialInjection.maxChunks 
+      : config.smartRecall.maxAdditionalChunks;
+
     const dynamicMaxMemories = config.dynamicRecallSize
-      ? calculateDynamicRecallSize(tracker.size(), config.maxMemories)
-      : config.maxMemories;
+      ? calculateDynamicRecallSize(tracker.size(), maxMemoriesToUse)
+      : maxMemoriesToUse;
 
     try {
       const result = await injectContext(client, userMessage, userTag, projectTag, {
-        injectProfile: config.injectProfile,
+        injectProfile: isInitialInjection ? config.initialInjection.profile : false,
         maxProfileItems: config.maxProfileItems,
-        maxProjectMemories: config.maxProjectMemories,
+        maxProjectMemories: isInitialInjection ? config.maxProjectMemories : 0,
         maxMemories: dynamicMaxMemories,
         language: config.language,
-        enableChunksSearch: config.enableChunksSearch,
-        maxChunks: config.maxChunks,
+        enableChunksSearch: isInitialInjection ? config.initialInjection.chunks : config.enableChunksSearch,
+        maxChunks: maxChunksToUse,
         chunksSimilarityThreshold: config.chunksSimilarityThreshold,
         chunksDocTypes: config.chunksDocTypes,
         enableGraphRecall: config.enableGraphRecall,
@@ -152,6 +188,10 @@ async function server(input: PluginInput, options: Record<string, unknown> = {})
         
         tracker.addMany(result.injectedMemoryIds);
         
+        if (isInitialInjection) {
+          tracker.markInitialInjected();
+        }
+        
         logger.contextInjected({
           sessionId,
           durationMs: Date.now() - startTime,
@@ -162,6 +202,9 @@ async function server(input: PluginInput, options: Record<string, unknown> = {})
           chunksCount: result.chunksCount,
           graphCount: result.graphCount,
           entityCount: result.entityCount,
+          injectionStrategy: strategy,
+          isInitial: isInitialInjection,
+          triggerKeyword: triggerKeyword,
         });
       }
     } catch (e) {
