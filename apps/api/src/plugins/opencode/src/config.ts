@@ -96,10 +96,8 @@ const DEFAULT_CONFIG: Omit<Config, "apiKey"> = {
   trackedDocPatterns: [
     "README*.md",
     "CHANGELOG*.md",
-    "docs/**/*.md",
+    "docs/*.md",
     "AGENTS.md",
-    ".cursorrules",
-    "CLAUDE.md",
   ],
   language: "auto",
   logFile: "~/.memory-recall-opencode.log",
