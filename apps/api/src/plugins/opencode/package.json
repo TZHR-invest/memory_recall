@@ -4,7 +4,6 @@
   "description": "Memory Recall plugin for OpenCode - persistent memory across sessions",
   "type": "module",
   "main": "dist/index.js",
-  "types": "dist/index.d.ts",
   "bin": {
     "memory-recall-opencode": "./dist/install.js"
   },

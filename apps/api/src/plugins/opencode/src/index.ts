@@ -58,13 +58,10 @@ async function server(input: PluginInput, options: Record<string, unknown> = {})
 
   let documentTracker: DocumentTracker | null = null;
   if (config.enableDocumentTracking && isConfigured(config)) {
+    // DocumentTracker created but NOT auto-importing - user must trigger via tool
     documentTracker = new DocumentTracker(client, config, input.directory);
-    documentTracker.scanAndMemorize().then((count) => {
-      if (count > 0) {
-        logger.info("Documents tracked", { count });
-      }
-    }).catch((e) => {
-      logger.error("Document tracking failed", { error: String(e) });
+    logger.info("Document tracker ready", { 
+      hint: "Use 'import-docs' mode in memory-recall tool to import project documents" 
     });
   }
 
@@ -76,7 +73,7 @@ async function server(input: PluginInput, options: Record<string, unknown> = {})
     });
   }
 
-  const tool = createTool(client, config);
+  const tool = createTool(client, config, documentTracker);
 
   const opencodeClient = input.client;
   const compactionHook = new CompactionHook(

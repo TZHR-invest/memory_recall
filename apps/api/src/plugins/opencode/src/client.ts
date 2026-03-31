@@ -351,4 +351,68 @@ export class ApiClient {
       );
     }
   }
+
+  async addDocument(
+    content: string,
+    containerTag: string,
+    options?: {
+      title?: string;
+      source?: string;
+      docType?: string;
+      metadata?: Record<string, unknown>;
+    }
+  ): Promise<{ id: string; title?: string; chunkCount: number; isDuplicate: boolean }> {
+    const response = await this.request<{
+      id: string;
+      title?: string;
+      chunk_count: number;
+      is_duplicate: boolean;
+    }>("/documents", "POST", {
+      content,
+      container_tag: containerTag,
+      title: options?.title,
+      source: options?.source,
+      doc_type: options?.docType || "markdown",
+      metadata: options?.metadata,
+    });
+
+    return {
+      id: response.id,
+      title: response.title,
+      chunkCount: response.chunk_count,
+      isDuplicate: response.is_duplicate,
+    };
+  }
+
+  async listDocuments(
+    containerTag: string,
+    limit: number = 20
+  ): Promise<{ id: string; title?: string; source?: string }[]> {
+    const params = new URLSearchParams({
+      container_tag: containerTag,
+      limit: limit.toString(),
+    });
+    const response = await this.request<{
+      documents: { id: string; title?: string; source?: string }[];
+    }>(`/documents?${params.toString()}`);
+    return response.documents || [];
+  }
+
+  async getDocument(documentId: string): Promise<{
+    id: string;
+    content: string;
+    container_tag: string;
+    metadata?: Record<string, unknown>;
+  } | null> {
+    try {
+      return await this.request<{
+        id: string;
+        content: string;
+        container_tag: string;
+        metadata?: Record<string, unknown>;
+      }>(`/documents/${documentId}`);
+    } catch {
+      return null;
+    }
+  }
 }

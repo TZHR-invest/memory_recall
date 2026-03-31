@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { ApiClient, SearchResult } from "./client";
 import type { Config } from "./config";
 import { stripPrivateTags, isFullyPrivate } from "./context";
+import type { DocumentTracker } from "./document-tracker";
 
 const MEMORY_TYPES = [
   "project-config",
@@ -14,7 +15,7 @@ const MEMORY_TYPES = [
 ] as const;
 
 const toolSchema = {
-  mode: z.enum(["add", "search", "profile", "list", "forget", "help"]).describe("Operation mode"),
+  mode: z.enum(["add", "search", "profile", "list", "forget", "import-docs", "help"]).describe("Operation mode"),
   content: z.string().optional().describe("Content to store (for add mode)"),
   query: z.string().optional().describe("Search query (for search mode)"),
   type: z.enum(MEMORY_TYPES).optional().describe("Memory type (for add mode)"),
@@ -22,10 +23,11 @@ const toolSchema = {
   isStatic: z.boolean().optional().describe("Whether this is a permanent trait (default: false)"),
   memoryId: z.string().optional().describe("Memory ID to forget (for forget mode)"),
   limit: z.number().optional().describe("Max results (default: 10)"),
+  force: z.boolean().optional().describe("Force re-import all documents (for import-docs mode)"),
 };
 
 type ToolArgs = {
-  mode: "add" | "search" | "profile" | "list" | "forget" | "help";
+  mode: "add" | "search" | "profile" | "list" | "forget" | "import-docs" | "help";
   content?: string;
   query?: string;
   type?: typeof MEMORY_TYPES[number];
@@ -33,13 +35,14 @@ type ToolArgs = {
   isStatic?: boolean;
   memoryId?: string;
   limit?: number;
+  force?: boolean;
 };
 
 interface SearchWithScope extends SearchResult {
   scope?: string;
 }
 
-export function createTool(client: ApiClient, config: Config) {
+export function createTool(client: ApiClient, config: Config, documentTracker: DocumentTracker | null) {
   async function execute(args: ToolArgs, context: { sessionID: string; messageID: string; agent: string; directory: string; worktree: string; abort: AbortSignal; metadata: (input: { title?: string; metadata?: Record<string, unknown> }) => void }): Promise<string> {
     const mode = args.mode;
 
@@ -67,6 +70,7 @@ export function createTool(client: ApiClient, config: Config) {
             profile: "View user profile",
             list: "List recent memories",
             forget: "Remove a memory",
+            "import-docs": "Import project documents (README, docs/*.md, etc.)",
           },
           scopes: {
             user: "Cross-project",
@@ -186,6 +190,29 @@ export function createTool(client: ApiClient, config: Config) {
         };
       }
 
+      case "import-docs": {
+        if (!documentTracker) {
+          return { success: false, error: "Document tracking is disabled. Enable 'enableDocumentTracking' in config." };
+        }
+
+        const force = args.force || false;
+
+        if (force) {
+          documentTracker.clearState();
+        }
+
+        const importedCount = await documentTracker.scanAndMemorize();
+        const trackedDocs = documentTracker.getTrackedDocuments();
+
+        return {
+          success: true,
+          message: force ? "Force re-imported documents" : "Scanned and imported documents",
+          importedCount,
+          totalTracked: trackedDocs.length,
+          patterns: config.trackedDocPatterns,
+        };
+      }
+
       default:
         return { success: false, error: "Unknown mode: " + mode };
     }
@@ -193,7 +220,7 @@ export function createTool(client: ApiClient, config: Config) {
 
   return {
     "memory-recall": tool({
-      description: "Manage persistent memory across sessions. Use 'search' to find relevant memories, 'add' to store new knowledge, 'profile' to view user profile, 'list' to see recent memories, 'forget' to remove a memory.",
+      description: "Manage persistent memory across sessions. Modes: 'search' - find relevant memories, 'add' - store new knowledge, 'profile' - view user profile, 'list' - see recent memories, 'forget' - remove a memory, 'import-docs' - import project documents (README, docs/*.md, AGENTS.md), 'help' - show usage guide.",
       args: toolSchema,
       execute,
     }),
