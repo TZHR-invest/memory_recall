@@ -50,6 +50,19 @@
 ### 变更日志
 - `CHANGELOG_SMART_RECALL.md` - 智能召回变更日志
 
+### 功能实现细节
+- `SMART_RECALL_SUMMARY.md` - 智能召回实现总结
+- `AUTO_MODE_EXPLAINED.md` - Auto 模式详解
+- `AUTO_MODE_MULTI_ENTITY.md` - 多实体 Auto 模式
+- `GRAPH_RECALL_FALLBACK.md` - 图谱召回降级
+- `GRAPH_ENHANCED_RECALL.md` - 图谱增强召回
+- `MULTI_ENTITY_HANDLING.md` - 多实体处理
+- `ENTITY_MATCHING_README.md` - 实体匹配功能
+- `ENTITY_DICT_UPDATE.md` - 实体字典更新
+- `RELATION_TYPE_OPTIMIZATION.md` - 关系类型优化
+- `add_relation_by_text.md` - 自然语言添加关系
+- `multi_relation_parsing.md` - 多关系解析
+
 ---
 
 *归档日期: 2026-03-31*  
