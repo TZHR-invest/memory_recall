@@ -8,6 +8,8 @@ import json
 
 from src.database import db
 from src.services.core.memory_store import memory_store
+from src.services.core.simplified_entity_dict import get_entity_dict
+from src.config import settings
 
 
 class ProfileService:
@@ -22,6 +24,7 @@ class ProfileService:
         max_static: int = 10,
         max_dynamic: int = 10,
         include_metadata: bool = False,
+        use_entity_dict: bool = True,
     ) -> Dict[str, Any]:
         cached = await self._get_cached_profile(container_tag)
         if cached and self._is_cache_valid(cached):
@@ -69,6 +72,15 @@ class ProfileService:
                 limit=max_static,
             )
 
+        matched_entities = []
+        if query and use_entity_dict and settings.USE_ENTITY_DICT:
+            try:
+                entity_dict = get_entity_dict()
+                await entity_dict.get_or_build(container_tag)
+                matched_entities = entity_dict.match_with_info(query, container_tag)
+            except Exception:
+                pass
+
         return {
             "profile": {
                 "static": static,
@@ -76,6 +88,7 @@ class ProfileService:
             },
             "searchResults": search_results,
             "entityContext": profile.get("entity_context"),
+            "matchedEntities": matched_entities if matched_entities else None,
         }
 
     async def get_profile_with_entities(
