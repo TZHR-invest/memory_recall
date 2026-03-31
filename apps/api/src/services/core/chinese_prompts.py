@@ -7,46 +7,58 @@ Based on LLM-IE best practices and ASMR 6-dimension architecture.
 from typing import Optional
 
 
-CHINESE_ENTITY_EXTRACTION_PROMPT = """从以下中文文本中提取有价值的实体。
+CHINESE_ENTITY_EXTRACTION_PROMPT = """你是实体提取专家。从文本中提取实体，返回 JSON。
 
-文本：{text}
+文本: {text}
 {context_section}
 
-提取规则：
-1. 只提取对记忆召回有价值的实体
-2. 不要提取：代词（我、你、他）、数量词（一个、几个）、模糊时间（目前、平时、最近）
-3. 实体必须是具体的、可识别的
+【提取示例】
 
-提取类型：
-- person: 人名（张三、李明）
-- location: 具体地点（北京、上海、望京）
-- organization: 组织机构（字节跳动、北京大学）
-- contact: 联系方式（手机号、邮箱、微信号）
-- skill: 技术技能（Python、TypeScript、React）
-- preference: 明确的偏好（喜欢暗黑模式、不吃辣）
-- occupation: 职业身份（软件工程师、产品经理）
-- education: 学历信息（硕士、博士）
+"我在谷歌工作" → {{"organization": ["谷歌"]}}
+"我入职了字节跳动" → {{"organization": ["字节跳动"]}}
+"我就职于阿里巴巴" → {{"organization": ["阿里巴巴"]}}
+"我是腾讯员工" → {{"organization": ["腾讯"]}}
+"我住在北京" → {{"location": ["北京"]}}
+"我住在望京" → {{"location": ["望京"]}}
+"和张三见面" → {{"person": ["张三"]}}
+"我喜欢吃火锅" → {{"preference": ["喜欢吃火锅"]}}
+"我不爱吃辣的食物" → {{"preference": ["不爱吃辣的食物"]}}
+"我是素食主义者" → {{"preference": ["素食主义者"]}}
+"我喜欢吃火锅，不喜欢吃辣" → {{"preference": ["喜欢吃火锅", "不喜欢吃辣"]}}
+"偏好暗黑模式，不喜欢亮色" → {{"preference": ["偏好暗黑模式", "不喜欢亮色"]}}
 
-返回JSON格式：
+【边界规则】
+
+1. organization (公司/学校):
+   - 只提取名称: "谷歌" 不是 "入职谷歌"
+   - 判断: X工作/入职X/就职于X/是X员工 → X是公司名
+
+2. location (地名):
+   - 判断: 住在X/来自X → X是地名
+
+3. preference (偏好) - 重要:
+   - 完整提取动宾结构: "喜欢吃火锅" 不是 "喜欢"
+   - 多个偏好分别提取: "喜欢吃火锅，不喜欢吃辣" → ["喜欢吃火锅", "不喜欢吃辣"]
+   - 不是单独动词: 不是 "喜欢" 或 "不喜欢"
+
+【实体类型】
+- organization: 公司、学校 (谷歌、字节跳动、北大)
+- location: 城市、区域 (北京、上海、望京)
+- person: 人名 (张三、李四、老王)
+- preference: 偏好 (喜欢吃火锅、素食主义者、不喜欢吃辣)
+- skill: 技能 (Python、React)
+- contact: 联系方式 (手机号、邮箱)
+- occupation: 职业 (工程师、产品经理)
+
+【不提取】
+代词(我你他)、模糊时间(最近目前)
+
+【返回格式】
 {{
-  "entities": {{
-    "person": ["张三"],
-    "location": ["北京"],
-    "organization": ["字节跳动"],
-    "contact": ["13812345678"],
-    "skill": ["Python", "React"],
-    "preference": ["喜欢暗黑模式"],
-    "occupation": ["软件工程师"],
-    "education": ["硕士"]
-  }},
+  "entities": {{"organization": ["谷歌"], "person": ["张三"]}},
   "is_static": true,
   "confidence": 0.9
-}}
-
-注意：
-- 空数组不要返回
-- 不确定的不提取
-- 宁缺毋滥"""
+}}"""
 
 
 CHINESE_CONTRADICTION_PROMPT = """分析以下两条中文陈述是否存在矛盾。
