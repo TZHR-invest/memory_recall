@@ -15,6 +15,24 @@ bunx memory-recall-opencode install
 1. **现有用户**：输入 API Key 和用户信息
 2. **新用户**：自动注册并获取 API Key
 
+### 卸载
+
+```bash
+bunx memory-recall-opencode uninstall
+```
+
+### 重新安装
+
+```bash
+bunx memory-recall-opencode reinstall
+```
+
+### 查看帮助
+
+```bash
+bunx memory-recall-opencode --help
+```
+
 ### 前置要求
 
 - Memory Recall API 服务正在运行
