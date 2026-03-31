@@ -283,6 +283,32 @@ async function selectOption(rl: readline.Interface, prompt: string, options: str
 // API Functions
 // ============================================================================
 
+async function checkServerHasApiKey(baseUrl: string): Promise<{ hasKey: boolean; error?: string }> {
+  try {
+    const response = await fetch(`${baseUrl}/auth/initialize`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        plugin_name: "check",
+        user_name: "check",
+        permissions: ["read"],
+      }),
+    });
+
+    if (response.ok) {
+      return { hasKey: false };
+    } else if (response.status === 403) {
+      return { hasKey: true };
+    } else {
+      return { hasKey: true };
+    }
+  } catch (error) {
+    return { hasKey: false, error: `无法连接到服务器: ${error}` };
+  }
+}
+
 async function validateApiKey(baseUrl: string, apiKey: string): Promise<{ valid: boolean; userId?: string; error?: string }> {
   try {
     const response = await fetch(`${baseUrl}/memories?limit=1`, {
@@ -559,10 +585,69 @@ async function doInstall(): Promise<void> {
       "创建新 API Key (需要管理员 Key)",
       "首次注册 (仅限服务器无 Key 时)"
     ];
-    const selectedType = await selectOption(rl, "请选择用户类型:", userTypes);
 
-    // Get server URL
+    // Get server URL first
     const baseUrl = await questionWithDefault(rl, "\n请输入 API 服务地址", DEFAULT_BASE_URL);
+
+    // Check server status
+    console.log("\n正在检查服务器状态...");
+    const serverStatus = await checkServerHasApiKey(baseUrl);
+    
+    if (serverStatus.error) {
+      console.log(`✗ 无法连接到服务器: ${serverStatus.error}`);
+      const continueAnyway = await confirm(rl, "是否继续配置?");
+      if (!continueAnyway) {
+        console.log("\n安装已取消。");
+        return;
+      }
+    } else if (serverStatus.hasKey) {
+      console.log("✓ 服务器已有 API Key 注册");
+      console.log("\n可用选项:");
+      console.log("  1. 使用已有 API Key - 直接使用现有的 Key");
+      console.log("  2. 创建新 API Key - 使用管理员 Key 创建新 Key");
+      console.log("  3. 取消");
+      
+      const choice = await question(rl, "请选择 (1-3): ");
+      
+      if (choice === "1") {
+        const config = await existingUserFlow(rl, baseUrl);
+        if (!config) {
+          console.log("\n安装已取消。");
+          return;
+        }
+        await displayConfig(config);
+        const confirmSave = await confirm(rl, "\n是否保存配置?");
+        if (!confirmSave) {
+          console.log("\n安装已取消。");
+          return;
+        }
+        writeConfig(config);
+        console.log("\n✓ 安装完成！");
+        return;
+      } else if (choice === "2") {
+        const config = await createNewApiKeyFlow(rl, baseUrl);
+        if (!config) {
+          console.log("\n安装已取消。");
+          return;
+        }
+        await displayConfig(config);
+        const confirmSave = await confirm(rl, "\n是否保存配置?");
+        if (!confirmSave) {
+          console.log("\n安装已取消。");
+          return;
+        }
+        writeConfig(config);
+        console.log("\n✓ 安装完成！");
+        return;
+      } else {
+        console.log("\n安装已取消。");
+        return;
+      }
+    } else {
+      console.log("✓ 服务器尚未注册，可进行首次注册");
+    }
+
+    const selectedType = await selectOption(rl, "请选择用户类型:", userTypes);
 
     // Run appropriate flow
     let config: Config | null = null;
