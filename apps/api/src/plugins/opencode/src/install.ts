@@ -331,7 +331,7 @@ async function registerNewUser(
     } else if (response.status === 403) {
       return { 
         success: false, 
-        error: "已有 API Key 存在，请使用'现有用户'选项，或检查服务器配置。" 
+        error: "已有 API Key 存在，请选择'创建新 API Key'选项使用已有管理员 Key 创建。" 
       };
     } else {
       const errorData = await response.json().catch(() => ({}));
@@ -339,6 +339,41 @@ async function registerNewUser(
         success: false, 
         error: `注册失败: ${response.status} - ${JSON.stringify(errorData)}` 
       };
+    }
+  } catch (error) {
+    return { success: false, error: `无法连接到服务器: ${error}` };
+  }
+}
+
+async function createNewApiKey(
+  baseUrl: string,
+  adminApiKey: string,
+  keyName: string
+): Promise<{ success: boolean; data?: { key: string; id: string }; error?: string }> {
+  try {
+    const response = await fetch(`${baseUrl}/auth/api-keys`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-Key": adminApiKey,
+      },
+      body: JSON.stringify({
+        name: keyName,
+        permissions: ["read", "write", "delete", "admin"],
+        is_test: false,
+      }),
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      return { success: true, data: { key: data.key, id: data.id } };
+    } else if (response.status === 401) {
+      return { success: false, error: "管理员 API Key 无效" };
+    } else if (response.status === 403) {
+      return { success: false, error: "该 API Key 没有 admin 权限" };
+    } else {
+      const errorData = await response.json().catch(() => ({}));
+      return { success: false, error: `创建失败: ${response.status} - ${JSON.stringify(errorData)}` };
     }
   } catch (error) {
     return { success: false, error: `无法连接到服务器: ${error}` };
@@ -433,6 +468,53 @@ async function newUserFlow(rl: readline.Interface, baseUrl: string): Promise<Con
   };
 }
 
+async function createNewApiKeyFlow(rl: readline.Interface, baseUrl: string): Promise<Config | null> {
+  console.log("\n=== 创建新 API Key ===\n");
+  console.log("此选项需要使用已有管理员 API Key 来创建新的 API Key。\n");
+  
+  const adminApiKey = await question(rl, "请输入管理员 API Key: ");
+  if (!adminApiKey) {
+    console.log("管理员 API Key 不能为空");
+    return null;
+  }
+
+  const keyName = await questionWithDefault(rl, "请输入新 API Key 名称", "memory-recall-plugin");
+  const userName = await questionWithDefault(rl, "请输入用户名", "User");
+
+  console.log(`\n正在创建新 API Key...`);
+  const result = await createNewApiKey(baseUrl, adminApiKey, keyName);
+
+  if (!result.success) {
+    console.log(`✗ 创建失败: ${result.error}`);
+    
+    const retry = await confirm(rl, "是否重试?");
+    if (retry) {
+      return createNewApiKeyFlow(rl, baseUrl);
+    }
+    return null;
+  }
+
+  const data = result.data!;
+  
+  console.log("\n========================================");
+  console.log("✓ API Key 创建成功!");
+  console.log("========================================");
+  console.log(`\n  API Key: ${data.key}`);
+  console.log(`  Key ID:  ${data.id}`);
+  console.log(`  Container Tag: ${data.id}`);
+  console.log("\n⚠️  请妥善保存 API Key，此密钥只会显示一次！");
+  console.log("========================================\n");
+
+  return {
+    ...DEFAULT_CONFIG,
+    apiKey: data.key,
+    baseUrl,
+    userName,
+    userContainerTag: data.id,
+    projectContainerTag: data.id,
+  };
+}
+
 async function displayConfig(config: Config): Promise<void> {
   console.log("\n=== 配置预览 ===\n");
   console.log(`  API 服务地址: ${config.baseUrl}`);
@@ -472,7 +554,11 @@ async function doInstall(): Promise<void> {
     }
 
     // Select user type
-    const userTypes = ["现有用户 (已有 API Key)", "新用户 (自动注册)"];
+    const userTypes = [
+      "使用已有 API Key", 
+      "创建新 API Key (需要管理员 Key)",
+      "首次注册 (仅限服务器无 Key 时)"
+    ];
     const selectedType = await selectOption(rl, "请选择用户类型:", userTypes);
 
     // Get server URL
@@ -483,6 +569,8 @@ async function doInstall(): Promise<void> {
     
     if (selectedType === 0) {
       config = await existingUserFlow(rl, baseUrl);
+    } else if (selectedType === 1) {
+      config = await createNewApiKeyFlow(rl, baseUrl);
     } else {
       config = await newUserFlow(rl, baseUrl);
     }
@@ -568,10 +656,15 @@ function printHelp(): void {
 Memory Recall OpenCode 插件
 
 用法:
-  bunx memory-recall-opencode install    安装插件
-  bunx memory-recall-opencode uninstall  卸载插件
-  bunx memory-recall-opencode reinstall  重新安装
-  bunx memory-recall-opencode --help     显示帮助
+  bun run dist/install.js install    安装插件
+  bun run dist/install.js uninstall  卸载插件
+  bun run dist/install.js reinstall  重新安装
+  bun run dist/install.js --help     显示帮助
+
+用户类型选项:
+  1. 使用已有 API Key - 直接使用现有的 API Key
+  2. 创建新 API Key - 使用管理员 Key 创建新的 API Key
+  3. 首次注册 - 仅限服务器没有任何 API Key 时
 
 配置文件位置:
   ~/.config/opencode/memory-recall.jsonc
