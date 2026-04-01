@@ -53,6 +53,8 @@ class MarkdownChunker(ChunkingStrategy):
                 }
             )
 
+        sections = self._merge_small_sections(sections)
+
         chunks = []
 
         for section in sections:
@@ -81,6 +83,27 @@ class MarkdownChunker(ChunkingStrategy):
                     chunks.append(sub)
 
         return chunks
+
+    def _merge_small_sections(
+        self, sections: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """Merge small sections into previous chunk to reduce fragment count."""
+        if not sections:
+            return sections
+
+        min_section_size = getattr(self.config, "min_section_size", 300)
+        merged = []
+
+        for section in sections:
+            section_size = self.estimate_tokens_nws(section["content"])
+
+            if section_size < min_section_size and merged:
+                merged[-1]["content"] += "\n\n" + section["content"]
+                merged[-1]["end"] = section["end"]
+            else:
+                merged.append(section)
+
+        return merged
 
     def _split_section(
         self,
