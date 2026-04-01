@@ -1,19 +1,32 @@
 #!/usr/bin/env node
 
 import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, cpSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { join, dirname, resolve } from "node:path";
 import { homedir } from "node:os";
 import * as readline from "node:readline";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const OPENCODE_CONFIG_DIR = join(homedir(), ".config", "opencode");
-const OPENCODE_COMMAND_DIR = join(OPENCODE_CONFIG_DIR, "command");
-const NODE_MODULES_DIR = join(OPENCODE_CONFIG_DIR, "node_modules");
-const PLUGIN_INSTALL_DIR = join(NODE_MODULES_DIR, "memory-recall-opencode");
-const CONFIG_FILE = join(OPENCODE_CONFIG_DIR, "memory-recall.jsonc");
-const PACKAGE_JSON_FILE = join(OPENCODE_CONFIG_DIR, "package.json");
 const PLUGIN_NAME = "memory-recall-opencode";
+const PLUGIN_REF = "./plugins/memory-recall-opencode";
+
+const CONFIG_DIR = join(homedir(), ".config", "opencode");
+const CACHE_DIR = join(homedir(), ".cache", "opencode");
+const PLUGINS_DIR = join(CONFIG_DIR, "plugins");
+const PLUGIN_INSTALL_DIR = join(PLUGINS_DIR, PLUGIN_NAME);
+
+const OPENCODE_JSON = join(CONFIG_DIR, "opencode.json");
+const PLUGIN_CONFIG_FILE = join(CONFIG_DIR, "memory-recall.jsonc");
+const COMMAND_DIR = join(CONFIG_DIR, "command");
+const CONFIG_PACKAGE_JSON = join(CONFIG_DIR, "package.json");
+
+const CONFIG_NODE_MODULES = join(CONFIG_DIR, "node_modules");
+const CACHE_NODE_MODULES = join(CACHE_DIR, "node_modules");
+const CONFIG_PLUGIN_SYMLINK = join(CONFIG_NODE_MODULES, PLUGIN_NAME);
+const CACHE_PLUGIN_SYMLINK = join(CACHE_NODE_MODULES, PLUGIN_NAME);
+
+let DEV_MODE = false;
+let FORCE_MODE = false;
 
 function createReadline(): readline.Interface {
   return readline.createInterface({
@@ -84,8 +97,8 @@ function stripJsoncComments(content: string): string {
 
 function findOpencodeConfig(): string | null {
   const candidates = [
-    join(OPENCODE_CONFIG_DIR, "opencode.jsonc"),
-    join(OPENCODE_CONFIG_DIR, "opencode.json"),
+    join(CONFIG_DIR, "opencode.jsonc"),
+    join(CONFIG_DIR, "opencode.json"),
   ];
   for (const path of candidates) {
     if (existsSync(path)) return path;
@@ -97,11 +110,17 @@ function getPluginSourcePath(): string {
   return dirname(__dirname);
 }
 
+function getPluginFileUrl(): string {
+  const sourcePath = getPluginSourcePath();
+  const absolutePath = resolve(sourcePath);
+  return pathToFileURL(absolutePath).href;
+}
+
 function installPluginFiles(): { success: boolean; error?: string } {
-  if (!existsSync(NODE_MODULES_DIR)) {
+  if (!existsSync(PLUGINS_DIR)) {
     try {
-      mkdirSync(NODE_MODULES_DIR, { recursive: true });
-      console.log(`✓ 创建插件目录: ${NODE_MODULES_DIR}`);
+      mkdirSync(PLUGINS_DIR, { recursive: true });
+      console.log(`✓ 创建插件目录: ${PLUGINS_DIR}`);
     } catch (error) {
       return { success: false, error: `创建插件目录失败: ${error}` };
     }
@@ -124,7 +143,16 @@ function installPluginFiles(): { success: boolean; error?: string } {
   }
 
   try {
-    cpSync(sourcePath, PLUGIN_INSTALL_DIR, { recursive: true });
+    mkdirSync(PLUGIN_INSTALL_DIR, { recursive: true });
+    
+    cpSync(distPath, join(PLUGIN_INSTALL_DIR, "dist"), { recursive: true });
+    cpSync(join(sourcePath, "package.json"), join(PLUGIN_INSTALL_DIR, "package.json"));
+    
+    const readmePath = join(sourcePath, "README.md");
+    if (existsSync(readmePath)) {
+      cpSync(readmePath, join(PLUGIN_INSTALL_DIR, "README.md"));
+    }
+    
     console.log(`✓ 插件已安装到: ${PLUGIN_INSTALL_DIR}`);
     return { success: true };
   } catch (error) {
@@ -133,37 +161,71 @@ function installPluginFiles(): { success: boolean; error?: string } {
 }
 
 function uninstallPluginFiles(): boolean {
+  let success = true;
+  
+  // 1. 清理 ~/.config/opencode/plugins/memory-recall-opencode/
   if (existsSync(PLUGIN_INSTALL_DIR)) {
     try {
       rmSync(PLUGIN_INSTALL_DIR, { recursive: true, force: true });
       console.log(`✓ 已删除插件文件: ${PLUGIN_INSTALL_DIR}`);
-      return true;
     } catch (error) {
       console.log(`✗ 删除插件文件失败: ${error}`);
-      return false;
+      success = false;
     }
   }
-  return true;
+  
+  // 2. 清理 ~/.config/opencode/node_modules/memory-recall-opencode/ (可能是符号链接或目录)
+  if (existsSync(CONFIG_PLUGIN_SYMLINK)) {
+    try {
+      rmSync(CONFIG_PLUGIN_SYMLINK, { recursive: true, force: true });
+      console.log(`✓ 已删除 config/node_modules 中的插件: ${CONFIG_PLUGIN_SYMLINK}`);
+    } catch (error) {
+      console.log(`✗ 删除 config/node_modules 插件失败: ${error}`);
+      success = false;
+    }
+  }
+  
+  // 3. 清理 ~/.cache/opencode/node_modules/memory-recall-opencode/ (OpenCode 安装的缓存)
+  if (existsSync(CACHE_PLUGIN_SYMLINK)) {
+    try {
+      rmSync(CACHE_PLUGIN_SYMLINK, { recursive: true, force: true });
+      console.log(`✓ 已删除 cache/node_modules 中的插件: ${CACHE_PLUGIN_SYMLINK}`);
+    } catch (error) {
+      console.log(`✗ 删除 cache/node_modules 插件失败: ${error}`);
+      success = false;
+    }
+  }
+  
+  return success;
 }
 
 function registerPluginToOpencode(): void {
-  mkdirSync(OPENCODE_CONFIG_DIR, { recursive: true });
+  mkdirSync(CONFIG_DIR, { recursive: true });
   
   const configPath = findOpencodeConfig();
+  const pluginRef = DEV_MODE ? getPluginFileUrl() : PLUGIN_REF;
   
   if (!configPath) {
     const newConfig = `{
-  "plugin": ["${PLUGIN_NAME}"]
+  "plugin": ["${pluginRef}"]
 }
 `;
-    writeFileSync(join(OPENCODE_CONFIG_DIR, "opencode.jsonc"), newConfig);
+    writeFileSync(join(CONFIG_DIR, "opencode.jsonc"), newConfig);
     console.log(`✓ 已创建 opencode.jsonc 并注册插件`);
+    if (DEV_MODE) {
+      console.log(`  开发模式: ${pluginRef}`);
+    }
     return;
   }
 
   const content = readFileSync(configPath, "utf-8");
   
-  if (content.includes(PLUGIN_NAME)) {
+  const hasPluginRef = 
+    content.includes(PLUGIN_REF) || 
+    content.includes(PLUGIN_NAME) || 
+    content.includes(getPluginFileUrl());
+  
+  if (hasPluginRef) {
     console.log(`✓ 插件已在 opencode.json 中注册`);
     return;
   }
@@ -175,16 +237,16 @@ function registerPluginToOpencode(): void {
         (_match, start, middle, end) => {
           const trimmed = middle.trim();
           if (trimmed === "") {
-            return `${start}\n    "${PLUGIN_NAME}"\n  ${end}`;
+            return `${start}\n    "${pluginRef}"\n  ${end}`;
           }
-          return `${start}${middle.trimEnd()},\n    "${PLUGIN_NAME}"\n  ${end}`;
+          return `${start}${middle.trimEnd()},\n    "${pluginRef}"\n  ${end}`;
         }
       );
       writeFileSync(configPath, newContent);
     } else {
       const newContent = content.replace(
         /^(\s*\{)/,
-        `$1\n  "plugin": ["${PLUGIN_NAME}"],`
+        `$1\n  "plugin": ["${pluginRef}"],`
       );
       writeFileSync(configPath, newContent);
     }
@@ -192,12 +254,17 @@ function registerPluginToOpencode(): void {
     const jsonContent = stripJsoncComments(content);
     const config = JSON.parse(jsonContent);
     const plugins = (config.plugin as string[]) || [];
-    plugins.push(PLUGIN_NAME);
+    plugins.push(pluginRef);
     config.plugin = plugins;
     writeFileSync(configPath, JSON.stringify(config, null, 2));
   }
 
   console.log(`✓ 已注册插件到 opencode.json`);
+  if (DEV_MODE) {
+    console.log(`  开发模式: ${pluginRef}`);
+  } else {
+    console.log(`  引用路径: ${PLUGIN_REF}`);
+  }
 }
 
 function unregisterPluginFromOpencode(): void {
@@ -205,24 +272,34 @@ function unregisterPluginFromOpencode(): void {
   if (!configPath) return;
 
   const content = readFileSync(configPath, "utf-8");
-  if (!content.includes(PLUGIN_NAME)) return;
+  const pluginFileUrl = getPluginFileUrl();
+  
+  const hasPluginRef = 
+    content.includes(PLUGIN_REF) || 
+    content.includes(PLUGIN_NAME) || 
+    content.includes(pluginFileUrl);
+    
+  if (!hasPluginRef) return;
+
+  function escapeRegex(str: string): string {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
 
   if (configPath.endsWith(".jsonc")) {
-    const newContent = content.replace(
-      new RegExp(`,?\\s*"${PLUGIN_NAME}"\\s*,?`, "g"),
-      (match) => {
-        if (match.includes(",")) {
-          return match.includes(`"${PLUGIN_NAME}",`) ? "" : "";
-        }
-        return "";
-      }
-    ).replace(/\[\s*,/g, "[").replace(/,\s*\]/g, "]");
+    let newContent = content
+      .replace(new RegExp(`,?\\s*"${escapeRegex(PLUGIN_REF)}"\\s*,?`, "g"), "")
+      .replace(new RegExp(`,?\\s*"${escapeRegex(PLUGIN_NAME)}"\\s*,?`, "g"), "")
+      .replace(new RegExp(`,?\\s*"${escapeRegex(pluginFileUrl)}"\\s*,?`, "g"), "")
+      .replace(/\[\s*,/g, "[")
+      .replace(/,\s*\]/g, "]");
     writeFileSync(configPath, newContent);
   } else {
     const jsonContent = stripJsoncComments(content);
     const config = JSON.parse(jsonContent);
     if (config.plugin && Array.isArray(config.plugin)) {
-      config.plugin = config.plugin.filter((p: string) => p !== PLUGIN_NAME);
+      config.plugin = config.plugin.filter(
+        (p: string) => p !== PLUGIN_REF && p !== PLUGIN_NAME && p !== pluginFileUrl
+      );
       writeFileSync(configPath, JSON.stringify(config, null, 2));
     }
   }
@@ -231,95 +308,159 @@ function unregisterPluginFromOpencode(): void {
 }
 
 function registerPluginToPackageJson(): void {
-  if (!existsSync(PACKAGE_JSON_FILE)) {
+  const sourcePath = getPluginSourcePath();
+  const pluginPackageJsonPath = join(sourcePath, "package.json");
+  
+  let pluginDeps: Record<string, string> = {};
+  
+  if (existsSync(pluginPackageJsonPath)) {
+    try {
+      const pluginPackageJson = JSON.parse(readFileSync(pluginPackageJsonPath, "utf-8"));
+      pluginDeps = pluginPackageJson.dependencies || {};
+    } catch {}
+  }
+
+  if (!existsSync(CONFIG_PACKAGE_JSON)) {
     const packageJson = {
       name: "opencode-plugins",
       private: true,
-      dependencies: {
-        [PLUGIN_NAME]: `file:./node_modules/${PLUGIN_NAME}`
-      }
+      dependencies: pluginDeps
     };
-    writeFileSync(PACKAGE_JSON_FILE, JSON.stringify(packageJson, null, 2));
+    writeFileSync(CONFIG_PACKAGE_JSON, JSON.stringify(packageJson, null, 2));
     console.log(`✓ 已创建 package.json`);
+    if (Object.keys(pluginDeps).length > 0) {
+      console.log(`  运行时依赖: ${Object.keys(pluginDeps).join(", ")}`);
+    }
+    console.log(`  OpenCode 启动时将自动安装依赖 (bun install)`);
     return;
   }
 
-  const content = readFileSync(PACKAGE_JSON_FILE, "utf-8");
+  const content = readFileSync(CONFIG_PACKAGE_JSON, "utf-8");
   const packageJson = JSON.parse(content);
   
   if (!packageJson.dependencies) {
     packageJson.dependencies = {};
   }
   
-  packageJson.dependencies[PLUGIN_NAME] = `file:./node_modules/${PLUGIN_NAME}`;
-  writeFileSync(PACKAGE_JSON_FILE, JSON.stringify(packageJson, null, 2));
-  console.log(`✓ 已注册插件到 package.json`);
+  let addedCount = 0;
+  for (const [name, version] of Object.entries(pluginDeps)) {
+    if (!packageJson.dependencies[name] && name !== PLUGIN_NAME) {
+      packageJson.dependencies[name] = version;
+      addedCount++;
+    }
+  }
+  
+  writeFileSync(CONFIG_PACKAGE_JSON, JSON.stringify(packageJson, null, 2));
+  
+  if (addedCount > 0) {
+    console.log(`✓ 已更新 package.json，新增 ${addedCount} 个依赖`);
+    console.log(`  OpenCode 启动时将自动安装依赖 (bun install)`);
+  } else {
+    console.log(`✓ package.json 已是最新`);
+  }
 }
 
-function unregisterPluginFromPackageJson(): void {
-  if (!existsSync(PACKAGE_JSON_FILE)) return;
+function unregisterPluginFromPackageJson(removeDependencies: boolean = false): void {
+  if (!existsSync(CONFIG_PACKAGE_JSON)) return;
 
-  const content = readFileSync(PACKAGE_JSON_FILE, "utf-8");
+  const content = readFileSync(CONFIG_PACKAGE_JSON, "utf-8");
   const packageJson = JSON.parse(content);
+  let modified = false;
   
+  // 移除插件本身
   if (packageJson.dependencies && packageJson.dependencies[PLUGIN_NAME]) {
     delete packageJson.dependencies[PLUGIN_NAME];
-    writeFileSync(PACKAGE_JSON_FILE, JSON.stringify(packageJson, null, 2));
+    modified = true;
     console.log(`✓ 已从 package.json 移除插件`);
+  }
+  
+  // 可选：移除插件依赖（@opencode-ai/plugin, @opencode-ai/sdk, zod）
+  if (removeDependencies) {
+    const pluginDeps = ["@opencode-ai/plugin", "@opencode-ai/sdk", "zod"];
+    for (const dep of pluginDeps) {
+      if (packageJson.dependencies && packageJson.dependencies[dep]) {
+        delete packageJson.dependencies[dep];
+        modified = true;
+      }
+    }
+    if (modified) {
+      console.log(`✓ 已从 package.json 移除插件依赖`);
+    }
+  }
+  
+  if (modified) {
+    writeFileSync(CONFIG_PACKAGE_JSON, JSON.stringify(packageJson, null, 2));
   }
 }
 
 function createCommands(): void {
-  mkdirSync(OPENCODE_COMMAND_DIR, { recursive: true });
+  mkdirSync(COMMAND_DIR, { recursive: true });
   
   const initCommand = `---
-description: Initialize Memory Recall with codebase knowledge
+description: 初始化 Memory Recall，导入代码库知识
 ---
 
-# Initializing Memory Recall
+[search-mode]
+最大化搜索效率。并行启动多个后台代理：
+- explore 代理（代码库模式、文件结构、ast-grep）
+- librarian 代理（远程仓库、官方文档、GitHub 示例）
+同时使用直接工具：Grep、ripgrep (rg)、ast-grep (sg)
+不要在第一个结果就停止 - 要彻底搜索。
 
-## Step 1: Import Project Documents
+---
 
-First, import existing documentation:
+# 初始化 Memory Recall
+
+## 第一步：导入项目文档
+
+首先导入现有文档：
 
 \`\`\`
 memory-recall(mode: "import-docs")
 \`\`\`
 
-This imports README.md, CHANGELOG.md, docs/*.md, AGENTS.md etc.
+这将导入 README.md、CHANGELOG.md、docs/*.md、AGENTS.md 等文件。
 
-## Step 2: Explore Codebase
+## 第二步：探索代码库
 
-Use parallel explore queries:
+并行使用多个 explore 查询：
 
 \`\`\`
-Task(explore, "What is the tech stack and dependencies?")
-Task(explore, "What is the project structure?")
-Task(explore, "How to build, test, and run?")
+Task(explore, "技术栈和依赖是什么？")
+Task(explore, "项目结构是怎样的？")
+Task(explore, "如何构建、测试和运行？")
 \`\`\`
 
-## Step 3: Save Knowledge
+## 第三步：保存知识
 
-Use \`memory-recall\` tool for each insight:
+使用 \`memory-recall\` 工具保存每个发现：
 
 \`\`\`
 memory-recall(mode: "add", content: "...", type: "project-config", scope: "project")
 \`\`\`
 
-**Types:** project-config, architecture, learned-pattern, preference, error-solution
-**Scopes:** project (this project), user (cross-project)
+**知识类型：** project-config（项目配置）、architecture（架构）、learned-pattern（学习到的模式）、preference（偏好）、error-solution（错误解决方案）
+**作用域：** project（本项目）、user（跨项目）
 
-## Step 4: Confirm
+## 第四步：确认
 
-Tell user what was imported and saved.
+告诉用户导入了什么、保存了什么。
+
+[MEMORY TRIGGER DETECTED]
+如果用户希望您记住某些内容，请使用 \`memory-recall\` 工具的 \`mode: "add"\` 来保存。
+
+- 使用 \`scope: "project"\` 保存项目相关偏好
+- 使用 \`scope: "user"\` 保存跨项目偏好
+
+请勿跳过此步骤。
 `;
 
-  writeFileSync(join(OPENCODE_COMMAND_DIR, "memory-init.md"), initCommand);
+  writeFileSync(join(COMMAND_DIR, "memory-init.md"), initCommand);
   console.log(`✓ 已创建 /memory-init 命令`);
 }
 
 function removeCommands(): void {
-  const initPath = join(OPENCODE_COMMAND_DIR, "memory-init.md");
+  const initPath = join(COMMAND_DIR, "memory-init.md");
   if (existsSync(initPath)) {
     rmSync(initPath);
     console.log(`✓ 已删除 /memory-init 命令`);
@@ -327,13 +468,13 @@ function removeCommands(): void {
 }
 
 function configExists(): boolean {
-  return existsSync(CONFIG_FILE);
+  return existsSync(PLUGIN_CONFIG_FILE);
 }
 
 function readConfig(): Record<string, unknown> | null {
-  if (!existsSync(CONFIG_FILE)) return null;
+  if (!existsSync(PLUGIN_CONFIG_FILE)) return null;
   try {
-    const content = readFileSync(CONFIG_FILE, "utf-8");
+    const content = readFileSync(PLUGIN_CONFIG_FILE, "utf-8");
     return JSON.parse(stripJsoncComments(content));
   } catch {
     return null;
@@ -341,9 +482,9 @@ function readConfig(): Record<string, unknown> | null {
 }
 
 function deleteConfig(): void {
-  if (existsSync(CONFIG_FILE)) {
-    rmSync(CONFIG_FILE);
-    console.log(`✓ 已删除配置文件: ${CONFIG_FILE}`);
+  if (existsSync(PLUGIN_CONFIG_FILE)) {
+    rmSync(PLUGIN_CONFIG_FILE);
+    console.log(`✓ 已删除配置文件: ${PLUGIN_CONFIG_FILE}`);
   }
 }
 
@@ -400,9 +541,9 @@ function writeConfig(config: {
   "logLevel": "info"
 }
 `;
-  mkdirSync(OPENCODE_CONFIG_DIR, { recursive: true });
-  writeFileSync(CONFIG_FILE, content);
-  console.log(`✓ 配置已保存到 ${CONFIG_FILE}`);
+  mkdirSync(CONFIG_DIR, { recursive: true });
+  writeFileSync(PLUGIN_CONFIG_FILE, content);
+  console.log(`✓ 配置已保存到 ${PLUGIN_CONFIG_FILE}`);
 }
 
 async function validateApiKey(baseUrl: string, apiKey: string): Promise<{ valid: boolean; error?: string }> {
@@ -458,22 +599,42 @@ async function registerNewUser(
 
 async function doInstall(): Promise<void> {
   console.log("\n╔════════════════════════════════════════════╗");
-  console.log("║   Memory Recall OpenCode 插件安装向导     ║");
+  if (DEV_MODE) {
+    console.log("║   Memory Recall OpenCode 插件安装向导     ║");
+    console.log("║          【开发模式】                      ║");
+  } else {
+    console.log("║   Memory Recall OpenCode 插件安装向导     ║");
+  }
   console.log("╚════════════════════════════════════════════╝\n");
 
   const rl = createReadline();
 
   try {
     console.log("【步骤 1/4】安装插件文件\n");
-    const installResult = installPluginFiles();
-    if (!installResult.success) {
-      console.log(`✗ ${installResult.error}`);
-      return;
+    
+    if (DEV_MODE) {
+      const sourcePath = getPluginSourcePath();
+      const distPath = join(sourcePath, "dist");
+      if (!existsSync(distPath)) {
+        console.log(`✗ 插件未构建，dist 目录不存在`);
+        console.log(`  请先运行: bun run build`);
+        return;
+      }
+      console.log(`✓ 开发模式: 直接加载源码目录`);
+      console.log(`  路径: ${sourcePath}`);
+    } else {
+      const installResult = installPluginFiles();
+      if (!installResult.success) {
+        console.log(`✗ ${installResult.error}`);
+        return;
+      }
     }
 
-    console.log("\n【步骤 2/4】注册插件\n");
+    console.log("\n【步骤 2/4】注册插件和依赖\n");
     registerPluginToOpencode();
-    registerPluginToPackageJson();
+    if (!DEV_MODE) {
+      registerPluginToPackageJson();
+    }
 
     console.log("\n【步骤 3/4】创建命令\n");
     createCommands();
@@ -494,7 +655,7 @@ async function doInstall(): Promise<void> {
           console.log("╚════════════════════════════════════════════╝");
           console.log("\n下一步:");
           console.log("  1. 确保 Memory Recall API 服务正在运行");
-          console.log("  2. 重启 OpenCode\n");
+          console.log("  2. 重启 OpenCode（依赖将自动安装）\n");
           return;
         }
       }
@@ -562,7 +723,7 @@ async function doInstall(): Promise<void> {
     console.log("╚════════════════════════════════════════════╝");
     console.log("\n下一步:");
     console.log("  1. 确保 Memory Recall API 服务正在运行");
-    console.log("  2. 重启 OpenCode");
+    console.log("  2. 重启 OpenCode（依赖将自动安装）");
     console.log("  3. 使用 /memory-init 初始化项目记忆\n");
 
   } finally {
@@ -575,44 +736,52 @@ async function doUninstall(): Promise<void> {
   console.log("║   Memory Recall OpenCode 插件卸载         ║");
   console.log("╚════════════════════════════════════════════╝\n");
 
-  const rl = createReadline();
-
-  try {
-    if (!configExists() && !existsSync(PLUGIN_INSTALL_DIR)) {
-      console.log("未检测到已安装的插件，无需卸载。\n");
-      return;
-    }
-
-    const existingConfig = readConfig();
-    if (existingConfig) {
-      console.log("当前配置:");
-      console.log(`  API 地址: ${existingConfig.baseUrl || '未设置'}`);
-      console.log(`  用户名: ${existingConfig.userName || '未设置'}`);
-    }
-
-    const confirmUninstall = await confirm(rl, "\n确定要卸载插件吗? (y/n)");
-    if (!confirmUninstall) {
-      console.log("\n卸载已取消。");
-      return;
-    }
-
-    console.log("\n正在卸载...\n");
-    
-    deleteConfig();
-    removeCommands();
-    unregisterPluginFromOpencode();
-    unregisterPluginFromPackageJson();
-    uninstallPluginFiles();
-
-    console.log("\n╔════════════════════════════════════════════╗");
-    console.log("║              卸载完成！                    ║");
-    console.log("╚════════════════════════════════════════════╝");
-    console.log("\n如需重新安装，请运行:");
-    console.log("  node dist/cli.js install\n");
-
-  } finally {
-    rl.close();
+  const hasPlugin = existsSync(PLUGIN_INSTALL_DIR) || 
+                    existsSync(CONFIG_PLUGIN_SYMLINK) || 
+                    existsSync(CACHE_PLUGIN_SYMLINK);
+  
+  if (!configExists() && !hasPlugin) {
+    console.log("未检测到已安装的插件，无需卸载。\n");
+    return;
   }
+
+  const existingConfig = readConfig();
+  if (existingConfig) {
+    console.log("当前配置:");
+    console.log(`  API 地址: ${existingConfig.baseUrl || '未设置'}`);
+    console.log(`  用户名: ${existingConfig.userName || '未设置'}`);
+  }
+
+  let confirmUninstall = FORCE_MODE;
+  let removeDeps = false;
+
+  if (!FORCE_MODE) {
+    const rl = createReadline();
+    try {
+      confirmUninstall = await confirm(rl, "\n确定要卸载插件吗? (y/n)");
+      if (!confirmUninstall) {
+        console.log("\n卸载已取消。");
+        return;
+      }
+      removeDeps = await confirm(rl, "是否同时移除插件依赖? (@opencode-ai/plugin, zod 等) (y/n)");
+    } finally {
+      rl.close();
+    }
+  }
+
+  console.log("\n正在卸载...\n");
+  
+  deleteConfig();
+  removeCommands();
+  unregisterPluginFromOpencode();
+  unregisterPluginFromPackageJson(removeDeps);
+  uninstallPluginFiles();
+
+  console.log("\n╔════════════════════════════════════════════╗");
+  console.log("║              卸载完成！                    ║");
+  console.log("╚════════════════════════════════════════════╝");
+  console.log("\n如需重新安装，请运行:");
+  console.log("  node dist/cli.js install\n");
 }
 
 async function doReinstall(): Promise<void> {
@@ -644,7 +813,7 @@ async function doReinstall(): Promise<void> {
   deleteConfig();
   removeCommands();
   unregisterPluginFromOpencode();
-  unregisterPluginFromPackageJson();
+  unregisterPluginFromPackageJson(false);
   uninstallPluginFiles();
 
   console.log("");
@@ -656,11 +825,16 @@ function printHelp(): void {
 Memory Recall OpenCode 插件
 
 用法:
-  node dist/cli.js install    安装插件
-  node dist/cli.js uninstall  卸载插件
-  node dist/cli.js reinstall  重新安装
-  node dist/cli.js status     查看状态
-  node dist/cli.js --help     显示帮助
+  node dist/cli.js install          安装插件（生产模式）
+  node dist/cli.js install --dev    安装插件（开发模式，直接加载源码）
+  node dist/cli.js uninstall        卸载插件（交互式）
+  node dist/cli.js uninstall --force 卸载插件（无需确认）
+  node dist/cli.js reinstall        重新安装
+  node dist/cli.js status           查看状态
+  node dist/cli.js --help           显示帮助
+
+安装位置:
+  ~/.config/opencode/plugins/memory-recall-opencode/
 
 配置文件:
   ~/.config/opencode/memory-recall.jsonc
@@ -670,41 +844,79 @@ Memory Recall OpenCode 插件
 async function showStatus(): Promise<void> {
   console.log("\n=== Memory Recall 插件状态 ===\n");
 
-  if (existsSync(PLUGIN_INSTALL_DIR)) {
-    console.log(`✓ 插件已安装: ${PLUGIN_INSTALL_DIR}`);
+  const sourcePath = getPluginSourcePath();
+
+  // 检查插件文件
+  const hasInstalled = existsSync(PLUGIN_INSTALL_DIR);
+  const hasConfigSymlink = existsSync(CONFIG_PLUGIN_SYMLINK);
+  const hasCacheSymlink = existsSync(CACHE_PLUGIN_SYMLINK);
+  
+  if (hasInstalled) {
+    console.log(`✓ 插件文件: ${PLUGIN_INSTALL_DIR}`);
   } else {
-    console.log("✗ 插件未安装");
+    console.log("✗ 插件文件未安装");
+  }
+  
+  if (hasConfigSymlink) {
+    console.log(`✓ config/node_modules: ${CONFIG_PLUGIN_SYMLINK}`);
+  }
+  
+  if (hasCacheSymlink) {
+    console.log(`✓ cache/node_modules: ${CACHE_PLUGIN_SYMLINK}`);
   }
 
+  if (DEV_MODE && existsSync(join(sourcePath, "dist"))) {
+    console.log(`\n✓ 开发版本可用: ${sourcePath}`);
+  }
+
+  // 检查 opencode.json 注册
   const configPath = findOpencodeConfig();
   if (configPath) {
     const content = readFileSync(configPath, "utf-8");
-    if (content.includes(PLUGIN_NAME)) {
-      console.log("✓ 插件已在 opencode.json 中注册");
+    const hasRef = 
+      content.includes(PLUGIN_REF) || 
+      content.includes(PLUGIN_NAME) || 
+      content.includes(getPluginFileUrl());
+    
+    if (hasRef) {
+      if (content.includes(getPluginFileUrl())) {
+        console.log(`\n✓ 插件已注册 (开发模式: file:// URL)`);
+      } else if (content.includes(PLUGIN_REF)) {
+        console.log(`\n✓ 插件已注册 (生产模式: 相对路径)`);
+      } else {
+        console.log(`\n✓ 插件已注册`);
+      }
     } else {
-      console.log("✗ 插件未在 opencode.json 中注册");
+      console.log(`\n✗ 插件未在 opencode.json 中注册`);
     }
   }
 
-  if (existsSync(PACKAGE_JSON_FILE)) {
-    const content = readFileSync(PACKAGE_JSON_FILE, "utf-8");
-    if (content.includes(PLUGIN_NAME)) {
-      console.log("✓ 插件已在 package.json 中注册");
+  // 检查依赖配置
+  if (existsSync(CONFIG_PACKAGE_JSON)) {
+    const content = readFileSync(CONFIG_PACKAGE_JSON, "utf-8");
+    const packageJson = JSON.parse(content);
+    const deps = Object.keys(packageJson.dependencies || {});
+    const pluginDeps = ["@opencode-ai/plugin", "@opencode-ai/sdk", "zod"];
+    const hasPluginDeps = pluginDeps.some(d => packageJson.dependencies?.[d]);
+    if (hasPluginDeps) {
+      console.log(`\n✓ 依赖已配置: ${pluginDeps.filter(d => packageJson.dependencies?.[d]).join(", ")}`);
     }
   }
 
+  // 检查 API 配置
   const config = readConfig();
   if (config?.apiKey) {
     console.log(`\n✓ API 已配置`);
     console.log(`  地址: ${config.baseUrl || '未设置'}`);
     console.log(`  用户: ${config.userName || '未设置'}`);
   } else {
-    console.log("\n✗ API 未配置");
+    console.log(`\n✗ API 未配置`);
   }
 
-  const initPath = join(OPENCODE_COMMAND_DIR, "memory-init.md");
+  // 检查命令
+  const initPath = join(COMMAND_DIR, "memory-init.md");
   if (existsSync(initPath)) {
-    console.log("\n✓ /memory-init 命令可用");
+    console.log(`\n✓ /memory-init 命令可用`);
   }
 
   console.log("");
@@ -713,6 +925,9 @@ async function showStatus(): Promise<void> {
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const command = args[0] || "install";
+  
+  DEV_MODE = args.includes("--dev") || args.includes("-d");
+  FORCE_MODE = args.includes("--force") || args.includes("-f");
 
   switch (command) {
     case "install":
@@ -737,9 +952,13 @@ async function main(): Promise<void> {
       printHelp();
       break;
     default:
-      console.log(`未知命令: ${command}`);
-      printHelp();
-      process.exit(1);
+      if (command.startsWith("--")) {
+        await doInstall();
+      } else {
+        console.log(`未知命令: ${command}`);
+        printHelp();
+        process.exit(1);
+      }
   }
 }
 

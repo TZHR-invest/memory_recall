@@ -26,18 +26,18 @@ from .chunking.factory import ChunkingStrategyFactory
 class ChunkConfig:
     """Legacy configuration for backward compatibility."""
 
-    max_chunk_tokens: int = 512
+    max_chunk_tokens: int = 800
     min_chunk_tokens: int = 50
     overlap_tokens: int = 50
     respect_sentence_boundary: bool = True
     enable_contextual_retrieval: bool = True
     semantic_similarity_threshold: float = 0.5
-    context_max_tokens: int = 100
+    context_max_tokens: int = 150
 
     enable_ast: bool = False
     enable_context: bool = True
-    max_chunk_size: int = 1500
-    overlap_lines: int = 10
+    max_chunk_size: int = 3000
+    overlap_lines: int = 5
     content_type: Optional[ContentType] = None
 
 

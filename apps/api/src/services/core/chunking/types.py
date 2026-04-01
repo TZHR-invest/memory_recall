@@ -1,6 +1,7 @@
 """Core types for chunking module."""
 
 import re
+import warnings
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
@@ -54,23 +55,48 @@ class ChunkContext:
 
 @dataclass
 class ChunkConfig:
-    """Configuration for chunking behavior."""
+    """Configuration for chunking behavior.
 
-    max_chunk_size: int = 1500
-    min_chunk_size: int = 100
-    overlap_lines: int = 10
+    The relationship between max_chunk_size and max_chunk_tokens:
+    - max_chunk_size (chars) is the PRIMARY limit for chunking
+    - max_chunk_tokens serves as a SAFETY BOUND for tokenization
+    - For Chinese: 1 char ≈ 1 token, so max_chunk_tokens should be >= max_chunk_size
+    - For English: ~4 chars ≈ 1 token, so max_chunk_tokens should be >= max_chunk_size / 4
+
+    Priority: max_chunk_size > max_chunk_tokens (code uses max_chunk_size if both set)
+
+    min_section_size: For Markdown, sections smaller than this are merged into previous chunk.
+                      Set to 0 to disable merging. Default 300 chars.
+    """
+
+    # Primary chunking parameters (optimized for Chinese + English)
+    max_chunk_size: int = 3000
+    min_chunk_size: int = 200
+    min_section_size: int = 300
+    overlap_lines: int = 5
     enable_context: bool = True
     context_max_chars: int = 200
     content_type: Optional[ContentType] = None
 
     # Legacy fields for backward compatibility
-    max_chunk_tokens: int = 512
+    max_chunk_tokens: int = 800
     min_chunk_tokens: int = 50
     overlap_tokens: int = 50
     respect_sentence_boundary: bool = True
     enable_contextual_retrieval: bool = True
     semantic_similarity_threshold: float = 0.5
-    context_max_tokens: int = 100
+    context_max_tokens: int = 150
+
+    def __post_init__(self):
+        min_tokens_for_english = self.max_chunk_size // 4
+        if self.max_chunk_tokens < min_tokens_for_english:
+            warnings.warn(
+                f"max_chunk_tokens ({self.max_chunk_tokens}) may be too small for "
+                f"max_chunk_size ({self.max_chunk_size}). For English text, "
+                f"recommend max_chunk_tokens >= {min_tokens_for_english}. "
+                f"For Chinese text, recommend max_chunk_tokens >= {self.max_chunk_size}.",
+                UserWarning,
+            )
 
 
 @dataclass
