@@ -59,11 +59,6 @@ class Settings(BaseSettings):
     # 记忆合并配置
     MEMORY_MERGE_THRESHOLD: float = 0.95  # 记忆合并相似度阈值
 
-    # 实体字典配置
-    USE_ENTITY_DICT: bool = True  # 启用实体字典
-    ENTITY_DICT_LAZY_LOAD: bool = True  # 懒加载
-    ENTITY_DICT_MAX_CONTAINERS: int = 1000  # 最大缓存容器数
-
     class Config:
         env_file = ".env"
         case_sensitive = True

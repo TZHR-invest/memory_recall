@@ -8,8 +8,6 @@ import json
 
 from src.database import db
 from src.services.core.memory_store import memory_store
-from src.services.core.simplified_entity_dict import get_entity_dict
-from src.config import settings
 
 
 class ProfileService:
@@ -24,7 +22,6 @@ class ProfileService:
         max_static: int = 10,
         max_dynamic: int = 10,
         include_metadata: bool = False,
-        use_entity_dict: bool = True,
     ) -> Dict[str, Any]:
         cached = await self._get_cached_profile(container_tag)
         if cached and self._is_cache_valid(cached):
@@ -73,11 +70,11 @@ class ProfileService:
             )
 
         matched_entities = []
-        if query and use_entity_dict and settings.USE_ENTITY_DICT:
+        if query:
             try:
-                entity_dict = get_entity_dict()
-                await entity_dict.get_or_build(container_tag)
-                matched_entities = entity_dict.match_with_info(query, container_tag)
+                matched_entities = await self._match_entities_from_table(
+                    query, container_tag
+                )
             except Exception:
                 pass
 
@@ -90,6 +87,55 @@ class ProfileService:
             "entityContext": profile.get("entity_context"),
             "matchedEntities": matched_entities if matched_entities else None,
         }
+
+    async def _match_entities_from_table(
+        self,
+        query: str,
+        container_tag: str,
+    ) -> List[Dict[str, Any]]:
+        """
+        从实体表匹配查询中的实体
+        使用最长匹配优先策略
+        """
+        rows = await db.fetch(
+            """
+            SELECT id, name, type, mention_count
+            FROM entities
+            WHERE container_tag = $1
+            ORDER BY LENGTH(name) DESC
+            """,
+            container_tag,
+        )
+
+        if not rows:
+            return []
+
+        matched = []
+        seen_names = set()
+
+        for row in rows:
+            name = row["name"]
+            if name in query and name not in seen_names:
+                memory_ids = await db.fetch(
+                    """
+                    SELECT memory_id FROM memory_entities
+                    WHERE entity_id = $1
+                    LIMIT 5
+                    """,
+                    row["id"],
+                )
+
+                matched.append(
+                    {
+                        "name": name,
+                        "type": row["type"],
+                        "memory_ids": [str(m["memory_id"]) for m in memory_ids],
+                        "mention_count": row["mention_count"],
+                    }
+                )
+                seen_names.add(name)
+
+        return matched
 
     async def get_profile_with_entities(
         self,

@@ -19,7 +19,6 @@ from src.services.core.llm_entity_extraction import (
 )
 from src.services.core.chinese_prompts import detect_language
 from src.config import settings
-from src.services.core.simplified_entity_dict import get_entity_dict
 
 logger = logging.getLogger(__name__)
 
@@ -221,22 +220,6 @@ class MemoryStore:
         )
 
         memory = self._row_to_memory(row)
-
-        if settings.USE_ENTITY_DICT and "entities" in final_metadata:
-            try:
-                entity_dict = get_entity_dict()
-                for entity_type, values in final_metadata["entities"].items():
-                    if isinstance(values, list):
-                        for value in values:
-                            if value:
-                                entity_dict.add_entity(
-                                    container_tag=container_tag,
-                                    entity_name=value,
-                                    entity_type=entity_type,
-                                    memory_id=memory.id,
-                                )
-            except Exception as e:
-                logger.warning(f"Failed to update entity dictionary: {e}")
 
         if (
             "_entities_to_store" in final_metadata
