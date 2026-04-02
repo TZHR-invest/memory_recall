@@ -17,6 +17,7 @@ from src.services.core.llm_entity_extraction import (
     LLMEntityExtractor,
     get_default_entity_context,
 )
+from src.services.graph_tools import normalize_entity_name
 from src.services.core.chinese_prompts import detect_language
 from src.config import settings
 
@@ -664,9 +665,14 @@ class MemoryStore:
             if not name:
                 continue
 
+            normalized_name = normalize_entity_name(name)
             existing = await db.fetchrow(
-                "SELECT id FROM entities WHERE name = $1 AND container_tag = $2",
-                name,
+                """
+                SELECT id FROM entities 
+                WHERE LOWER(TRIM(name)) = $1 AND type = $2 AND container_tag = $3
+                """,
+                normalized_name,
+                entity_type,
                 container_tag,
             )
 
@@ -683,7 +689,7 @@ class MemoryStore:
                     VALUES ($1, $2, $3, $4)
                     RETURNING id
                     """,
-                    name,
+                    name.strip(),
                     entity_type,
                     container_tag,
                     confidence,

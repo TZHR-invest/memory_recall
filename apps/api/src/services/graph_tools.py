@@ -160,3 +160,16 @@ ENTITY_TYPES = {
 }
 
 ENTITY_TYPE_LIST = list(ENTITY_TYPES.keys())
+
+
+def normalize_entity_name(name: str) -> str:
+    """
+    归一化实体名称（用于去重查询）
+
+    Args:
+        name: 原始实体名称
+
+    Returns:
+        归一化后的名称（去除前后空格，转小写）
+    """
+    return name.strip().lower()
