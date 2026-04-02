@@ -27,6 +27,11 @@ const toolSchema = {
   limit: z.number().optional().describe("Max results (default: 10)"),
   force: z.boolean().optional().describe("Force re-import all documents (for import-docs mode)"),
   taskId: z.string().optional().describe("Task ID to query or retry (for status/retry mode)"),
+  // 图谱召回增强参数（search mode）
+  enableMemoryGraph: z.boolean().optional().describe("Enable Memory Graph recall - traverses memory evolution relations (updates/extends/derives)"),
+  enableEntityGraph: z.boolean().optional().describe("Enable Entity Graph recall - traverses entity relations (friend/colleague/works_at etc.)"),
+  graphDepth: z.number().optional().describe("Graph traversal depth (default: 2, max: 5)"),
+  graphNodes: z.number().optional().describe("Max nodes to traverse per graph (default: 5, max: 20)"),
 };
 
 type ToolArgs = {
@@ -40,6 +45,11 @@ type ToolArgs = {
   limit?: number;
   force?: boolean;
   taskId?: string;
+  // 图谱召回增强参数
+  enableMemoryGraph?: boolean;
+  enableEntityGraph?: boolean;
+  graphDepth?: number;
+  graphNodes?: number;
 };
 
 interface SearchWithScope extends SearchResult {
@@ -141,7 +151,66 @@ export function createTool(client: ApiClient, config: Config, documentTracker: D
 
         const scope = args.scope;
         const limit = args.limit || config.maxMemories;
-
+        
+        // 检查是否启用图谱召回
+        const enableMemoryGraph = args.enableMemoryGraph ?? false;
+        const enableEntityGraph = args.enableEntityGraph ?? false;
+        const useGraphRecall = enableMemoryGraph || enableEntityGraph;
+        
+        // 如果启用图谱召回，使用 injectContext API
+        if (useGraphRecall) {
+          const containerTag = scope === "user" ? userTag : 
+                               scope === "project" ? projectTag : projectTag;
+          
+          const graphDepth = Math.min(args.graphDepth ?? config.graphMaxDepth, 5);
+          const graphNodes = Math.min(args.graphNodes ?? config.graphMaxNodes, 20);
+          
+          try {
+            const response = await client.injectContext(containerTag, query, {
+              enable_memory_graph: enableMemoryGraph,
+              enable_entity_graph: enableEntityGraph,
+              memory_graph_depth: graphDepth,
+              memory_graph_nodes: graphNodes,
+              entity_graph_depth: graphDepth,
+              entity_graph_nodes: graphNodes,
+              max_memories: limit,
+              inject_profile: false,
+              enable_semantic_dedup: true,
+              dedup_threshold: 0.85,
+            });
+            
+            // 适配返回格式
+            const formatted = response.sources.memories.slice(0, limit).map((m) => ({
+              id: m.id,
+              content: m.content,
+              scope: scope,
+            }));
+            
+            return {
+              success: true,
+              query,
+              count: formatted.length,
+              results: formatted,
+              graphRecall: {
+                enabled: true,
+                memoryGraph: enableMemoryGraph,
+                entityGraph: enableEntityGraph,
+                depth: graphDepth,
+                nodes: graphNodes,
+              },
+              stats: {
+                totalItems: response.stats.total_items,
+                afterDedup: response.stats.after_dedup,
+                dedupedCount: response.stats.deduped_count,
+              },
+            };
+          } catch (e) {
+            const error = e instanceof Error ? e.message : String(e);
+            return { success: false, error: "Graph recall failed: " + error };
+          }
+        }
+        
+        // 默认：仅向量搜索
         let results: SearchWithScope[];
         if (scope === "user") {
           results = await client.search(query, userTag, limit);
@@ -359,7 +428,7 @@ export function createTool(client: ApiClient, config: Config, documentTracker: D
 
   return {
     "memory-recall": tool({
-      description: "Manage persistent memory across sessions. Modes: 'search' - find relevant memories, 'add' - store new knowledge, 'profile' - view user profile, 'list' - see recent memories, 'forget' - remove a memory, 'import-docs' - import project documents (README, docs/*.md, AGENTS.md), 'help' - show usage guide.",
+      description: "Manage persistent memory across sessions. Modes: 'search' - find relevant memories (supports graph recall via enableMemoryGraph/enableEntityGraph), 'add' - store new knowledge, 'profile' - view user profile, 'list' - see recent memories, 'forget' - remove a memory, 'import-docs' - import project documents (README, docs/*.md, AGENTS.md), 'help' - show usage guide.",
       args: toolSchema,
       execute,
     }),

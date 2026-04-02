@@ -64,13 +64,123 @@ node dist/cli.js status            # 查看状态
 | 模式 | 说明 |
 |------|------|
 | `add` | 添加记忆 |
-| `search` | 搜索记忆 |
+| `search` | 搜索记忆（支持图谱召回） |
 | `profile` | 获取用户画像 |
 | `list` | 列出记忆 |
 | `forget` | 删除记忆 |
 | `import-docs` | 导入项目文档 |
 | `status` | 查询异步任务状态 |
 | `retry` | 重试失败任务 |
+
+## Search 图谱召回增强
+
+### 概述
+
+`search` 模式支持图谱召回增强，可在向量搜索基础上启用 **Memory Graph**（记忆演进关系）和 **Entity Graph**（实体关系网络）召回。
+
+### 双图谱召回架构
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    三层召回系统                               │
+├─────────────────────────────────────────────────────────────┤
+│  第1层: Vector Search (50%)                                 │
+│  └─ 语义相似度匹配（embedding 余弦相似度）                    │
+│                                                             │
+│  第2层: Memory Graph (30%)  ← enableMemoryGraph             │
+│  └─ 遍历记忆演进关系                                         │
+│     ├─ updates: 信息更新链                                   │
+│     ├─ extends: 信息补充                                     │
+│     └─ derives: 信息推断                                     │
+│                                                             │
+│  第3层: Entity Graph (20%)  ← enableEntityGraph             │
+│  └─ 遍历实体关系网络                                         │
+│     ├─ friend/colleague: 人物关系                           │
+│     ├─ works_at/lives_at: 工作/居住                         │
+│     └─ prefers/uses: 偏好/使用                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 参数说明
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `enableMemoryGraph` | `false` | 启用 Memory Graph 召回（信息演进链） |
+| `enableEntityGraph` | `false` | 启用 Entity Graph 召回（实体关系网络） |
+| `graphDepth` | `2` | 图遍历深度（最大 5） |
+| `graphNodes` | `5` | 每层最大节点数（最大 20） |
+
+### 使用示例
+
+**简单搜索（仅向量搜索）**：
+```json
+memory-recall(mode: "search", query: "项目架构")
+```
+
+**启用 Memory Graph（信息演进）**：
+```json
+memory-recall(
+  mode: "search", 
+  query: "我在哪里工作",
+  enableMemoryGraph: true
+)
+```
+
+**完整三层召回**：
+```json
+memory-recall(
+  mode: "search",
+  query: "张三的朋友",
+  enableMemoryGraph: true,
+  enableEntityGraph: true,
+  graphDepth: 2
+)
+```
+
+### 返回结果
+
+**简单搜索返回**：
+```json
+{
+  "success": true,
+  "query": "项目架构",
+  "count": 5,
+  "results": [
+    { "id": "mem_abc123", "content": "...", "similarity": 85 }
+  ]
+}
+```
+
+**图谱召回返回**：
+```json
+{
+  "success": true,
+  "query": "我在哪里工作",
+  "count": 5,
+  "results": [...],
+  "graphRecall": {
+    "enabled": true,
+    "memoryGraph": true,
+    "entityGraph": true,
+    "depth": 2,
+    "nodes": 5
+  },
+  "stats": {
+    "totalItems": 12,
+    "afterDedup": 8,
+    "dedupedCount": 4
+  }
+}
+```
+
+### 性能对比
+
+| 模式 | 延迟 | 召回层 | 适用场景 |
+|------|------|--------|---------|
+| 默认 | ~50ms | 向量搜索 | 快速检索 |
+| Memory Graph | ~150ms | 向量 + 记忆演进 | 需要最新信息 |
+| Entity Graph | ~200ms | 向量 + 实体关联 | 需要关系推理 |
+| 完整召回 | ~250ms | 三层召回 | 复杂查询 |
 
 ## 初始化项目记忆
 
