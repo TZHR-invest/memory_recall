@@ -2,6 +2,35 @@
 
 All notable changes to Memory Recall will be documented in this file.
 
+## [5.1.3] - 2026-04-02
+
+### Code Cleanup
+
+删除废弃的图谱服务和冗余代码，保持代码库整洁。
+
+#### 删除的服务（~3,973 行代码）
+- `graph_recall_service.py` (1053行) - 已标记 DEPRECATED，无 API 调用
+- `graph_builder_service.py` (775行) - 无 API 端点调用
+- `enhanced_entity_extractor.py` (466行) - 仅被废弃服务调用
+- `llm_recall_service.py` (324行) - 功能已迁移到 `context_inject_service`
+- `entity_dictionary_service.py` (292行) - 实体表已替代内存词典
+- `confirmation_service.py` (297行) - 完全未使用的死代码
+
+#### 删除的测试文件
+- `test_confirmation_service.py`
+- `test_dict_update.py`
+- `test_enhanced_entity_extraction.py`
+
+#### 功能迁移
+这些服务的功能已统一到：
+- `context_inject_service.py` - 双图谱召回
+- `memory_store.py` - 三层召回方法
+- `llm_entity_extraction.py` - LLM 实体提取
+
+#### 影响
+- 删除代码：~3,973 行
+- 不影响现有功能（这些服务已无调用）
+
 ## [5.1.2] - 2026-04-02
 
 ### Code Cleanup
