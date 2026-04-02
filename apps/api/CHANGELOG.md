@@ -2,6 +2,36 @@
 
 All notable changes to Memory Recall will be documented in this file.
 
+## [5.1.1] - 2026-04-02
+
+### Bug Fixes
+
+#### 实体去重策略优化
+- 修复 `graph_builder_service._upsert_entity()` 字段名错误（`entity_type` → `type`）
+- 修复 `memory_store._store_entity_graph()` 去重逻辑
+- 调整 UNIQUE 约束：`(name, type, container_tag)` 支持同名不同类型实体
+- 新增 `normalize_entity_name()` 归一化函数（大小写 + 空格处理）
+- 新增归一化索引：`idx_entities_normalized_name`
+
+#### 前端插件修复
+- 修复 `context.ts` 后端 API 参数名映射错误：
+  - `enable_graph_recall` → `enable_memory_graph`
+  - `graph_max_depth` → `memory_graph_depth`
+  - `graph_max_nodes` → `memory_graph_nodes`
+- 新增 Entity Graph 参数：`enable_entity_graph`, `entity_graph_depth`, `entity_graph_nodes`
+
+### Database Changes
+- Migration 030: Entity Dedup Enhancement
+  - 删除旧约束 `uq_entities_name_container`
+  - 添加新约束 `uq_entities_name_type_container`
+  - 创建归一化索引 `idx_entities_normalized_name`
+
+### Code Changes
+- `graph_tools.py`: 新增 `normalize_entity_name()` 函数
+- `graph_builder_service.py`: 修复字段名 + 归一化查询
+- `memory_store.py`: 修复去重逻辑 + 导入归一化函数
+- `context.ts`: 修复后端 API 参数映射
+
 ## [5.1.0] - 2026-04-02
 
 ### Major Changes

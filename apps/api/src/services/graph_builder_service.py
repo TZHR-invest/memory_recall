@@ -13,7 +13,7 @@ import json
 from typing import List, Dict, Optional, Any
 from datetime import datetime
 from ..database import db
-from .graph_tools import GRAPH_TOOLS, EXTRACT_ENTITIES_TOOL
+from .graph_tools import GRAPH_TOOLS, EXTRACT_ENTITIES_TOOL, normalize_entity_name
 from .prompts import (
     ENTITY_EXTRACTION_PROMPT,
     get_entity_extraction_prompt,
@@ -93,14 +93,15 @@ class GraphBuilderService:
             实体 ID
         """
         try:
-            # 检查实体是否存在
+            normalized_name = normalize_entity_name(name)
             existing = await db.fetchrow(
                 """
                 SELECT id FROM entities 
-                WHERE name = $1 AND entity_type = $2
+                WHERE LOWER(TRIM(name)) = $1 AND type = $2 AND container_tag = $3
                 """,
-                name,
+                normalized_name,
                 entity_type,
+                user_id,
             )
 
             if existing:
@@ -118,15 +119,15 @@ class GraphBuilderService:
 
                 entity_id = str(existing["id"])
             else:
-                # 创建新实体
                 result = await db.fetchrow(
                     """
-                    INSERT INTO entities (name, entity_type, confidence)
-                    VALUES ($1, $2, $3)
+                    INSERT INTO entities (name, type, container_tag, confidence)
+                    VALUES ($1, $2, $3, $4)
                     RETURNING id
                     """,
-                    name,
+                    name.strip(),
                     entity_type,
+                    user_id,
                     confidence,
                 )
 
@@ -631,7 +632,6 @@ class GraphBuilderService:
             return "unknown"
         elif relation_type == "same_as":
             return "person"  # 通常用于人物别名
-
 
         # 默认类型
         return "unknown"
