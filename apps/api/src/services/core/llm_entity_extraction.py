@@ -524,8 +524,9 @@ class LLMEntityExtractor:
 【注意】
 1. 只提取明确表达的关系，不要推断
 2. 每个关系必须包含 confidence 字段（0.0-1.0）
-3. 如果预定义类型不适用，可以创建新类型
-4. 实体名称要准确，避免代词（我、你、他等）"""
+3. 必须使用上述预定义关系类型，不可创建新类型
+4. 如果预定义类型都不适用，使用 "related_to"
+5. 实体名称要准确，避免代词（我、你、他等）"""
 
         else:
             relation_types_list = "\n".join(
@@ -585,8 +586,9 @@ Output:
 【Note】
 1. Only extract explicitly stated relations, do not infer
 2. Each relation must have confidence field (0.0-1.0)
-3. Create new relation type if predefined ones don't fit
-4. Avoid pronouns (I, you, he, etc.) as entity names"""
+3. MUST use predefined relation types only, no custom types allowed
+4. If no predefined type fits, use "related_to"
+5. Avoid pronouns (I, you, he, etc.) as entity names"""
 
     def _filter_entities_with_types(
         self, entities: List[Dict[str, Any]]
@@ -629,6 +631,11 @@ Output:
             if confidence < 0.3:
                 continue
 
+            # 验证关系类型，非标准类型映射到 related_to
+            if relation_type not in RELATION_TYPES:
+                relation_type = "related_to"
+
+            relation["type"] = relation_type
             relation["confidence"] = max(0.0, min(1.0, float(confidence)))
 
             filtered.append(relation)
