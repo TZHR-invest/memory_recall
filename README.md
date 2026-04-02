@@ -441,12 +441,46 @@ recall_count = max(2, maxMemories × (1 - min(0.5, conversationLength × 0.05)))
 3. 生成会话摘要并注入项目知识
 4. 摘要保存为项目记忆（带 `[会话摘要]` 前缀）
 
+### 异步写入队列（v1.7.0+）
+
+插件支持异步写入队列，将工具响应时间从 200-500ms 降至 < 10ms：
+
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| `asyncQueue.enabled` | `true` | 是否启用异步队列 |
+| `asyncQueue.maxConcurrency` | `3` | 最大并发任务数 |
+| `asyncQueue.maxSize` | `100` | 队列最大容量 |
+| `asyncQueue.taskTimeoutMs` | `120000` | 单任务超时（2分钟） |
+| `asyncQueue.retryPolicy` | 内置策略 | 重试策略配置 |
+
+**支持异步的操作**：
+- `add` mode：添加记忆异步入队
+- `import-docs` mode：每个文档独立任务入队
+- FileWatcher：文件变化自动入队
+
+**配置示例**：
+```json
+{
+    "asyncQueue": {
+        "enabled": true,
+        "maxConcurrency": 3,
+        "maxSize": 100,
+        "taskTimeoutMs": 120000,
+        "retryPolicy": {
+            "maxRetries": 3,
+            "baseDelayMs": 1000,
+            "maxDelayMs": 30000
+        }
+    }
+}
+```
+
 ### 统一 Tool
 
 ```json
 {
     "name": "memory-recall",
-    "modes": ["add", "search", "profile", "list", "forget"],
+    "modes": ["add", "search", "profile", "list", "forget", "import-docs"],
     "scopes": ["user", "project"]
 }
 ```
@@ -571,6 +605,6 @@ MIT License
 
 ---
 
-*创建者：颓弟*  
-*创建时间：2026-03-19*  
-*最后更新：2026-04-01*
+*创建者：颓弟*
+*创建时间：2026-03-19*
+*最后更新：2026-04-02*

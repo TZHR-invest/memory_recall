@@ -91,13 +91,18 @@ class MemoryStore:
         metadata: Optional[Dict[str, Any]] = None,
         generate_embedding: bool = True,
         auto_relations: bool = True,
-        extract_entities: bool = True,
+        extract_entities: Optional[bool] = None,
+        extract_relations: Optional[bool] = None,
         use_llm_extraction: Optional[bool] = None,
         entity_context: Optional[str] = None,
         parent_memory_id: Optional[str] = None,
         is_inference: bool = False,
         check_merge: bool = True,
     ) -> Memory:
+        if extract_entities is None:
+            extract_entities = settings.ENABLE_ENTITY_EXTRACTION
+        if extract_relations is None:
+            extract_relations = settings.ENABLE_ENTITY_RELATION_EXTRACTION
         if use_llm_extraction is None:
             use_llm_extraction = settings.USE_LLM_EXTRACTION
 
@@ -136,10 +141,29 @@ class MemoryStore:
             if use_llm_extraction:
                 try:
                     extractor = self._get_llm_extractor()
-                    llm_fact = await extractor.extract(content, entity_context)
-                    if llm_fact.entities:
-                        final_metadata["entities"] = llm_fact.entities
-                    is_static = llm_fact.is_static
+
+                    if extract_relations:
+                        extraction = await extractor.extract_with_relations(
+                            content, entity_context
+                        )
+                        entities_to_store = extraction.get("entities", [])
+                        relations_to_store = extraction.get("relations", [])
+
+                        if entities_to_store:
+                            entities_dict = {}
+                            for entity in entities_to_store:
+                                etype = entity.get("type", "unknown")
+                                if etype not in entities_dict:
+                                    entities_dict[etype] = []
+                                entities_dict[etype].append(entity.get("name"))
+                            final_metadata["entities"] = entities_dict
+                            final_metadata["_entities_to_store"] = entities_to_store
+                            final_metadata["_relations_to_store"] = relations_to_store
+                    else:
+                        llm_fact = await extractor.extract(content, entity_context)
+                        if llm_fact.entities:
+                            final_metadata["entities"] = llm_fact.entities
+                        is_static = llm_fact.is_static
                 except Exception:
                     entities = entity_extractor.extract_to_metadata(content)
                     if entities:
@@ -199,6 +223,21 @@ class MemoryStore:
                                 )
             except Exception as e:
                 logger.warning(f"Failed to update entity dictionary: {e}")
+
+        if (
+            "_entities_to_store" in final_metadata
+            or "_relations_to_store" in final_metadata
+        ):
+            entities_to_store = final_metadata.pop("_entities_to_store", [])
+            relations_to_store = final_metadata.pop("_relations_to_store", [])
+
+            if entities_to_store or relations_to_store:
+                try:
+                    await self._store_entity_graph(
+                        memory.id, entities_to_store, relations_to_store, container_tag
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to store entity graph: {e}")
 
         if auto_relations:
             try:
@@ -601,6 +640,172 @@ class MemoryStore:
             return [float(x) for x in embedding_str.strip("[]").split(",")]
         except Exception:
             return None
+
+    async def _store_entity_graph(
+        self,
+        memory_id: str,
+        entities: List[Dict[str, Any]],
+        relations: List[Dict[str, Any]],
+        container_tag: str,
+    ) -> None:
+        """
+        存储 Entity Graph 到数据库（复用 graph_builder_service 的去重逻辑）
+
+        Args:
+            memory_id: 记忆 ID
+            entities: 实体列表 [{"name": "实体名", "type": "person/location/..."}]
+            relations: 关系列表 [{"from": "实体1", "to": "实体2", "type": "关系类型", "confidence": 0.9}]
+            container_tag: 容器标签
+        """
+        entity_ids = {}
+
+        for entity in entities:
+            name = entity.get("name")
+            entity_type = entity.get("type", "unknown")
+            confidence = entity.get("confidence", 0.8)
+
+            if not name:
+                continue
+
+            existing = await db.fetchrow(
+                "SELECT id FROM entities WHERE name = $1 AND container_tag = $2",
+                name,
+                container_tag,
+            )
+
+            if existing:
+                await db.execute(
+                    "UPDATE entities SET mention_count = mention_count + 1, updated_at = NOW() WHERE id = $1",
+                    str(existing["id"]),
+                )
+                entity_ids[name] = str(existing["id"])
+            else:
+                result = await db.fetchrow(
+                    """
+                    INSERT INTO entities (name, type, container_tag, confidence)
+                    VALUES ($1, $2, $3, $4)
+                    RETURNING id
+                    """,
+                    name,
+                    entity_type,
+                    container_tag,
+                    confidence,
+                )
+                entity_ids[name] = str(result["id"]) if result else None
+
+        for relation in relations:
+            from_entity = relation.get("from")
+            to_entity = relation.get("to")
+            relation_type = relation.get("type")
+            confidence = relation.get("confidence", 0.8)
+
+            if not all([from_entity, to_entity, relation_type]):
+                continue
+
+            from_id = entity_ids.get(from_entity)
+            to_id = entity_ids.get(to_entity)
+
+            if not from_id or not to_id:
+                continue
+
+            existing = await db.fetchrow(
+                """
+                SELECT id FROM entity_relations 
+                WHERE from_entity_id = $1 AND to_entity_id = $2 AND relation_type = $3
+                """,
+                from_id,
+                to_id,
+                relation_type,
+            )
+
+            if existing:
+                await db.execute(
+                    "UPDATE entity_relations SET weight = LEAST(weight + 0.1, 1.0) WHERE id = $1",
+                    str(existing["id"]),
+                )
+            else:
+                await db.execute(
+                    """
+                    INSERT INTO entity_relations 
+                    (from_entity_id, to_entity_id, relation_type, container_tag, source_memory_id, confidence)
+                    VALUES ($1, $2, $3, $4, $5, $6)
+                    """,
+                    from_id,
+                    to_id,
+                    relation_type,
+                    container_tag,
+                    memory_id,
+                    confidence,
+                )
+
+        for entity_name, entity_id in entity_ids.items():
+            if entity_id:
+                await db.execute(
+                    """
+                    INSERT INTO memory_entities (memory_id, entity_id)
+                    VALUES ($1, $2)
+                    ON CONFLICT DO NOTHING
+                    """,
+                    memory_id,
+                    entity_id,
+                )
+
+    async def traverse_memory_relations(
+        self,
+        memory_id: str,
+        max_depth: int = 2,
+        max_nodes: int = 5,
+        relation_types: Optional[List[str]] = None,
+    ) -> List[Memory]:
+        """
+        从 metadata->'relations' 遍历记忆演进关系
+
+        关系类型:
+        - updates: 更新关系（新记忆取代旧记忆）
+        - extends: 扩展关系（新记忆补充旧记忆）
+        - derives: 推导关系（从旧记忆推导出新记忆）
+
+        Args:
+            memory_id: 起始记忆 ID
+            max_depth: 最大遍历深度（默认 2）
+            max_nodes: 最大返回节点数（默认 5）
+            relation_types: 关系类型过滤（默认所有类型）
+
+        Returns:
+            相关记忆列表
+        """
+        visited = set()
+        results = []
+
+        async def _traverse(current_id: str, depth: int):
+            if depth > max_depth or len(results) >= max_nodes:
+                return
+
+            if current_id in visited:
+                return
+            visited.add(current_id)
+
+            memory = await self.get_by_id(current_id)
+            if not memory:
+                return
+
+            results.append(memory)
+
+            relations = memory.metadata.get("relations", {})
+            for rel_type, target_ids in relations.items():
+                if relation_types and rel_type not in relation_types:
+                    continue
+
+                if not isinstance(target_ids, list):
+                    continue
+
+                for target_id in target_ids:
+                    if len(results) >= max_nodes:
+                        return
+                    await _traverse(target_id, depth + 1)
+
+        await _traverse(memory_id, 0)
+        return results[:max_nodes]
 
 
 memory_store = MemoryStore()

@@ -36,6 +36,32 @@ export interface SmartRecallConfig {
 }
 
 /**
+ * Configuration for semantic deduplication across injection sources
+ * Uses embedding similarity to detect semantically similar content
+ */
+export interface SemanticDedupConfig {
+  enabled: boolean;
+  threshold: number;
+  maxBatchSize: number;
+}
+
+/**
+ * 异步队列配置
+ */
+export interface AsyncQueueConfig {
+  enabled: boolean;
+  maxConcurrency: number;
+  maxSize: number;
+  taskTimeoutMs: number; // 任务执行超时（毫秒），默认 180000（3分钟）
+  retryPolicy: {
+    maxRetries: number;
+    initialDelay: number;
+    maxDelay: number;
+    backoffMultiplier: number;
+  };
+}
+
+/**
  * Default keywords for smart recall trigger
  */
 export const DEFAULT_RECALL_KEYWORDS = [
@@ -78,6 +104,11 @@ export interface Config {
   injectionStrategy: InjectionStrategy;
   initialInjection: InitialInjectionConfig;
   smartRecall: SmartRecallConfig;
+  semanticDedup: SemanticDedupConfig;
+  // Backend API config
+  useBackendDedup: boolean;
+  // Async queue config
+  asyncQueue: AsyncQueueConfig;
 }
 
 const DEFAULT_CONFIG: Omit<Config, "apiKey"> = {
@@ -129,6 +160,24 @@ const DEFAULT_CONFIG: Omit<Config, "apiKey"> = {
     maxAdditionalMemories: 3,
     maxAdditionalChunks: 2,
   },
+  semanticDedup: {
+    enabled: true,
+    threshold: 0.85,
+    maxBatchSize: 50,
+  },
+  useBackendDedup: true,
+  asyncQueue: {
+    enabled: false, // 默认关闭，需要用户显式启用
+    maxConcurrency: 3,
+    maxSize: 100,
+    taskTimeoutMs: 180000, // 3 minutes - 队列任务可能涉及 LLM 调用
+    retryPolicy: {
+      maxRetries: 3,
+      initialDelay: 1000,
+      maxDelay: 10000,
+      backoffMultiplier: 2,
+    },
+  },
 };
 
 function parseJsonc(content: string): Record<string, unknown> {
@@ -174,6 +223,16 @@ export function loadConfig(overrides: Record<string, unknown> = {}): Config {
     }
   }
 
+  const rawConfig = buildRawConfig(overrides, fileConfig);
+  validateSemanticDedupConfig(rawConfig.semanticDedup);
+
+  return rawConfig;
+}
+
+function buildRawConfig(
+  overrides: Record<string, unknown>,
+  fileConfig: Record<string, unknown>
+): Config {
   // Priority: env > overrides > file > defaults
   const config: Config = {
     apiKey:
@@ -341,9 +400,77 @@ export function loadConfig(overrides: Record<string, unknown> = {}): Config {
         ((fileConfig.smartRecall as Record<string, unknown>)?.maxAdditionalChunks as number) ||
         DEFAULT_CONFIG.smartRecall.maxAdditionalChunks,
     },
+    semanticDedup: {
+      enabled:
+        ((overrides.semanticDedup as Record<string, unknown>)?.enabled as boolean) ??
+        ((fileConfig.semanticDedup as Record<string, unknown>)?.enabled as boolean) ??
+        DEFAULT_CONFIG.semanticDedup.enabled,
+      threshold:
+        ((overrides.semanticDedup as Record<string, unknown>)?.threshold as number) ||
+        ((fileConfig.semanticDedup as Record<string, unknown>)?.threshold as number) ||
+        DEFAULT_CONFIG.semanticDedup.threshold,
+      maxBatchSize:
+        ((overrides.semanticDedup as Record<string, unknown>)?.maxBatchSize as number) ||
+        ((fileConfig.semanticDedup as Record<string, unknown>)?.maxBatchSize as number) ||
+        DEFAULT_CONFIG.semanticDedup.maxBatchSize,
+    },
+    useBackendDedup:
+      (overrides.useBackendDedup as boolean) ??
+      (fileConfig.useBackendDedup as boolean) ??
+      DEFAULT_CONFIG.useBackendDedup,
+    asyncQueue: {
+      enabled:
+        ((overrides.asyncQueue as Record<string, unknown>)?.enabled as boolean) ??
+        ((fileConfig.asyncQueue as Record<string, unknown>)?.enabled as boolean) ??
+        DEFAULT_CONFIG.asyncQueue.enabled,
+      maxConcurrency:
+        ((overrides.asyncQueue as Record<string, unknown>)?.maxConcurrency as number) ||
+        ((fileConfig.asyncQueue as Record<string, unknown>)?.maxConcurrency as number) ||
+        DEFAULT_CONFIG.asyncQueue.maxConcurrency,
+      maxSize:
+        ((overrides.asyncQueue as Record<string, unknown>)?.maxSize as number) ||
+        ((fileConfig.asyncQueue as Record<string, unknown>)?.maxSize as number) ||
+        DEFAULT_CONFIG.asyncQueue.maxSize,
+      taskTimeoutMs:
+        ((overrides.asyncQueue as Record<string, unknown>)?.taskTimeoutMs as number) ||
+        ((fileConfig.asyncQueue as Record<string, unknown>)?.taskTimeoutMs as number) ||
+        DEFAULT_CONFIG.asyncQueue.taskTimeoutMs,
+      retryPolicy: {
+        maxRetries:
+          ((overrides.asyncQueue as Record<string, unknown>)?.retryPolicy as Record<string, unknown>)?.maxRetries as number ||
+          ((fileConfig.asyncQueue as Record<string, unknown>)?.retryPolicy as Record<string, unknown>)?.maxRetries as number ||
+          DEFAULT_CONFIG.asyncQueue.retryPolicy.maxRetries,
+        initialDelay:
+          ((overrides.asyncQueue as Record<string, unknown>)?.retryPolicy as Record<string, unknown>)?.initialDelay as number ||
+          ((fileConfig.asyncQueue as Record<string, unknown>)?.retryPolicy as Record<string, unknown>)?.initialDelay as number ||
+          DEFAULT_CONFIG.asyncQueue.retryPolicy.initialDelay,
+        maxDelay:
+          ((overrides.asyncQueue as Record<string, unknown>)?.retryPolicy as Record<string, unknown>)?.maxDelay as number ||
+          ((fileConfig.asyncQueue as Record<string, unknown>)?.retryPolicy as Record<string, unknown>)?.maxDelay as number ||
+          DEFAULT_CONFIG.asyncQueue.retryPolicy.maxDelay,
+        backoffMultiplier:
+          ((overrides.asyncQueue as Record<string, unknown>)?.retryPolicy as Record<string, unknown>)?.backoffMultiplier as number ||
+          ((fileConfig.asyncQueue as Record<string, unknown>)?.retryPolicy as Record<string, unknown>)?.backoffMultiplier as number ||
+          DEFAULT_CONFIG.asyncQueue.retryPolicy.backoffMultiplier,
+      },
+    },
   };
 
   return config;
+}
+
+function validateSemanticDedupConfig(config: SemanticDedupConfig): void {
+  if (config.threshold < 0.0 || config.threshold > 1.0) {
+    throw new Error(
+      `semanticDedup.threshold must be between 0.0 and 1.0, got ${config.threshold}`
+    );
+  }
+
+  if (!Number.isInteger(config.maxBatchSize) || config.maxBatchSize < 1) {
+    throw new Error(
+      `semanticDedup.maxBatchSize must be a positive integer, got ${config.maxBatchSize}`
+    );
+  }
 }
 
 export function isConfigured(config: Config): boolean {

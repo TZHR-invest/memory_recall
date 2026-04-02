@@ -1,9 +1,11 @@
 import { tool } from "@opencode-ai/plugin";
 import { z } from "zod";
+import * as path from "path";
 import type { ApiClient, SearchResult } from "./client";
 import type { Config } from "./config";
 import { stripPrivateTags, isFullyPrivate } from "./context";
 import type { DocumentTracker } from "./document-tracker";
+import { TaskQueue, type Task, type TaskExecutor } from "./queue";
 
 const MEMORY_TYPES = [
   "project-config",
@@ -15,7 +17,7 @@ const MEMORY_TYPES = [
 ] as const;
 
 const toolSchema = {
-  mode: z.enum(["add", "search", "profile", "list", "forget", "import-docs", "help"]).describe("Operation mode"),
+  mode: z.enum(["add", "search", "profile", "list", "forget", "import-docs", "status", "retry", "help"]).describe("Operation mode"),
   content: z.string().optional().describe("Content to store (for add mode)"),
   query: z.string().optional().describe("Search query (for search mode)"),
   type: z.enum(MEMORY_TYPES).optional().describe("Memory type (for add mode)"),
@@ -24,10 +26,11 @@ const toolSchema = {
   memoryId: z.string().optional().describe("Memory ID to forget (for forget mode)"),
   limit: z.number().optional().describe("Max results (default: 10)"),
   force: z.boolean().optional().describe("Force re-import all documents (for import-docs mode)"),
+  taskId: z.string().optional().describe("Task ID to query or retry (for status/retry mode)"),
 };
 
 type ToolArgs = {
-  mode: "add" | "search" | "profile" | "list" | "forget" | "import-docs" | "help";
+  mode: "add" | "search" | "profile" | "list" | "forget" | "import-docs" | "status" | "retry" | "help";
   content?: string;
   query?: string;
   type?: typeof MEMORY_TYPES[number];
@@ -36,13 +39,14 @@ type ToolArgs = {
   memoryId?: string;
   limit?: number;
   force?: boolean;
+  taskId?: string;
 };
 
 interface SearchWithScope extends SearchResult {
   scope?: string;
 }
 
-export function createTool(client: ApiClient, config: Config, documentTracker: DocumentTracker | null) {
+export function createTool(client: ApiClient, config: Config, documentTracker: DocumentTracker | null, taskQueue?: TaskQueue) {
   async function execute(args: ToolArgs, context: { sessionID: string; messageID: string; agent: string; directory: string; worktree: string; abort: AbortSignal; metadata: (input: { title?: string; metadata?: Record<string, unknown> }) => void }): Promise<string> {
     const mode = args.mode;
 
@@ -71,6 +75,8 @@ export function createTool(client: ApiClient, config: Config, documentTracker: D
             list: "List recent memories",
             forget: "Remove a memory",
             "import-docs": "Import project documents (README, docs/*.md, etc.)",
+            status: "Query async task status",
+            retry: "Retry a failed task",
           },
           scopes: {
             user: "Cross-project",
@@ -95,6 +101,26 @@ export function createTool(client: ApiClient, config: Config, documentTracker: D
         const isStatic = args.isStatic || false;
         const memoryType = args.type;
 
+        // 如果启用异步队列，使用队列
+        if (config.asyncQueue.enabled && taskQueue) {
+          const taskId = taskQueue.enqueue("add", {
+            content: sanitized,
+            containerTag,
+            isStatic,
+            memoryType,
+          });
+
+          return {
+            success: true,
+            message: "Memory queued for async processing",
+            taskId,
+            scope,
+            isStatic,
+            type: memoryType,
+          };
+        }
+
+        // 同步模式（默认）
         const memory = await client.addMemory(sanitized, containerTag, isStatic, memoryType);
 
         return {
@@ -197,6 +223,45 @@ export function createTool(client: ApiClient, config: Config, documentTracker: D
 
         const force = args.force || false;
 
+        // 如果启用异步队列，批量入队每个文档
+        if (config.asyncQueue.enabled && taskQueue) {
+          // force 模式：清除状态，重新导入所有文档
+          if (force) {
+            documentTracker.clearState();
+          }
+
+          const pendingFiles = documentTracker.getPendingFiles();
+          
+          if (pendingFiles.length === 0) {
+            return {
+              success: true,
+              message: "No new documents to import",
+              queuedCount: 0,
+              patterns: config.trackedDocPatterns,
+            };
+          }
+
+          // 批量入队
+          const taskIds: string[] = [];
+          for (const filePath of pendingFiles) {
+            const relativePath = path.relative(documentTracker.getDirectory(), filePath);
+            const taskId = taskQueue.enqueue("import-doc", {
+              filePath,
+              relativePath,
+            });
+            taskIds.push(taskId);
+          }
+
+          return {
+            success: true,
+            message: `${taskIds.length} documents queued for async processing`,
+            queuedCount: taskIds.length,
+            taskIds,
+            patterns: config.trackedDocPatterns,
+          };
+        }
+
+        // 同步模式（默认）
         if (force) {
           documentTracker.clearState();
         }
@@ -210,6 +275,80 @@ export function createTool(client: ApiClient, config: Config, documentTracker: D
           importedCount,
           totalTracked: trackedDocs.length,
           patterns: config.trackedDocPatterns,
+        };
+      }
+
+      case "status": {
+        const taskId = args.taskId;
+        
+        if (!taskQueue) {
+          return { success: false, error: "Async queue is not enabled. Set 'asyncQueue.enabled: true' in config." };
+        }
+
+        // 如果没有 taskId，返回所有任务
+        if (!taskId) {
+          const allTasks = taskQueue.getAllTasks();
+          return {
+            success: true,
+            count: allTasks.length,
+            pending: allTasks.filter(t => t.status === "pending").length,
+            running: allTasks.filter(t => t.status === "running").length,
+            successCount: allTasks.filter(t => t.status === "success").length,
+            failed: allTasks.filter(t => t.status === "failed").length,
+            tasks: allTasks.map(t => ({
+              id: t.id,
+              type: t.type,
+              status: t.status,
+              retryCount: t.retryCount,
+              createdAt: t.createdAt,
+              error: t.error,
+            })),
+          };
+        }
+
+        // 查询单个任务
+        const task = taskQueue.getStatus(taskId);
+        if (!task) {
+          return { success: false, error: "Task not found: " + taskId };
+        }
+
+        return {
+          success: true,
+          task: {
+            id: task.id,
+            type: task.type,
+            status: task.status,
+            retryCount: task.retryCount,
+            maxRetries: task.maxRetries,
+            error: task.error,
+            errorHistory: task.errorHistory,
+            createdAt: task.createdAt,
+            startedAt: task.startedAt,
+            completedAt: task.completedAt,
+          },
+        };
+      }
+
+      case "retry": {
+        const taskId = args.taskId;
+        
+        if (!taskQueue) {
+          return { success: false, error: "Async queue is not enabled. Set 'asyncQueue.enabled: true' in config." };
+        }
+
+        if (!taskId) {
+          return { success: false, error: "taskId required for retry" };
+        }
+
+        const success = taskQueue.retry(taskId);
+        if (!success) {
+          return { success: false, error: "Cannot retry task. Task may not exist or not in failed status." };
+        }
+
+        return {
+          success: true,
+          message: "Task requeued for execution",
+          taskId,
         };
       }
 

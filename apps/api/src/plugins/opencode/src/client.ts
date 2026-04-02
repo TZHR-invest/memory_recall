@@ -80,6 +80,42 @@ export interface ProfileResponse {
   searchResults?: SearchResult[];
 }
 
+export interface ContextInjectConfig {
+  inject_profile?: boolean;
+  max_profile_items?: number;
+  max_memories?: number;
+  max_chunks?: number;
+  enable_semantic_dedup?: boolean;
+  dedup_threshold?: number;
+  enable_graph_recall?: boolean;
+  graph_max_depth?: number;
+  graph_max_nodes?: number;
+  language?: string;
+  enable_chunks_search?: boolean;
+  chunks_similarity_threshold?: number;
+}
+
+export interface ContextInjectSource {
+  profile: string[];
+  memories: Array<{ id: string; content: string }>;
+  chunks: Array<{ id: string; content: string }>;
+}
+
+export interface ContextInjectStats {
+  total_items: number;
+  after_dedup: number;
+  deduped_count: number;
+  profile_count: number;
+  memories_count: number;
+  chunks_count: number;
+}
+
+export interface ContextInjectResponse {
+  context: string;
+  sources: ContextInjectSource;
+  stats: ContextInjectStats;
+}
+
 export class ConfigurationError extends Error {
   constructor(message: string) {
     super(message);
@@ -159,7 +195,8 @@ export class ApiClient {
   private async request<T>(
     path: string,
     method: string = "GET",
-    body?: unknown
+    body?: unknown,
+    timeoutMs: number = REQUEST_TIMEOUT_MS
   ): Promise<T> {
     if (!this.config.apiKey) {
       throw new ConfigurationError("API key not configured");
@@ -178,7 +215,7 @@ export class ApiClient {
         headers,
         body: body ? JSON.stringify(body) : undefined,
       },
-      REQUEST_TIMEOUT_MS
+      timeoutMs
     );
 
     if (!response.ok) {
@@ -193,14 +230,20 @@ export class ApiClient {
     content: string,
     containerTag: string,
     isStatic: boolean = false,
-    memoryType?: string
+    memoryType?: string,
+    timeoutMs?: number
   ): Promise<Memory> {
-    const response = await this.request<Memory>("/memories", "POST", {
-      content,
-      container_tag: containerTag,
-      is_static: isStatic,
-      metadata: memoryType ? { type: memoryType } : undefined,
-    });
+    const response = await this.request<Memory>(
+      "/memories",
+      "POST",
+      {
+        content,
+        container_tag: containerTag,
+        is_static: isStatic,
+        metadata: memoryType ? { type: memoryType } : undefined,
+      },
+      timeoutMs
+    );
     return response;
   }
 
@@ -360,21 +403,27 @@ export class ApiClient {
       source?: string;
       docType?: string;
       metadata?: Record<string, unknown>;
-    }
+    },
+    timeoutMs?: number
   ): Promise<{ id: string; title?: string; chunkCount: number; isDuplicate: boolean }> {
     const response = await this.request<{
       id: string;
       title?: string;
       chunk_count: number;
       is_duplicate: boolean;
-    }>("/documents", "POST", {
-      content,
-      container_tag: containerTag,
-      title: options?.title,
-      source: options?.source,
-      doc_type: options?.docType || "markdown",
-      metadata: options?.metadata,
-    });
+    }>(
+      "/documents",
+      "POST",
+      {
+        content,
+        container_tag: containerTag,
+        title: options?.title,
+        source: options?.source,
+        doc_type: options?.docType || "markdown",
+        metadata: options?.metadata,
+      },
+      timeoutMs
+    );
 
     return {
       id: response.id,
@@ -414,5 +463,67 @@ export class ApiClient {
     } catch {
       return null;
     }
+  }
+
+  async embedBatch(
+    texts: string[],
+    timeoutMs: number = 5000,
+    maxRetries: number = 3
+  ): Promise<number[][] | null> {
+    if (texts.length === 0) return [];
+    if (texts.length > 50) {
+      texts = texts.slice(0, 50);
+    }
+
+    let lastError: Error | null = null;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const response = await fetchWithTimeout(
+          `${this.config.baseUrl}/embed`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-API-Key": this.config.apiKey || "",
+            },
+            body: JSON.stringify({ texts }),
+          },
+          timeoutMs
+        );
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`API error ${response.status}: ${errorText}`);
+        }
+
+        const data = (await response.json()) as {
+          embeddings: number[][];
+          dimension: number;
+          count: number;
+        };
+        return data.embeddings;
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        if (attempt < maxRetries) {
+          await new Promise((resolve) => setTimeout(resolve, 100 * attempt));
+        }
+      }
+    }
+
+    console.warn(`embedBatch failed after ${maxRetries} attempts:`, lastError);
+    return null;
+  }
+
+  async injectContext(
+    containerTag: string,
+    query?: string,
+    config?: ContextInjectConfig
+  ): Promise<ContextInjectResponse> {
+    return this.request<ContextInjectResponse>("/context-inject", "POST", {
+      container_tag: containerTag,
+      query,
+      config: config || {},
+    });
   }
 }

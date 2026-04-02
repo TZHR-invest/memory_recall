@@ -16,7 +16,7 @@ from src.background.scheduler import scheduler, setup_background_tasks
 from src.routes import health
 
 # Unified API routes
-from src.api import memories, graph, auth_endpoints
+from src.api import memories, graph, auth_endpoints, embed, context_inject
 
 
 @asynccontextmanager
@@ -144,6 +144,8 @@ app.include_router(health.router, tags=["健康检查"])
 app.include_router(memories.router)
 app.include_router(graph.router)
 app.include_router(auth_endpoints.router)
+app.include_router(embed.router)
+app.include_router(context_inject.router)
 
 
 # ==================== 根路径 ====================
@@ -163,6 +165,8 @@ async def root():
             "search": "POST /search",
             "graph": "GET /graph",
             "documents": "POST /documents",
+            "embed": "POST /embed",
+            "context_inject": "POST /context-inject",
             "auth": "POST /auth/keys",
         },
     }

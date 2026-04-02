@@ -537,6 +537,28 @@ function writeConfig(config: {
     "maxAdditionalChunks": 2
   },
 
+  // 后端语义去重（v5.1 新增）
+  "useBackendDedup": true,
+  "semanticDedup": {
+    "enabled": true,
+    "threshold": 0.85,
+    "maxBatchSize": 50
+  },
+
+  // 异步写入队列（v5.2 新增）
+  "asyncQueue": {
+    "enabled": false,
+    "maxConcurrency": 3,
+    "maxSize": 100,
+    "taskTimeoutMs": 120000,
+    "retryPolicy": {
+      "maxRetries": 3,
+      "initialDelay": 1000,
+      "maxDelay": 10000,
+      "backoffMultiplier": 2
+    }
+  },
+
   "language": "auto",
   "logLevel": "info"
 }
@@ -546,9 +568,9 @@ function writeConfig(config: {
   console.log(`✓ 配置已保存到 ${PLUGIN_CONFIG_FILE}`);
 }
 
-async function validateApiKey(baseUrl: string, apiKey: string): Promise<{ valid: boolean; error?: string }> {
+async function validateApiKey(baseUrl: string, apiKey: string): Promise<{ valid: boolean; containerTag?: string; userName?: string; error?: string }> {
   try {
-    const response = await fetch(`${baseUrl}/memories?limit=1`, {
+    const response = await fetch(`${baseUrl}/auth/verify`, {
       method: "GET",
       headers: {
         "X-API-Key": apiKey,
@@ -556,7 +578,14 @@ async function validateApiKey(baseUrl: string, apiKey: string): Promise<{ valid:
       },
     });
 
-    if (response.ok) return { valid: true };
+    if (response.ok) {
+      const data = await response.json();
+      return { 
+        valid: true, 
+        containerTag: data.container_tag,
+        userName: data.user_name,
+      };
+    }
     if (response.status === 401) return { valid: false, error: "API Key 无效" };
     if (response.status === 403) return { valid: false, error: "API Key 无权限" };
     return { valid: false, error: `服务器错误: ${response.status}` };
@@ -712,8 +741,10 @@ async function doInstall(): Promise<void> {
       }
 
       console.log("✓ API Key 验证成功");
-      userName = await questionWithDefault(rl, "请输入用户名", "User");
-      containerTag = userName.toLowerCase().replace(/\s+/g, "_");
+      
+      // 使用服务器返回的 containerTag（关键修复：containerTag = key_id）
+      containerTag = validation.containerTag!;
+      userName = validation.userName || await questionWithDefault(rl, "请输入用户名", "User");
     }
 
     writeConfig({ apiKey, baseUrl, userName, containerTag });

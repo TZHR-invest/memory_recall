@@ -21,6 +21,7 @@ from src.services.core.chinese_prompts import (
     detect_language,
 )
 from src.services.core.asmr_entity_types import detect_is_static
+from src.services.graph_tools import RELATION_TYPES, ENTITY_TYPES
 
 
 @dataclass
@@ -394,6 +395,276 @@ class LLMEntityExtractor:
             return None
 
         return max(dimension_counts.keys(), key=lambda d: dimension_counts[d])
+
+    async def extract_with_relations(
+        self,
+        text: str,
+        entity_context: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        提取实体和关系（用于 Entity Graph 构建）
+
+        借鉴 graph_builder_service.parse_relation_from_text() 的 Prompt 架构
+
+        Args:
+            text: 待提取的文本内容
+            entity_context: 实体提取指导上下文（可选）
+
+        Returns:
+            包含实体和关系的字典：
+            {
+                "entities": [{"name": "实体名", "type": "person/location/organization/event"}],
+                "relations": [{"from": "实体1", "to": "实体2", "type": "关系类型", "confidence": 0.9}],
+                "confidence": 0.8
+            }
+        """
+        if not self.llm_client:
+            return self._fallback_extract_with_relations(text, entity_context)
+
+        language = detect_language(text)
+
+        try:
+            prompt = self._get_prompt_with_relations(text, language, entity_context)
+
+            result = await asyncio.wait_for(
+                asyncio.to_thread(
+                    self.llm_client.extract_json,
+                    prompt,
+                    0.3,
+                ),
+                timeout=self.timeout,
+            )
+
+            if result:
+                entities = result.get("entities", [])
+                entities = self._filter_entities_with_types(entities)
+
+                relations = result.get("relations", [])
+                relations = self._filter_relations(relations)
+
+                return {
+                    "entities": entities,
+                    "relations": relations,
+                    "confidence": result.get("confidence", 0.5),
+                }
+
+            return self._fallback_extract_with_relations(text, entity_context)
+
+        except asyncio.TimeoutError:
+            return self._fallback_extract_with_relations(text, entity_context)
+        except Exception:
+            return self._fallback_extract_with_relations(text, entity_context)
+
+    def _get_prompt_with_relations(
+        self,
+        text: str,
+        language: str,
+        entity_context: Optional[str] = None,
+    ) -> str:
+        """
+        增强的 Prompt，包含关系抽取
+
+        借鉴 graph_builder_service 的 Prompt 架构
+        """
+        if language == "chinese":
+            relation_types_list = "\n".join(
+                f"- {en}: {cn}" for en, cn in list(RELATION_TYPES.items())[:15]
+            )
+
+            context_section = ""
+            if entity_context:
+                context_section = f"""
+<提取指导>
+{entity_context}
+</提取指导>
+"""
+
+            return f"""从以下文本中提取实体和关系：
+
+文本: {text}
+{context_section}
+
+返回 JSON 格式：
+{{
+  "entities": [
+    {{"name": "实体名", "type": "person/location/organization/event"}}
+  ],
+  "relations": [
+    {{"from": "实体1", "to": "实体2", "type": "关系类型", "confidence": 0.9}}
+  ]
+}}
+
+【实体类型】
+- person: 人物
+- location: 地点  
+- organization: 组织/公司
+- event: 事件
+- preference: 偏好
+- skill: 技能
+- occupation: 职业
+
+【关系类型】（优先使用预定义类型）
+{relation_types_list}
+
+【示例】
+文本: "我在字节跳动工作，同事张三也在那"
+输出:
+{{
+  "entities": [
+    {{"name": "字节跳动", "type": "organization"}},
+    {{"name": "张三", "type": "person"}}
+  ],
+  "relations": [
+    {{"from": "我", "to": "字节跳动", "type": "works_at", "confidence": 0.9}},
+    {{"from": "张三", "to": "字节跳动", "type": "works_at", "confidence": 0.9}},
+    {{"from": "我", "to": "张三", "type": "colleague", "confidence": 0.85}}
+  ]
+}}
+
+【注意】
+1. 只提取明确表达的关系，不要推断
+2. 每个关系必须包含 confidence 字段（0.0-1.0）
+3. 如果预定义类型不适用，可以创建新类型
+4. 实体名称要准确，避免代词（我、你、他等）"""
+
+        else:
+            relation_types_list = "\n".join(
+                f"- {en}: {cn}" for en, cn in list(RELATION_TYPES.items())[:15]
+            )
+
+            context_section = ""
+            if entity_context:
+                context_section = f"""
+<extraction_guidance>
+{entity_context}
+</extraction_guidance>
+"""
+
+            return f"""Extract entities and relations from the following text:
+
+Text: {text}
+{context_section}
+
+Return JSON format:
+{{
+  "entities": [
+    {{"name": "entity_name", "type": "person/location/organization/event"}}
+  ],
+  "relations": [
+    {{"from": "entity1", "to": "entity2", "type": "relation_type", "confidence": 0.9}}
+  ]
+}}
+
+【Entity Types】
+- person: Person name
+- location: Place
+- organization: Company/Organization
+- event: Event
+- preference: Preference
+- skill: Skill
+- occupation: Job title
+
+【Relation Types】 (use predefined types when applicable)
+{relation_types_list}
+
+【Example】
+Text: "I work at Google with my colleague John"
+Output:
+{{
+  "entities": [
+    {{"name": "Google", "type": "organization"}},
+    {{"name": "John", "type": "person"}}
+  ],
+  "relations": [
+    {{"from": "I", "to": "Google", "type": "works_at", "confidence": 0.9}},
+    {{"from": "John", "to": "Google", "type": "works_at", "confidence": 0.9}},
+    {{"from": "I", "to": "John", "type": "colleague", "confidence": 0.85}}
+  ]
+}}
+
+【Note】
+1. Only extract explicitly stated relations, do not infer
+2. Each relation must have confidence field (0.0-1.0)
+3. Create new relation type if predefined ones don't fit
+4. Avoid pronouns (I, you, he, etc.) as entity names"""
+
+    def _filter_entities_with_types(
+        self, entities: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """过滤无意义或类型不明确的实体"""
+        filtered = []
+
+        for entity in entities:
+            name = entity.get("name", "")
+            entity_type = entity.get("type", "")
+
+            if not name or len(name) < 2:
+                continue
+
+            if name in MEANINGLESS_ENTITIES or name.lower() in MEANINGLESS_ENTITIES:
+                continue
+
+            if entity_type in SKIP_ENTITY_TYPES:
+                continue
+
+            filtered.append(entity)
+
+        return filtered
+
+    def _filter_relations(
+        self, relations: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """过滤无效或低置信度的关系"""
+        filtered = []
+
+        for relation in relations:
+            from_entity = relation.get("from", "")
+            to_entity = relation.get("to", "")
+            relation_type = relation.get("type", "")
+            confidence = relation.get("confidence", 0.5)
+
+            if not all([from_entity, to_entity, relation_type]):
+                continue
+
+            if confidence < 0.3:
+                continue
+
+            relation["confidence"] = max(0.0, min(1.0, float(confidence)))
+
+            filtered.append(relation)
+
+        return filtered
+
+    def _fallback_extract_with_relations(
+        self,
+        text: str,
+        entity_context: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        降级提取：当 LLM 不可用时，使用现有实体提取方法
+
+        返回实体和空关系列表
+        """
+        from src.services.core.entity_extraction import entity_extractor
+
+        entities_dict = entity_extractor.extract_to_metadata(text)
+        entities_dict = self._filter_entities(entities_dict)
+
+        entities_list = []
+        for entity_type, names in entities_dict.items():
+            for name in names:
+                entities_list.append(
+                    {
+                        "name": name,
+                        "type": entity_type,
+                    }
+                )
+
+        return {
+            "entities": entities_list,
+            "relations": [],
+            "confidence": 0.3,
+        }
 
     async def extract_entities_only(
         self,
