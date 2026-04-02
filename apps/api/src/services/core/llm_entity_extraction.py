@@ -404,7 +404,7 @@ class LLMEntityExtractor:
         """
         提取实体和关系（用于 Entity Graph 构建）
 
-        借鉴 graph_builder_service.parse_relation_from_text() 的 Prompt 架构
+        使用标准化的关系类型和实体类型进行提取
 
         Args:
             text: 待提取的文本内容
@@ -464,7 +464,7 @@ class LLMEntityExtractor:
         """
         增强的 Prompt，包含关系抽取
 
-        借鉴 graph_builder_service 的 Prompt 架构
+        使用预定义的关系类型进行结构化抽取
         """
         if language == "chinese":
             relation_types_list = "\n".join(
