@@ -126,26 +126,28 @@ GRAPH_TOOLS = [
     NOOP_TOOL,
 ]
 
-# 关系类型映射（标准 10 个核心关系）
 RELATION_TYPES = {
     # 人际关系
     "friend": "朋友",
     "colleague": "同事",
     "knows": "认识",
+    "family": "家人",
     # 位置关系
     "lives_at": "居住于",
     "works_at": "工作于",
+    "studies_at": "就读于",
     # 偏好关系
     "prefers": "偏好/喜欢",
     "uses": "使用",
     # 项目关系
     "works_on": "从事/项目",
+    # 所属关系
+    "owns": "拥有",
     # 通用关系
     "related_to": "相关",
     "mentioned_in": "提及来源",
 }
 
-# 关系类型列表（用于 LLM 约束）
 RELATION_TYPE_LIST = list(RELATION_TYPES.keys())
 
 # 实体类型
