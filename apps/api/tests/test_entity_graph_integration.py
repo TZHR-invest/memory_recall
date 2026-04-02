@@ -58,51 +58,46 @@ class TestEntityGraphIntegration:
                 mock_db.fetch = AsyncMock(return_value=[])
 
                 with patch(
-                    "src.services.core.memory_store.get_entity_dict"
-                ) as mock_dict:
-                    mock_dict.return_value = MagicMock()
+                    "src.services.core.memory_store.relation_service"
+                ) as mock_rel:
+                    mock_rel.auto_create_relations = AsyncMock(return_value=[])
 
                     with patch(
-                        "src.services.core.memory_store.relation_service"
-                    ) as mock_rel:
-                        mock_rel.auto_create_relations = AsyncMock(return_value=[])
+                        "src.services.core.memory_store.llm_entity_extractor"
+                    ) as mock_extractor:
+                        mock_extractor.extract_with_relations = AsyncMock(
+                            return_value={
+                                "entities": [
+                                    {"name": "字节跳动", "type": "organization"},
+                                    {"name": "张三", "type": "person"},
+                                ],
+                                "relations": [
+                                    {
+                                        "from": "我",
+                                        "to": "字节跳动",
+                                        "type": "works_at",
+                                        "confidence": 0.9,
+                                    },
+                                    {
+                                        "from": "张三",
+                                        "to": "字节跳动",
+                                        "type": "works_at",
+                                        "confidence": 0.85,
+                                    },
+                                ],
+                                "confidence": 0.8,
+                            }
+                        )
 
-                        with patch(
-                            "src.services.core.memory_store.llm_entity_extractor"
-                        ) as mock_extractor:
-                            mock_extractor.extract_with_relations = AsyncMock(
-                                return_value={
-                                    "entities": [
-                                        {"name": "字节跳动", "type": "organization"},
-                                        {"name": "张三", "type": "person"},
-                                    ],
-                                    "relations": [
-                                        {
-                                            "from": "我",
-                                            "to": "字节跳动",
-                                            "type": "works_at",
-                                            "confidence": 0.9,
-                                        },
-                                        {
-                                            "from": "张三",
-                                            "to": "字节跳动",
-                                            "type": "works_at",
-                                            "confidence": 0.85,
-                                        },
-                                    ],
-                                    "confidence": 0.8,
-                                }
-                            )
+                        memory = await self.store.create(
+                            content="我在字节跳动工作，同事张三也在那",
+                            container_tag="user_001",
+                            extract_entities=True,
+                            extract_relations=True,
+                            use_llm_extraction=True,
+                        )
 
-                            memory = await self.store.create(
-                                content="我在字节跳动工作，同事张三也在那",
-                                container_tag="user_001",
-                                extract_entities=True,
-                                extract_relations=True,
-                                use_llm_extraction=True,
-                            )
-
-                            assert memory is not None
+                        assert memory is not None
 
     @pytest.mark.asyncio
     async def test_create_memory_entities_table_populated(self):
@@ -140,29 +135,28 @@ class TestEntityGraphIntegration:
                 mock_db.execute = AsyncMock(side_effect=track_insert)
                 mock_db.fetch = AsyncMock(return_value=[])
 
-                with patch("src.services.core.memory_store.get_entity_dict"):
-                    with patch("src.services.core.memory_store.relation_service"):
-                        with patch(
-                            "src.services.core.memory_store.llm_entity_extractor"
-                        ) as mock_extractor:
-                            mock_extractor.extract_with_relations = AsyncMock(
-                                return_value={
-                                    "entities": [
-                                        {"name": "张三", "type": "person"},
-                                        {"name": "北京", "type": "location"},
-                                    ],
-                                    "relations": [],
-                                    "confidence": 0.8,
-                                }
-                            )
+                with patch("src.services.core.memory_store.relation_service"):
+                    with patch(
+                        "src.services.core.memory_store.llm_entity_extractor"
+                    ) as mock_extractor:
+                        mock_extractor.extract_with_relations = AsyncMock(
+                            return_value={
+                                "entities": [
+                                    {"name": "张三", "type": "person"},
+                                    {"name": "北京", "type": "location"},
+                                ],
+                                "relations": [],
+                                "confidence": 0.8,
+                            }
+                        )
 
-                            await self.store.create(
-                                content="张三在北京",
-                                container_tag="user_001",
-                                extract_entities=True,
-                                extract_relations=True,
-                                use_llm_extraction=True,
-                            )
+                        await self.store.create(
+                            content="张三在北京",
+                            container_tag="user_001",
+                            extract_entities=True,
+                            extract_relations=True,
+                            use_llm_extraction=True,
+                        )
 
     @pytest.mark.asyncio
     async def test_create_memory_relations_table_populated(self):
@@ -200,33 +194,32 @@ class TestEntityGraphIntegration:
                 mock_db.execute = AsyncMock(side_effect=track_insert)
                 mock_db.fetch = AsyncMock(return_value=[])
 
-                with patch("src.services.core.memory_store.get_entity_dict"):
-                    with patch("src.services.core.memory_store.relation_service"):
-                        with patch(
-                            "src.services.core.memory_store.llm_entity_extractor"
-                        ) as mock_extractor:
-                            mock_extractor.extract_with_relations = AsyncMock(
-                                return_value={
-                                    "entities": [
-                                        {"name": "张三", "type": "person"},
-                                        {"name": "字节跳动", "type": "organization"},
-                                    ],
-                                    "relations": [
-                                        {
-                                            "from": "张三",
-                                            "to": "字节跳动",
-                                            "type": "works_at",
-                                            "confidence": 0.9,
-                                        }
-                                    ],
-                                    "confidence": 0.8,
-                                }
-                            )
+                with patch("src.services.core.memory_store.relation_service"):
+                    with patch(
+                        "src.services.core.memory_store.llm_entity_extractor"
+                    ) as mock_extractor:
+                        mock_extractor.extract_with_relations = AsyncMock(
+                            return_value={
+                                "entities": [
+                                    {"name": "张三", "type": "person"},
+                                    {"name": "字节跳动", "type": "organization"},
+                                ],
+                                "relations": [
+                                    {
+                                        "from": "张三",
+                                        "to": "字节跳动",
+                                        "type": "works_at",
+                                        "confidence": 0.9,
+                                    }
+                                ],
+                                "confidence": 0.8,
+                            }
+                        )
 
-                            await self.store.create(
-                                content="张三在字节跳动工作",
-                                container_tag="user_001",
-                                extract_entities=True,
-                                extract_relations=True,
-                                use_llm_extraction=True,
-                            )
+                        await self.store.create(
+                            content="张三在字节跳动工作",
+                            container_tag="user_001",
+                            extract_entities=True,
+                            extract_relations=True,
+                            use_llm_extraction=True,
+                        )
