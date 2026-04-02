@@ -333,3 +333,288 @@ class TestContextInjectAPI:
         )
 
         assert result["stats"]["deduped_count"] >= 0
+
+    def test_context_inject_memory_graph_recall(
+        self, mock_profile_service, mock_document_store
+    ):
+        """测试 Memory Graph 召回集成"""
+        with patch(
+            "src.services.core.context_inject_service.memory_store"
+        ) as mock_memory:
+            mock_memory.search = AsyncMock(
+                return_value=[
+                    {
+                        "id": "mem_001",
+                        "content": "我在 Google 工作",
+                        "similarity": 0.9,
+                    }
+                ]
+            )
+            mock_memory.traverse_memory_relations = AsyncMock(
+                return_value=[
+                    MagicMock(
+                        id="mem_002",
+                        content="我跳槽到了字节跳动",
+                        is_static=False,
+                    )
+                ]
+            )
+            mock_memory.get_by_container = AsyncMock(return_value=[])
+
+            with patch(
+                "src.services.core.context_inject_service.get_embedding_client"
+            ) as mock_embed:
+                client = MagicMock()
+                client.embed = AsyncMock(return_value=[0.5] * 1024)
+                mock_embed.return_value = client
+
+                from src.services.core.context_inject_service import (
+                    context_inject_service,
+                )
+
+                result = asyncio.run(
+                    context_inject_service.inject(
+                        container_tag="user_test",
+                        query="工作",
+                        config={
+                            "inject_profile": False,
+                            "max_memories": 5,
+                            "enable_memory_graph": True,
+                            "memory_graph_depth": 2,
+                            "memory_graph_nodes": 3,
+                            "enable_entity_graph": False,
+                            "enable_semantic_dedup": False,
+                            "language": "zh_CN",
+                        },
+                    )
+                )
+
+                assert result["stats"]["memories_count"] >= 1
+
+    def test_context_inject_entity_graph_recall(
+        self, mock_profile_service, mock_document_store
+    ):
+        """测试 Entity Graph 召回集成"""
+        with patch(
+            "src.services.core.context_inject_service.memory_store"
+        ) as mock_memory:
+            from src.services.core.memory_store import Entity
+
+            mock_memory.search = AsyncMock(
+                return_value=[
+                    {
+                        "id": "mem_001",
+                        "content": "张三在字节跳动工作",
+                        "similarity": 0.9,
+                    }
+                ]
+            )
+            mock_memory.get_entities_for_memories = AsyncMock(
+                return_value=[
+                    Entity(
+                        id="entity_001",
+                        name="张三",
+                        type="person",
+                        container_tag="user_test",
+                        mention_count=1,
+                        confidence=0.9,
+                    )
+                ]
+            )
+            mock_memory.traverse_entity_relations = AsyncMock(
+                return_value=[
+                    Entity(
+                        id="entity_002",
+                        name="字节跳动",
+                        type="organization",
+                        container_tag="user_test",
+                        mention_count=1,
+                        confidence=0.8,
+                    )
+                ]
+            )
+            mock_memory.find_memories_by_entities = AsyncMock(
+                return_value=[
+                    MagicMock(
+                        id="mem_002",
+                        content="张三和李四是同事",
+                        is_static=False,
+                    )
+                ]
+            )
+            mock_memory.get_by_container = AsyncMock(return_value=[])
+
+            with patch(
+                "src.services.core.context_inject_service.get_embedding_client"
+            ) as mock_embed:
+                client = MagicMock()
+                client.embed = AsyncMock(return_value=[0.5] * 1024)
+                mock_embed.return_value = client
+
+                from src.services.core.context_inject_service import (
+                    context_inject_service,
+                )
+
+                result = asyncio.run(
+                    context_inject_service.inject(
+                        container_tag="user_test",
+                        query="张三",
+                        config={
+                            "inject_profile": False,
+                            "max_memories": 5,
+                            "enable_memory_graph": False,
+                            "enable_entity_graph": True,
+                            "entity_graph_depth": 2,
+                            "entity_graph_nodes": 3,
+                            "enable_semantic_dedup": False,
+                            "language": "zh_CN",
+                        },
+                    )
+                )
+
+                assert result["stats"]["memories_count"] >= 1
+
+    def test_context_inject_dual_graph_recall(
+        self, mock_profile_service, mock_document_store
+    ):
+        """测试双图谱组合召回"""
+        with patch(
+            "src.services.core.context_inject_service.memory_store"
+        ) as mock_memory:
+            from src.services.core.memory_store import Entity
+
+            mock_memory.search = AsyncMock(
+                return_value=[
+                    {
+                        "id": "mem_001",
+                        "content": "张三在字节跳动工作",
+                        "similarity": 0.9,
+                    }
+                ]
+            )
+            mock_memory.traverse_memory_relations = AsyncMock(
+                return_value=[
+                    MagicMock(
+                        id="mem_002",
+                        content="张三跳槽到了阿里",
+                        is_static=False,
+                    )
+                ]
+            )
+            mock_memory.get_entities_for_memories = AsyncMock(
+                return_value=[
+                    Entity(
+                        id="entity_001",
+                        name="张三",
+                        type="person",
+                        container_tag="user_test",
+                        mention_count=1,
+                        confidence=0.9,
+                    )
+                ]
+            )
+            mock_memory.traverse_entity_relations = AsyncMock(
+                return_value=[
+                    Entity(
+                        id="entity_002",
+                        name="字节跳动",
+                        type="organization",
+                        container_tag="user_test",
+                        mention_count=1,
+                        confidence=0.8,
+                    )
+                ]
+            )
+            mock_memory.find_memories_by_entities = AsyncMock(
+                return_value=[
+                    MagicMock(
+                        id="mem_003",
+                        content="张三喜欢喝咖啡",
+                        is_static=False,
+                    )
+                ]
+            )
+            mock_memory.get_by_container = AsyncMock(return_value=[])
+
+            with patch(
+                "src.services.core.context_inject_service.get_embedding_client"
+            ) as mock_embed:
+                client = MagicMock()
+                client.embed = AsyncMock(return_value=[0.5] * 1024)
+                mock_embed.return_value = client
+
+                from src.services.core.context_inject_service import (
+                    context_inject_service,
+                )
+
+                result = asyncio.run(
+                    context_inject_service.inject(
+                        container_tag="user_test",
+                        query="张三",
+                        config={
+                            "inject_profile": False,
+                            "max_memories": 10,
+                            "enable_memory_graph": True,
+                            "memory_graph_depth": 2,
+                            "memory_graph_nodes": 3,
+                            "enable_entity_graph": True,
+                            "entity_graph_depth": 2,
+                            "entity_graph_nodes": 3,
+                            "enable_semantic_dedup": False,
+                            "language": "zh_CN",
+                        },
+                    )
+                )
+
+                assert result["stats"]["memories_count"] >= 2
+
+    def test_context_inject_graph_config_disabled(
+        self, mock_profile_service, mock_document_store
+    ):
+        """测试图谱配置参数生效"""
+        with patch(
+            "src.services.core.context_inject_service.memory_store"
+        ) as mock_memory:
+            mock_memory.search = AsyncMock(
+                return_value=[
+                    {
+                        "id": "mem_001",
+                        "content": "测试记忆",
+                        "similarity": 0.9,
+                    }
+                ]
+            )
+            mock_memory.traverse_memory_relations = AsyncMock()
+            mock_memory.get_entities_for_memories = AsyncMock()
+            mock_memory.traverse_entity_relations = AsyncMock()
+            mock_memory.get_by_container = AsyncMock(return_value=[])
+
+            with patch(
+                "src.services.core.context_inject_service.get_embedding_client"
+            ) as mock_embed:
+                client = MagicMock()
+                client.embed = AsyncMock(return_value=[0.5] * 1024)
+                mock_embed.return_value = client
+
+                from src.services.core.context_inject_service import (
+                    context_inject_service,
+                )
+
+                result = asyncio.run(
+                    context_inject_service.inject(
+                        container_tag="user_test",
+                        query="测试",
+                        config={
+                            "inject_profile": False,
+                            "max_memories": 5,
+                            "enable_memory_graph": False,
+                            "enable_entity_graph": False,
+                            "enable_semantic_dedup": False,
+                            "language": "zh_CN",
+                        },
+                    )
+                )
+
+                mock_memory.traverse_memory_relations.assert_not_called()
+                mock_memory.get_entities_for_memories.assert_not_called()
+                mock_memory.traverse_entity_relations.assert_not_called()

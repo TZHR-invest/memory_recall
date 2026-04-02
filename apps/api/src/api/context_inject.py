@@ -23,9 +23,19 @@ class ContextInjectConfig(BaseModel):
     max_chunks: int = Field(3, ge=1, le=10, description="最大文档片段数")
     enable_semantic_dedup: bool = Field(True, description="启用语义去重")
     dedup_threshold: float = Field(0.85, ge=0.0, le=1.0, description="去重阈值")
-    enable_graph_recall: bool = Field(True, description="启用图谱召回")
-    graph_max_depth: int = Field(2, ge=1, le=5, description="图谱遍历深度")
-    graph_max_nodes: int = Field(5, ge=1, le=20, description="最大图谱节点数")
+    enable_memory_graph: bool = Field(True, description="启用 Memory Graph 召回")
+    memory_graph_depth: int = Field(2, ge=1, le=5, description="Memory Graph 遍历深度")
+    memory_graph_nodes: int = Field(
+        5, ge=1, le=20, description="Memory Graph 最大节点数"
+    )
+    enable_entity_graph: bool = Field(True, description="启用 Entity Graph 召回")
+    entity_graph_depth: int = Field(2, ge=1, le=5, description="Entity Graph 遍历深度")
+    entity_graph_nodes: int = Field(
+        3, ge=1, le=20, description="Entity Graph 最大节点数"
+    )
+    memory_similarity_threshold: float = Field(
+        0.3, ge=0.0, le=1.0, description="记忆相似度阈值"
+    )
     language: str = Field("auto", description="语言设置")
     enable_chunks_search: bool = Field(True, description="启用文档片段搜索")
     chunks_similarity_threshold: float = Field(

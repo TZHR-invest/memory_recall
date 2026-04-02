@@ -78,22 +78,138 @@ class ContextInjectService:
         config: Dict[str, Any],
     ) -> List[Dict[str, Any]]:
         try:
-            memories = await memory_store.get_by_container(
-                container_tag=container_tag,
-                limit=config.get("max_memories", 5),
-            )
+            enable_memory_graph = config.get("enable_memory_graph", True)
+            enable_entity_graph = config.get("enable_entity_graph", True)
+            max_memories = config.get("max_memories", 5)
 
-            results = []
-            for m in memories:
-                results.append(
-                    {
-                        "id": m.id,
-                        "content": m.content,
-                        "embedding": m.embedding,
-                        "is_static": m.is_static,
-                    }
+            all_memories = []
+            seen_ids = set()
+
+            if query:
+                embedding_client = get_embedding_client()
+                query_embedding = await embedding_client.embed(query)
+
+                if query_embedding:
+                    search_results = await memory_store.search(
+                        query=query,
+                        container_tag=container_tag,
+                        limit=max_memories,
+                        threshold=config.get("memory_similarity_threshold", 0.3),
+                    )
+
+                    for r in search_results:
+                        mem_id = r.get("id")
+                        if mem_id and mem_id not in seen_ids:
+                            seen_ids.add(mem_id)
+                            all_memories.append(
+                                {
+                                    "id": mem_id,
+                                    "content": r.get("content", ""),
+                                    "embedding": None,
+                                    "is_static": False,
+                                    "similarity": r.get("similarity", 0.0),
+                                }
+                            )
+
+                    if enable_memory_graph and all_memories:
+                        memory_graph_depth = config.get("memory_graph_depth", 2)
+                        memory_graph_nodes = config.get("memory_graph_nodes", 3)
+
+                        for mem in all_memories[:3]:
+                            try:
+                                related = await memory_store.traverse_memory_relations(
+                                    memory_id=mem["id"],
+                                    max_depth=memory_graph_depth,
+                                    max_nodes=memory_graph_nodes,
+                                )
+                                for m in related:
+                                    if m.id not in seen_ids:
+                                        seen_ids.add(m.id)
+                                        all_memories.append(
+                                            {
+                                                "id": m.id,
+                                                "content": m.content,
+                                                "embedding": None,
+                                                "is_static": m.is_static,
+                                                "source": "memory_graph",
+                                            }
+                                        )
+                            except Exception:
+                                pass
+
+                    if enable_entity_graph and all_memories:
+                        entity_graph_depth = config.get("entity_graph_depth", 2)
+                        entity_graph_nodes = config.get("entity_graph_nodes", 3)
+
+                        try:
+                            memory_ids = [m["id"] for m in all_memories]
+                            entities = await memory_store.get_entities_for_memories(
+                                memory_ids
+                            )
+
+                            if entities:
+                                related_entities = []
+                                for entity in entities[:5]:
+                                    try:
+                                        related = await memory_store.traverse_entity_relations(
+                                            entity_id=entity.id,
+                                            max_depth=entity_graph_depth,
+                                            max_nodes=entity_graph_nodes,
+                                            container_tag=container_tag,
+                                        )
+                                        related_entities.extend(related)
+                                    except Exception:
+                                        pass
+
+                                if related_entities:
+                                    entity_ids = list(
+                                        set(e.id for e in related_entities)
+                                    )
+                                    entity_memories = (
+                                        await memory_store.find_memories_by_entities(
+                                            entity_ids=entity_ids,
+                                            container_tag=container_tag,
+                                            limit=max_memories,
+                                        )
+                                    )
+
+                                    for m in entity_memories:
+                                        if m.id not in seen_ids:
+                                            seen_ids.add(m.id)
+                                            all_memories.append(
+                                                {
+                                                    "id": m.id,
+                                                    "content": m.content,
+                                                    "embedding": None,
+                                                    "is_static": m.is_static,
+                                                    "source": "entity_graph",
+                                                }
+                                            )
+                        except Exception:
+                            pass
+
+            if len(all_memories) < max_memories:
+                recent_memories = await memory_store.get_by_container(
+                    container_tag=container_tag,
+                    limit=max_memories * 2,
                 )
-            return results
+
+                for m in recent_memories:
+                    if m.id not in seen_ids:
+                        seen_ids.add(m.id)
+                        all_memories.append(
+                            {
+                                "id": m.id,
+                                "content": m.content,
+                                "embedding": m.embedding,
+                                "is_static": m.is_static,
+                            }
+                        )
+
+                    if len(all_memories) >= max_memories * 2:
+                        break
+
+            return all_memories[: max_memories * 2]
         except Exception:
             return []
 
