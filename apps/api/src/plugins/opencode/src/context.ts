@@ -1,5 +1,12 @@
-import type { ApiClient, Profile, SearchResult, Memory, ChunkSearchResult, GraphNode, GraphEdge, GraphResponse } from "./client";
+import type { ApiClient, Profile, SearchResult, Memory, ChunkSearchResult, GraphNode, GraphEdge, GraphResponse, ContextInjectConfig, ContextInjectResponse } from "./client";
 import { getAllKeywords, getLocale, type Locale } from "./i18n";
+import {
+  semanticDeduplicate,
+  createDeduplicableItem,
+  type DedupSource,
+  type DeduplicableItem,
+} from "./semantic-dedup";
+import type { SemanticDedupConfig } from "./config";
 
 const keywordPattern = new RegExp(getAllKeywords().join("|"), "i");
 
@@ -11,14 +18,25 @@ export interface CrossScopeDedupResult {
   staticFacts: string[];
   dynamicFacts: string[];
   dedupedProjectMemories: Memory[];
+  dedupedUserMemories: (SearchResult | ExpandedMemory)[];
+  dedupedChunks: ChunkSearchResult[];
   dedupStats: {
     projectMemoriesFiltered: number;
+    userMemoriesFiltered: number;
+    chunksFiltered: number;
+    semanticStats?: {
+      total: number;
+      removed: number;
+      bySource: Record<DedupSource, { kept: number; removed: number }>;
+    };
   };
 }
 
 export function deduplicateAcrossScopes(
   profile: Profile | null,
-  projectMemories: Memory[]
+  projectMemories: Memory[],
+  userMemories: (SearchResult | ExpandedMemory)[] = [],
+  chunks: ChunkSearchResult[] = []
 ): CrossScopeDedupResult {
   const userContentHashes = new Set<string>();
   
@@ -32,15 +50,151 @@ export function deduplicateAcrossScopes(
     const hash = computeContentHash(m.content);
     return !userContentHashes.has(hash);
   });
+
+  const profileHashes = new Set([
+    ...staticFacts.map(computeContentHash),
+    ...dynamicFacts.map(computeContentHash),
+  ]);
+  const projectMemoryHashes = new Set(
+    dedupedProjectMemories.map((m) => computeContentHash(m.content))
+  );
+  const allHashes = new Set([...profileHashes, ...projectMemoryHashes]);
+
+  const dedupedUserMemories = userMemories.filter((m) => {
+    const hash = computeContentHash(m.content);
+    return !allHashes.has(hash);
+  });
+
+  const userMemoryHashes = new Set(
+    dedupedUserMemories.map((m) => computeContentHash(m.content))
+  );
+  const allHashesWithUser = new Set([...allHashes, ...userMemoryHashes]);
+
+  const dedupedChunks = chunks.filter((c) => {
+    const hash = computeContentHash(c.content);
+    return !allHashesWithUser.has(hash);
+  });
   
   return {
     staticFacts,
     dynamicFacts,
     dedupedProjectMemories,
+    dedupedUserMemories,
+    dedupedChunks,
     dedupStats: {
       projectMemoriesFiltered: projectMemories.length - dedupedProjectMemories.length,
+      userMemoriesFiltered: userMemories.length - dedupedUserMemories.length,
+      chunksFiltered: chunks.length - dedupedChunks.length,
     },
   };
+}
+
+export async function deduplicateWithSemanticLayer(
+  client: ApiClient,
+  profile: Profile | null,
+  projectMemories: Memory[],
+  userMemories: (SearchResult | ExpandedMemory)[],
+  chunks: ChunkSearchResult[],
+  config: SemanticDedupConfig
+): Promise<CrossScopeDedupResult> {
+  const hashResult = deduplicateAcrossScopes(
+    profile,
+    projectMemories,
+    userMemories,
+    chunks
+  );
+
+  if (!config.enabled) {
+    return hashResult;
+  }
+
+  const items: DeduplicableItem[] = [];
+
+  hashResult.staticFacts.forEach((fact) => {
+    items.push(createDeduplicableItem(fact, "profile"));
+  });
+  hashResult.dynamicFacts.forEach((fact) => {
+    items.push(createDeduplicableItem(fact, "profile"));
+  });
+  hashResult.dedupedProjectMemories.forEach((m) => {
+    items.push(createDeduplicableItem(m.content, "projectMemory", m.id));
+  });
+  hashResult.dedupedUserMemories.forEach((m) => {
+    items.push(createDeduplicableItem(m.content, "userMemory", m.id));
+  });
+  hashResult.dedupedChunks.forEach((c) => {
+    items.push(createDeduplicableItem(c.content, "chunk", c.id));
+  });
+
+  try {
+    const semanticResult = await semanticDeduplicate(
+      client,
+      items,
+      config.threshold,
+      config.maxBatchSize
+    );
+
+    const semanticItems = semanticResult.items;
+
+    const staticFacts: string[] = [];
+    const dynamicFacts: string[] = [];
+    const dedupedProjectMemories: Memory[] = [];
+    const dedupedUserMemories: (SearchResult | ExpandedMemory)[] = [];
+    const dedupedChunks: ChunkSearchResult[] = [];
+
+    const originalStaticFacts = hashResult.staticFacts;
+    const originalDynamicFacts = hashResult.dynamicFacts;
+
+    for (const item of semanticItems) {
+      if (item.source === "profile") {
+        if (originalStaticFacts.includes(item.content)) {
+          staticFacts.push(item.content);
+        } else if (originalDynamicFacts.includes(item.content)) {
+          dynamicFacts.push(item.content);
+        }
+      } else if (item.source === "projectMemory") {
+        const original = hashResult.dedupedProjectMemories.find(
+          (m) => m.content === item.content
+        );
+        if (original) {
+          dedupedProjectMemories.push(original);
+        }
+      } else if (item.source === "userMemory") {
+        const original = hashResult.dedupedUserMemories.find(
+          (m) => m.content === item.content
+        );
+        if (original) {
+          dedupedUserMemories.push(original);
+        }
+      } else if (item.source === "chunk") {
+        const original = hashResult.dedupedChunks.find(
+          (c) => c.content === item.content
+        );
+        if (original) {
+          dedupedChunks.push(original);
+        }
+      }
+    }
+
+    return {
+      staticFacts,
+      dynamicFacts,
+      dedupedProjectMemories,
+      dedupedUserMemories,
+      dedupedChunks,
+      dedupStats: {
+        projectMemoriesFiltered:
+          projectMemories.length - dedupedProjectMemories.length,
+        userMemoriesFiltered:
+          userMemories.length - dedupedUserMemories.length,
+        chunksFiltered: chunks.length - dedupedChunks.length,
+        semanticStats: semanticResult.stats,
+      },
+    };
+  } catch (error) {
+    console.warn("Semantic deduplication failed, falling back to hash-only:", error);
+    return hashResult;
+  }
 }
 
 export const RELATION_WEIGHTS: Record<string, number> = {
@@ -346,6 +500,7 @@ export interface ContextOptions {
   maxProjectItems: number;
   maxUserItems: number;
   maxChunksItems: number;
+  dedupedResult?: CrossScopeDedupResult;
 }
 
 function formatMemoryLine(m: SearchResult | ExpandedMemory): string {
@@ -369,7 +524,7 @@ function formatMemoryLine(m: SearchResult | ExpandedMemory): string {
 }
 
 export function formatContext(options: ContextOptions): string {
-  const { profile, projectMemories, userMemories, projectChunks, locale, maxProfileItems, maxProjectItems, maxUserItems, maxChunksItems } = options;
+  const { profile, projectMemories, userMemories, projectChunks, locale, maxProfileItems, maxProjectItems, maxUserItems, maxChunksItems, dedupedResult } = options;
   
   const isZh = locale === "zh_CN";
   const lines: string[] = [];
@@ -378,8 +533,26 @@ export function formatContext(options: ContextOptions): string {
   lines.push(sectionTitle);
   lines.push("");
 
-  const deduped = deduplicateAcrossScopes(profile, projectMemories);
-  const { staticFacts, dynamicFacts, dedupedProjectMemories } = deduped;
+  let staticFacts: string[];
+  let dynamicFacts: string[];
+  let dedupedProjectMemories: Memory[];
+  let dedupedUserMemories: (SearchResult | ExpandedMemory)[];
+  let dedupedChunks: ChunkSearchResult[];
+
+  if (dedupedResult) {
+    staticFacts = dedupedResult.staticFacts;
+    dynamicFacts = dedupedResult.dynamicFacts;
+    dedupedProjectMemories = dedupedResult.dedupedProjectMemories;
+    dedupedUserMemories = dedupedResult.dedupedUserMemories;
+    dedupedChunks = dedupedResult.dedupedChunks;
+  } else {
+    const deduped = deduplicateAcrossScopes(profile, projectMemories, userMemories, projectChunks);
+    staticFacts = deduped.staticFacts;
+    dynamicFacts = deduped.dynamicFacts;
+    dedupedProjectMemories = deduped.dedupedProjectMemories;
+    dedupedUserMemories = deduped.dedupedUserMemories;
+    dedupedChunks = deduped.dedupedChunks;
+  }
 
   if (staticFacts.length > 0) {
     const staticTitle = isZh ? "### 永久特征" : "### Static Facts";
@@ -404,10 +577,10 @@ export function formatContext(options: ContextOptions): string {
     lines.push("");
   }
 
-  if (projectChunks.length > 0) {
+  if (dedupedChunks.length > 0) {
     const chunksTitle = isZh ? "### 项目文档" : "### Project Documents";
     lines.push(chunksTitle);
-    projectChunks.slice(0, maxChunksItems).forEach((c) => {
+    dedupedChunks.slice(0, maxChunksItems).forEach((c) => {
       const similarity = Math.round(c.similarity * 100);
       const docTitle = c.document_title || "Document";
       lines.push(`- [${docTitle}: ${similarity}%] ${c.content}`);
@@ -415,10 +588,10 @@ export function formatContext(options: ContextOptions): string {
     lines.push("");
   }
 
-  if (userMemories.length > 0) {
+  if (dedupedUserMemories.length > 0) {
     const userTitle = isZh ? "### 相关记忆" : "### Related Memories";
     lines.push(userTitle);
-    userMemories.slice(0, maxUserItems).forEach((m) => {
+    dedupedUserMemories.slice(0, maxUserItems).forEach((m) => {
       lines.push(formatMemoryLine(m));
     });
     lines.push("");
@@ -466,6 +639,7 @@ export async function injectContext(
     enableEntityRecall: boolean;
     graphMaxDepth: number;
     graphMaxNodes: number;
+    semanticDedup?: SemanticDedupConfig;
   }
 ): Promise<ContextResult> {
   const locale = detectLocale(userMessage, config.language);
@@ -486,8 +660,6 @@ export async function injectContext(
   
   try {
     projectMemories = await client.listMemories(projectTag, config.maxProjectMemories);
-    // Filter out Session Summaries - they are only used during compaction restore
-    // Session Summaries are historical conversation compressions, not permanent knowledge
     projectMemories = projectMemories.filter(m => 
       !m.content.startsWith("[Session Summary]") && 
       !m.content.startsWith("[会话摘要]")
@@ -540,6 +712,23 @@ export async function injectContext(
 
   const mergedMemories = mergeAndDedupe(userMemories, graphMemories, entityMemories);
 
+  let dedupedResult: CrossScopeDedupResult | undefined;
+  
+  if (config.semanticDedup?.enabled) {
+    try {
+      dedupedResult = await deduplicateWithSemanticLayer(
+        client,
+        profile,
+        projectMemories,
+        mergedMemories,
+        projectChunks,
+        config.semanticDedup
+      );
+    } catch (error) {
+      console.warn("Semantic deduplication failed, falling back to hash-only:", error);
+    }
+  }
+
   const profileCount = profile 
     ? Math.min(profile.static.length, config.maxProfileItems) + Math.min(profile.dynamic.length, config.maxProfileItems)
     : 0;
@@ -559,6 +748,7 @@ export async function injectContext(
     maxProjectItems: config.maxProjectMemories,
     maxUserItems: config.maxMemories,
     maxChunksItems: config.maxChunks,
+    dedupedResult,
   });
 
   const injectedMemoryIds: string[] = [
@@ -576,4 +766,104 @@ export async function injectContext(
     entityCount,
     injectedMemoryIds,
   };
+}
+
+export async function injectContextFromBackend(
+  client: ApiClient,
+  userMessage: string,
+  userTag: string,
+  projectTag: string,
+  config: {
+    injectProfile: boolean;
+    maxProfileItems: number;
+    maxProjectMemories: number;
+    maxMemories: number;
+    maxChunks: number;
+    language: string;
+    semanticDedup?: SemanticDedupConfig;
+    enableGraphRecall?: boolean;
+    graphMaxDepth?: number;
+    graphMaxNodes?: number;
+    enableChunksSearch?: boolean;
+    chunksSimilarityThreshold?: number;
+  }
+): Promise<ContextResult> {
+  const apiConfig: ContextInjectConfig = {
+    inject_profile: config.injectProfile,
+    max_profile_items: config.maxProfileItems,
+    max_memories: config.maxMemories,
+    max_chunks: config.maxChunks,
+    enable_semantic_dedup: config.semanticDedup?.enabled ?? true,
+    dedup_threshold: config.semanticDedup?.threshold ?? 0.85,
+    enable_graph_recall: config.enableGraphRecall ?? false,
+    graph_max_depth: config.graphMaxDepth ?? 2,
+    graph_max_nodes: config.graphMaxNodes ?? 5,
+    language: config.language === "auto" ? "auto" : (config.language === "zh_CN" ? "zh_CN" : "en_US"),
+    enable_chunks_search: config.enableChunksSearch ?? true,
+    chunks_similarity_threshold: config.chunksSimilarityThreshold ?? 0.3,
+  };
+
+  try {
+    const userResponse = await client.injectContext(userTag, userMessage, apiConfig);
+    
+    const projectResponse = await client.injectContext(projectTag, userMessage, {
+      ...apiConfig,
+      inject_profile: false,
+    });
+
+    const isZh = config.language === "zh_CN" || 
+      (config.language === "auto" && detectLocale(userMessage, "auto") === "zh_CN");
+    
+    const lines: string[] = [];
+    lines.push(isZh ? "## 用户上下文" : "## User Context");
+    lines.push("");
+
+    if (userResponse.context) {
+      lines.push(userResponse.context);
+    }
+
+    if (projectResponse.sources.memories.length > 0 || projectResponse.sources.chunks.length > 0) {
+      if (projectResponse.sources.memories.length > 0) {
+        lines.push(isZh ? "### 项目记忆" : "### Project Memories");
+        projectResponse.sources.memories.slice(0, config.maxProjectMemories).forEach(m => {
+          lines.push(`- ${m.content}`);
+        });
+        lines.push("");
+      }
+
+      if (projectResponse.sources.chunks.length > 0) {
+        lines.push(isZh ? "### 项目文档" : "### Project Documents");
+        projectResponse.sources.chunks.slice(0, config.maxChunks).forEach(c => {
+          lines.push(`- ${c.content}`);
+        });
+        lines.push("");
+      }
+    }
+
+    const context = lines.length > 3 ? lines.join("\n") : "";
+
+    return {
+      context,
+      profileCount: userResponse.stats.profile_count,
+      projectCount: projectResponse.stats.memories_count,
+      userCount: userResponse.stats.memories_count,
+      chunksCount: userResponse.stats.chunks_count + projectResponse.stats.chunks_count,
+      graphCount: 0,
+      entityCount: 0,
+      injectedMemoryIds: [
+        ...userResponse.sources.memories.map(m => m.id),
+        ...projectResponse.sources.memories.map(m => m.id),
+      ].filter((id): id is string => id !== undefined),
+    };
+  } catch (error) {
+    console.warn("Backend context injection failed, falling back to frontend:", error);
+    return injectContext(client, userMessage, userTag, projectTag, {
+      ...config,
+      enableChunksSearch: true,
+      chunksSimilarityThreshold: 0.5,
+      chunksDocTypes: [],
+      enableGraphRecall: config.enableGraphRecall ?? false,
+      enableEntityRecall: false,
+    });
+  }
 }

@@ -255,6 +255,90 @@ export class Logger {
     if (params.sessionId) data.session_id = params.sessionId;
     this.write("debug", "Event received", data);
   }
+
+  taskEnqueued(params: {
+    taskId: string;
+    type: string;
+    queueSize: number;
+  }): void {
+    this.write("info", "Task enqueued", {
+      task_id: params.taskId,
+      type: params.type,
+      queue_size: params.queueSize,
+    });
+  }
+
+  taskStarted(params: {
+    taskId: string;
+    type: string;
+    retryCount: number;
+  }): void {
+    this.write("info", "Task started", {
+      task_id: params.taskId,
+      type: params.type,
+      retry_count: params.retryCount,
+    });
+  }
+
+  taskCompleted(params: {
+    taskId: string;
+    type: string;
+    status: string;
+    durationMs: number;
+    retryCount: number;
+  }): void {
+    this.write("info", "Task completed", {
+      task_id: params.taskId,
+      type: params.type,
+      status: params.status,
+      duration_ms: params.durationMs,
+      retry_count: params.retryCount,
+    });
+  }
+
+  taskFailed(params: {
+    taskId: string;
+    type: string;
+    error: string;
+    retryCount: number;
+    maxRetries: number;
+    willRetry: boolean;
+  }): void {
+    this.write("warn", "Task failed", {
+      task_id: params.taskId,
+      type: params.type,
+      error: params.error,
+      retry_count: params.retryCount,
+      max_retries: params.maxRetries,
+      will_retry: params.willRetry,
+    });
+  }
+
+  taskRetryScheduled(params: {
+    taskId: string;
+    retryCount: number;
+    delayMs: number;
+  }): void {
+    this.write("info", "Task retry scheduled", {
+      task_id: params.taskId,
+      retry_count: params.retryCount,
+      delay_ms: params.delayMs,
+    });
+  }
+
+  queueStatus(params: {
+    pending: number;
+    running: number;
+    success: number;
+    failed: number;
+  }): void {
+    this.write("debug", "Queue status", {
+      pending: params.pending,
+      running: params.running,
+      success: params.success,
+      failed: params.failed,
+    });
+  }
 }
 
 let _logger: Logger | null = null;

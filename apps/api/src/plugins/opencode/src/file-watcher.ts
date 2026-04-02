@@ -3,6 +3,7 @@ import * as path from "path";
 import type { Config } from "./config";
 import type { DocumentTracker } from "./document-tracker";
 import type { Logger } from "./logging";
+import type { TaskQueue } from "./queue";
 
 const DEBOUNCE_MS = 500;
 
@@ -11,6 +12,7 @@ export class FileWatcher {
   private documentTracker: DocumentTracker;
   private logger: Logger | null;
   private directory: string;
+  private taskQueue: TaskQueue | null;
   private watcher: fs.FSWatcher | null = null;
   private pendingChanges: Map<string, number> = new Map();
   private debounceTimer: NodeJS.Timeout | null = null;
@@ -20,12 +22,14 @@ export class FileWatcher {
     config: Config,
     documentTracker: DocumentTracker,
     logger: Logger | null,
-    directory: string
+    directory: string,
+    taskQueue?: TaskQueue
   ) {
     this.config = config;
     this.documentTracker = documentTracker;
     this.logger = logger;
     this.directory = directory;
+    this.taskQueue = taskQueue || null;
   }
 
   private shouldTrack(filePath: string): boolean {
@@ -38,8 +42,13 @@ export class FileWatcher {
       if (pattern.startsWith("*")) {
         if (fileName.endsWith(pattern.slice(1))) return true;
       } else if (pattern.includes("*")) {
+        // 转义正则特殊字符，但保留 * 作为通配符
+        const escaped = pattern
+          .replace(/\./g, "\\.")
+          .replace(/\+/g, "\\+")
+          .replace(/\?/g, "\\?");
         const regex = new RegExp(
-          "^" + pattern.replace(/\*\*/g, ".*").replace(/\*/g, "[^/]*") + "$"
+          "^" + escaped.replace(/\*\*/g, ".*").replace(/\*/g, "[^/]*") + "$"
         );
         if (regex.test(fileName)) return true;
       } else {
@@ -60,12 +69,33 @@ export class FileWatcher {
       this.logger.debug("Processing debounced file changes", { count: changes.length });
     }
 
-    for (const filePath of changes) {
+    for (const relPath of changes) {
       try {
-        await this.documentTracker.checkFile(filePath);
+        const filePath = path.join(this.directory, relPath);
+
+        // 检查文件是否有变化
+        const hasChanged = await this.documentTracker.hasFileChanged(filePath);
+
+        if (!hasChanged) {
+          continue; // 无变化，跳过
+        }
+
+        // 如果启用异步队列，使用队列
+        if (this.config.asyncQueue.enabled && this.taskQueue) {
+          const taskId = this.taskQueue.enqueue("import-doc", {
+            filePath,
+            relativePath: relPath,
+          });
+          if (this.logger) {
+            this.logger.debug("File change queued", { path: relPath, taskId });
+          }
+        } else {
+          // 同步模式（默认）
+          await this.documentTracker.checkFile(filePath);
+        }
       } catch (e) {
         if (this.logger) {
-          this.logger.error("Failed to process file change", { filePath, error: String(e) });
+          this.logger.error("Failed to process file change", { filePath: relPath, error: String(e) });
         }
       }
     }

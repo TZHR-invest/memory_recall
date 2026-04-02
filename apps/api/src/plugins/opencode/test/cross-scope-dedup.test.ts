@@ -1,6 +1,6 @@
 import { describe, test, expect } from "bun:test";
 import { computeContentHash, deduplicateAcrossScopes } from "../src/context";
-import type { Profile, Memory } from "../src/client";
+import type { Profile, Memory, SearchResult, ChunkSearchResult } from "../src/client";
 
 describe("computeContentHash", () => {
   test("returns consistent hash for same content", () => {
@@ -35,8 +35,8 @@ describe("deduplicateAcrossScopes", () => {
     content,
     container_tag: "test",
     is_static: true,
+    is_latest: true,
     created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
   });
 
   test("removes project memories that match user static facts", () => {
@@ -158,5 +158,103 @@ describe("deduplicateAcrossScopes", () => {
     
     expect(result.dedupedProjectMemories).toHaveLength(1);
     expect(result.dedupStats.projectMemoriesFiltered).toBe(2);
+  });
+
+  test("removes userMemories that match profile", () => {
+    const duplicateContent = "User profile fact";
+    
+    const profile: Profile = {
+      static: [duplicateContent],
+      dynamic: [],
+    };
+
+    const userMemories: SearchResult[] = [
+      { id: "um_1", content: duplicateContent, similarity: 0.9 },
+      { id: "um_2", content: "Unique user memory", similarity: 0.8 },
+    ];
+    
+    const result = deduplicateAcrossScopes(profile, [], userMemories, []);
+    
+    expect(result.dedupedUserMemories).toHaveLength(1);
+    expect(result.dedupedUserMemories[0].content).toBe("Unique user memory");
+    expect(result.dedupStats.userMemoriesFiltered).toBe(1);
+  });
+
+  test("removes userMemories that match projectMemories", () => {
+    const duplicateContent = "Shared project memory";
+    
+    const projectMemories: Memory[] = [
+      createMemory("pm_1", duplicateContent),
+    ];
+
+    const userMemories: SearchResult[] = [
+      { id: "um_1", content: duplicateContent, similarity: 0.9 },
+      { id: "um_2", content: "Unique user memory", similarity: 0.8 },
+    ];
+    
+    const result = deduplicateAcrossScopes(null, projectMemories, userMemories, []);
+    
+    expect(result.dedupedUserMemories).toHaveLength(1);
+    expect(result.dedupStats.userMemoriesFiltered).toBe(1);
+  });
+
+  test("removes chunks that match profile or memories", () => {
+    const profileContent = "Profile fact";
+    const memoryContent = "Memory content";
+    
+    const profile: Profile = {
+      static: [profileContent],
+      dynamic: [],
+    };
+
+    const projectMemories: Memory[] = [
+      createMemory("pm_1", memoryContent),
+    ];
+
+    const chunks: ChunkSearchResult[] = [
+      { id: "ch_1", content: profileContent, document_id: "doc_1", similarity: 0.9 },
+      { id: "ch_2", content: memoryContent, document_id: "doc_1", similarity: 0.85 },
+      { id: "ch_3", content: "Unique chunk content", document_id: "doc_2", similarity: 0.8 },
+    ];
+    
+    const result = deduplicateAcrossScopes(profile, projectMemories, [], chunks);
+    
+    expect(result.dedupedChunks).toHaveLength(1);
+    expect(result.dedupedChunks[0].content).toBe("Unique chunk content");
+    expect(result.dedupStats.chunksFiltered).toBe(2);
+  });
+
+  test("full deduplication chain: profile > projectMemory > userMemory > chunk", () => {
+    const profileContent = "Profile content";
+    const projectContent = "Project content";
+    const userContent = "User content";
+    
+    const profile: Profile = {
+      static: [profileContent],
+      dynamic: [],
+    };
+
+    const projectMemories: Memory[] = [
+      createMemory("pm_1", projectContent),
+    ];
+
+    const userMemories: SearchResult[] = [
+      { id: "um_1", content: userContent, similarity: 0.9 },
+    ];
+
+    const chunks: ChunkSearchResult[] = [
+      { id: "ch_1", content: profileContent, document_id: "doc_1", similarity: 0.9 },
+      { id: "ch_2", content: projectContent, document_id: "doc_1", similarity: 0.9 },
+      { id: "ch_3", content: userContent, document_id: "doc_2", similarity: 0.9 },
+      { id: "ch_4", content: "Unique chunk", document_id: "doc_3", similarity: 0.9 },
+    ];
+    
+    const result = deduplicateAcrossScopes(profile, projectMemories, userMemories, chunks);
+    
+    expect(result.staticFacts).toContain(profileContent);
+    expect(result.dedupedProjectMemories).toHaveLength(1);
+    expect(result.dedupedUserMemories).toHaveLength(1);
+    expect(result.dedupedChunks).toHaveLength(1);
+    expect(result.dedupedChunks[0].content).toBe("Unique chunk");
   });
 });

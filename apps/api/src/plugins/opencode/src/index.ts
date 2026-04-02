@@ -2,7 +2,7 @@ import type { Plugin, PluginInput, Hooks } from "@opencode-ai/plugin";
 import { loadConfig, isConfigured, getUserTag, getProjectTag, type InjectionStrategy } from "./config";
 import { ApiClient } from "./client";
 import { createTool, detectMemoryKeyword } from "./tool";
-import { injectContext, getMemoryNudge, type ContextResult, type ExpandedMemory } from "./context";
+import { injectContext, injectContextFromBackend, getMemoryNudge, type ContextResult, type ExpandedMemory } from "./context";
 import { detectLocaleFromText } from "./i18n";
 import { initLogging } from "./logging";
 import { CompactionHook } from "./compaction";
@@ -16,6 +16,7 @@ import {
   type ConversationMessage 
 } from "./tracker";
 import { shouldTriggerRecall, findTriggerKeyword } from "./recall-trigger";
+import { TaskQueue, type Task } from "./queue";
 
 const sessionTrackerManager = new SessionTrackerManager();
 
@@ -65,15 +66,48 @@ async function server(input: PluginInput, options: Record<string, unknown> = {})
     });
   }
 
+  // 初始化异步队列（如果启用）
+  let taskQueue: TaskQueue | undefined;
+  if (config.asyncQueue.enabled) {
+    taskQueue = new TaskQueue({
+      maxConcurrency: config.asyncQueue.maxConcurrency,
+      maxSize: config.asyncQueue.maxSize,
+      retryPolicy: config.asyncQueue.retryPolicy,
+    });
+
+    // 设置任务执行器
+    taskQueue.setExecutor(async (task: Task) => {
+      const timeoutMs = config.asyncQueue.taskTimeoutMs;
+      if (task.type === "add") {
+        const { content, containerTag, isStatic, memoryType } = task.payload;
+        if (content && containerTag) {
+          await client.addMemory(content, containerTag, isStatic || false, memoryType, timeoutMs);
+        }
+      } else if (task.type === "import-doc") {
+        if (documentTracker && task.payload.filePath) {
+          await documentTracker.importSingleFile(task.payload.filePath, timeoutMs);
+        }
+      }
+    });
+
+    // 启动队列处理
+    taskQueue.start();
+    logger.info("Async queue started", { 
+      maxConcurrency: config.asyncQueue.maxConcurrency,
+      maxSize: config.asyncQueue.maxSize 
+    });
+  }
+
+  // 初始化文件监听（在 taskQueue 之后）
   let fileWatcher: FileWatcher | null = null;
   if (config.enableDocumentTracking && documentTracker) {
-    fileWatcher = new FileWatcher(config, documentTracker, logger, input.directory);
+    fileWatcher = new FileWatcher(config, documentTracker, logger, input.directory, taskQueue);
     fileWatcher.start().catch((e) => {
       logger.warn("File watcher failed to start", { error: String(e) });
     });
   }
 
-  const tool = createTool(client, config, documentTracker);
+  const tool = createTool(client, config, documentTracker, taskQueue);
 
   const opencodeClient = input.client;
   const compactionHook = new CompactionHook(
@@ -157,21 +191,41 @@ async function server(input: PluginInput, options: Record<string, unknown> = {})
       : maxMemoriesToUse;
 
     try {
-      const result = await injectContext(client, userMessage, userTag, projectTag, {
-        injectProfile: isInitialInjection ? config.initialInjection.profile : false,
-        maxProfileItems: config.maxProfileItems,
-        maxProjectMemories: isInitialInjection ? config.maxProjectMemories : config.smartRecall.maxAdditionalMemories,
-        maxMemories: dynamicMaxMemories,
-        language: config.language,
-        enableChunksSearch: true,
-        maxChunks: maxChunksToUse,
-        chunksSimilarityThreshold: config.chunksSimilarityThreshold,
-        chunksDocTypes: config.chunksDocTypes,
-        enableGraphRecall: config.enableGraphRecall,
-        enableEntityRecall: config.enableEntityRecall,
-        graphMaxDepth: config.graphMaxDepth,
-        graphMaxNodes: config.graphMaxNodes,
-      });
+      let result: ContextResult;
+      
+      if (config.useBackendDedup) {
+        result = await injectContextFromBackend(client, userMessage, userTag, projectTag, {
+          injectProfile: isInitialInjection ? config.initialInjection.profile : false,
+          maxProfileItems: config.maxProfileItems,
+          maxProjectMemories: isInitialInjection ? config.maxProjectMemories : config.smartRecall.maxAdditionalMemories,
+          maxMemories: dynamicMaxMemories,
+          maxChunks: maxChunksToUse,
+          language: config.language,
+          semanticDedup: config.semanticDedup,
+          enableGraphRecall: config.enableGraphRecall,
+          graphMaxDepth: config.graphMaxDepth,
+          graphMaxNodes: config.graphMaxNodes,
+          enableChunksSearch: config.enableChunksSearch,
+          chunksSimilarityThreshold: config.chunksSimilarityThreshold,
+        });
+      } else {
+        result = await injectContext(client, userMessage, userTag, projectTag, {
+          injectProfile: isInitialInjection ? config.initialInjection.profile : false,
+          maxProfileItems: config.maxProfileItems,
+          maxProjectMemories: isInitialInjection ? config.maxProjectMemories : config.smartRecall.maxAdditionalMemories,
+          maxMemories: dynamicMaxMemories,
+          language: config.language,
+          enableChunksSearch: true,
+          maxChunks: maxChunksToUse,
+          chunksSimilarityThreshold: config.chunksSimilarityThreshold,
+          chunksDocTypes: config.chunksDocTypes,
+          enableGraphRecall: config.enableGraphRecall,
+          enableEntityRecall: config.enableEntityRecall,
+          graphMaxDepth: config.graphMaxDepth,
+          graphMaxNodes: config.graphMaxNodes,
+          semanticDedup: config.semanticDedup,
+        });
+      }
 
       if (result.context) {
         outputData.parts.unshift({

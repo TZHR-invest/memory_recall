@@ -75,6 +75,41 @@ class RevokeKeyResponse(BaseModel):
     message: str
 
 
+class VerifyAPIKeyResponse(BaseModel):
+    valid: bool
+    key_id: str = Field(..., description="The API key ID (used as container_tag)")
+    container_tag: str = Field(
+        ...,
+        description="Your container_tag (same as key_id). One API key = one container.",
+    )
+    user_name: Optional[str] = Field(
+        None, description="User name associated with the key"
+    )
+    permissions: List[str] = Field([], description="Permissions granted to this key")
+
+
+@router.get(
+    "/verify",
+    response_model=VerifyAPIKeyResponse,
+    summary="Verify API Key",
+    description="""Verify an API key and return its container_tag.
+
+This endpoint is used by plugins to validate an API key and get the correct
+container_tag (which is the same as the key_id). One API key = one container.
+""",
+)
+async def verify_api_key(
+    current_user: dict = Depends(get_current_user),
+):
+    return VerifyAPIKeyResponse(
+        valid=True,
+        key_id=current_user["key_id"],
+        container_tag=current_user["container_tag"],
+        user_name=current_user.get("user_name"),
+        permissions=current_user["permissions"],
+    )
+
+
 @router.post(
     "/api-keys",
     response_model=APIKeyCreated,

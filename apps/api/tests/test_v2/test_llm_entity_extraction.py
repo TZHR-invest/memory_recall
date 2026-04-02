@@ -263,3 +263,220 @@ class TestExtractedFact:
 
         assert fact.entities == {}
         assert fact.confidence == 0.5
+
+
+class TestExtractWithRelations:
+    """测试 extract_with_relations() 方法"""
+
+    @pytest.mark.asyncio
+    async def test_extract_with_relations_chinese(self):
+        """测试中文实体和关系提取"""
+        mock_client = MagicMock()
+        mock_client.extract_json = MagicMock(
+            return_value={
+                "entities": [
+                    {"name": "字节跳动", "type": "organization"},
+                    {"name": "张三", "type": "person"},
+                ],
+                "relations": [
+                    {
+                        "from": "我",
+                        "to": "字节跳动",
+                        "type": "works_at",
+                        "confidence": 0.9,
+                    },
+                    {
+                        "from": "张三",
+                        "to": "字节跳动",
+                        "type": "works_at",
+                        "confidence": 0.85,
+                    },
+                ],
+                "confidence": 0.8,
+            }
+        )
+
+        with patch(
+            "src.services.core.llm_entity_extraction.get_llm_client",
+            return_value=mock_client,
+        ):
+            extractor = LLMEntityExtractor()
+            result = await extractor.extract_with_relations(
+                "我在字节跳动工作，同事张三也在那"
+            )
+
+            assert len(result["entities"]) == 2
+            assert len(result["relations"]) == 2
+            assert result["confidence"] == 0.8
+
+            entity_names = [e["name"] for e in result["entities"]]
+            assert "字节跳动" in entity_names
+            assert "张三" in entity_names
+
+    @pytest.mark.asyncio
+    async def test_extract_with_relations_english(self):
+        """测试英文实体和关系提取"""
+        mock_client = MagicMock()
+        mock_client.extract_json = MagicMock(
+            return_value={
+                "entities": [
+                    {"name": "Google", "type": "organization"},
+                    {"name": "John", "type": "person"},
+                ],
+                "relations": [
+                    {
+                        "from": "I",
+                        "to": "Google",
+                        "type": "works_at",
+                        "confidence": 0.9,
+                    },
+                    {
+                        "from": "John",
+                        "to": "Google",
+                        "type": "works_at",
+                        "confidence": 0.85,
+                    },
+                ],
+                "confidence": 0.9,
+            }
+        )
+
+        with patch(
+            "src.services.core.llm_entity_extraction.get_llm_client",
+            return_value=mock_client,
+        ):
+            extractor = LLMEntityExtractor()
+            result = await extractor.extract_with_relations(
+                "I work at Google with my colleague John"
+            )
+
+            assert len(result["entities"]) == 2
+            assert len(result["relations"]) == 2
+            assert result["confidence"] == 0.9
+
+    @pytest.mark.asyncio
+    async def test_extract_with_relations_fallback(self):
+        """测试降级逻辑（LLM 不可用时）"""
+        with patch(
+            "src.services.core.llm_entity_extraction.get_llm_client",
+            side_effect=Exception("No LLM"),
+        ):
+            extractor = LLMEntityExtractor()
+            result = await extractor.extract_with_relations("我在北京工作")
+
+            assert "entities" in result
+            assert "relations" in result
+            assert result["relations"] == []
+            assert result["confidence"] == 0.3
+
+    @pytest.mark.asyncio
+    async def test_extract_with_relations_filters_meaningless_entities(self):
+        """测试过滤无意义实体"""
+        mock_client = MagicMock()
+        mock_client.extract_json = MagicMock(
+            return_value={
+                "entities": [
+                    {"name": "我", "type": "person"},
+                    {"name": "北京", "type": "location"},
+                    {"name": "目前", "type": "time"},
+                ],
+                "relations": [],
+                "confidence": 0.8,
+            }
+        )
+
+        with patch(
+            "src.services.core.llm_entity_extraction.get_llm_client",
+            return_value=mock_client,
+        ):
+            extractor = LLMEntityExtractor()
+            result = await extractor.extract_with_relations("我目前在北京")
+
+            entity_names = [e["name"] for e in result["entities"]]
+            assert "我" not in entity_names
+            assert "目前" not in entity_names
+            assert "北京" in entity_names
+
+    @pytest.mark.asyncio
+    async def test_extract_with_relations_filters_low_confidence(self):
+        """测试过滤低置信度关系"""
+        mock_client = MagicMock()
+        mock_client.extract_json = MagicMock(
+            return_value={
+                "entities": [
+                    {"name": "北京", "type": "location"},
+                ],
+                "relations": [
+                    {"from": "我", "to": "北京", "type": "lives_at", "confidence": 0.9},
+                    {"from": "我", "to": "上海", "type": "visited", "confidence": 0.1},
+                ],
+                "confidence": 0.8,
+            }
+        )
+
+        with patch(
+            "src.services.core.llm_entity_extraction.get_llm_client",
+            return_value=mock_client,
+        ):
+            extractor = LLMEntityExtractor()
+            result = await extractor.extract_with_relations("我在北京，去过上海")
+
+            assert len(result["relations"]) == 1
+            assert result["relations"][0]["confidence"] >= 0.3
+
+    @pytest.mark.asyncio
+    async def test_extract_with_relations_with_entity_context(self):
+        """测试带 entity_context 的提取"""
+        mock_client = MagicMock()
+        mock_client.extract_json = MagicMock(
+            return_value={
+                "entities": [
+                    {"name": "项目A", "type": "event"},
+                ],
+                "relations": [],
+                "confidence": 0.8,
+            }
+        )
+
+        with patch(
+            "src.services.core.llm_entity_extraction.get_llm_client",
+            return_value=mock_client,
+        ):
+            extractor = LLMEntityExtractor()
+            result = await extractor.extract_with_relations(
+                "我在做项目A", entity_context="只关注项目相关的信息"
+            )
+
+            assert len(result["entities"]) >= 1
+
+    @pytest.mark.asyncio
+    async def test_extract_with_relations_timeout(self):
+        """测试超时降级"""
+        mock_client = MagicMock()
+        mock_client.extract_json = MagicMock(side_effect=TimeoutError("Timeout"))
+
+        with patch(
+            "src.services.core.llm_entity_extraction.get_llm_client",
+            return_value=mock_client,
+        ):
+            extractor = LLMEntityExtractor(timeout=1.0)
+            result = await extractor.extract_with_relations("我在北京工作")
+
+            assert result["relations"] == []
+            assert result["confidence"] == 0.3
+
+    @pytest.mark.asyncio
+    async def test_extract_with_relations_invalid_json(self):
+        """测试无效 JSON 响应降级"""
+        mock_client = MagicMock()
+        mock_client.extract_json = MagicMock(return_value=None)
+
+        with patch(
+            "src.services.core.llm_entity_extraction.get_llm_client",
+            return_value=mock_client,
+        ):
+            extractor = LLMEntityExtractor()
+            result = await extractor.extract_with_relations("我在北京工作")
+
+            assert "entities" in result
+            assert "relations" in result

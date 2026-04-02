@@ -17,7 +17,7 @@
     "不要忘记",
     "记得这个"
   ],
-  "nudge": "[检测到记忆触发]\n用户希望您记住某些内容。请使用 `memory-recall` 工具的 `mode: \"add\"` 来保存此信息。\n\n- 使用 `scope: \"project\"` 保存项目相关偏好\n- 使用 `scope: \"user\"` 保存跨项目偏好\n\n请勿跳过此步骤。",
+  "nudge": "[强制操作：记忆存储]\n用户明确要求记住某些内容。\n\n你必须立即调用 `memory-recall` 工具：\n```\nmode: \"add\"\ncontent: <提取用户要求记住的核心内容>\nisStatic: true (如果是偏好/习惯) 或 false (如果是临时信息)\ntype: \"preference\" (偏好) 或 \"learned-pattern\" (模式)\nscope: \"project\" (项目相关) 或 \"user\" (跨项目通用)\n```\n\n这是强制操作，你必须执行，不可跳过。内容由你理解和提取，但工具调用是必须的。",
   "context_header": "[记忆召回]",
   "user_profile": "用户画像",
   "recent_context": "最近动态",

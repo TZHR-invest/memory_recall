@@ -40,12 +40,47 @@ export class DocumentTracker {
     return this.initializedAt;
   }
 
+  getDirectory(): string {
+    return this.directory;
+  }
+
+  /**
+   * 获取需要导入的文档列表（排除已追踪的）
+   */
+  getPendingFiles(): string[] {
+    const files = this.scanDirectory();
+    return files.filter(filePath => {
+      const relativePath = path.relative(this.directory, filePath);
+      return !this.trackedDocuments.has(relativePath);
+    });
+  }
+
+  /**
+   * 处理单个文档导入（供队列调用）
+   */
+  async importSingleFile(filePath: string, timeoutMs?: number): Promise<{ success: boolean; relativePath: string }> {
+    const relativePath = path.isAbsolute(filePath) 
+      ? path.relative(this.directory, filePath) 
+      : filePath;
+    const absolutePath = path.isAbsolute(filePath) 
+      ? filePath 
+      : path.join(this.directory, filePath);
+
+    const result = await this.importFile(absolutePath, timeoutMs);
+    
+    if (result) {
+      this.saveState();
+    }
+
+    return { success: result, relativePath };
+  }
+
   /**
    * Scan directory for matching documents and import them to memory storage.
    * Skips already-tracked documents unless clearState() was called.
    * Returns the number of documents imported.
    */
-  async scanAndMemorize(): Promise<number> {
+  async scanAndMemorize(timeoutMs?: number): Promise<number> {
     const files = this.scanDirectory();
     let importedCount = 0;
 
@@ -55,7 +90,7 @@ export class DocumentTracker {
         const alreadyTracked = this.trackedDocuments.has(relativePath);
 
         if (!alreadyTracked) {
-          const result = await this.importFile(filePath);
+          const result = await this.importFile(filePath, timeoutMs);
           if (result) {
             importedCount++;
           }
@@ -77,13 +112,13 @@ export class DocumentTracker {
    * Force re-scan all documents, re-importing changed files.
    * Use this when documents may have been updated externally.
    */
-  async forceRescan(): Promise<number> {
+  async forceRescan(timeoutMs?: number): Promise<number> {
     const files = this.scanDirectory();
     let importedCount = 0;
 
     for (const filePath of files) {
       try {
-        const result = await this.importFile(filePath);
+        const result = await this.importFile(filePath, timeoutMs);
         if (result) {
           importedCount++;
         }
@@ -102,6 +137,31 @@ export class DocumentTracker {
   async trackFile(filePath: string): Promise<void> {
     await this.importFile(filePath);
     this.saveState();
+  }
+
+  /**
+   * Check if a file has changed (for FileWatcher).
+   * Returns true if file is new or hash differs from tracked version.
+   */
+  hasFileChanged(filePath: string): boolean {
+    const absolutePath = path.isAbsolute(filePath)
+      ? filePath
+      : path.join(this.directory, filePath);
+
+    if (!fs.existsSync(absolutePath)) {
+      return false;
+    }
+
+    const content = fs.readFileSync(absolutePath, "utf-8");
+    if (!content.trim()) {
+      return false;
+    }
+
+    const hash = this.computeHash(content);
+    const relativePath = path.relative(this.directory, absolutePath);
+    const tracked = this.trackedDocuments.get(relativePath);
+
+    return !tracked || tracked.hash !== hash;
   }
 
   /**
@@ -201,6 +261,7 @@ export class DocumentTracker {
         // Handle "docs/**/*.md" -> matches any .md under docs/
         if (pattern.includes("**")) {
           const regexPattern = pattern
+            .replace(/\./g, "\\.")
             .replace(/\*\*/g, "<<<DOUBLE_STAR>>>")
             .replace(/\*/g, "[^/]*")
             .replace(/<<<DOUBLE_STAR>>>/g, ".*");
@@ -210,8 +271,9 @@ export class DocumentTracker {
           }
         } else {
           // Handle "docs/*.md" -> matches .md directly under docs/
+          const escaped = pattern.replace(/\./g, "\\.");
           const regex = new RegExp(
-            "^" + pattern.replace(/\*/g, "[^/]*") + "$"
+            "^" + escaped.replace(/\*/g, "[^/]*") + "$"
           );
           if (regex.test(normalizedPath)) {
             return true;
@@ -224,7 +286,8 @@ export class DocumentTracker {
       if (pattern.includes("*")) {
         // Only match if file is at root level (no path separator)
         if (!normalizedPath.includes("/")) {
-          const regex = new RegExp("^" + pattern.replace(/\*/g, ".*") + "$");
+          const escaped = pattern.replace(/\./g, "\\.");
+          const regex = new RegExp("^" + escaped.replace(/\*/g, ".*") + "$");
           if (regex.test(filename)) {
             return true;
           }
@@ -244,7 +307,7 @@ export class DocumentTracker {
    * Import a single file to memory storage.
    * Returns true if imported, false if skipped (e.g., duplicate).
    */
-  private async importFile(filePath: string): Promise<boolean> {
+  private async importFile(filePath: string, timeoutMs?: number): Promise<boolean> {
     if (!fs.existsSync(filePath)) {
       return false;
     }
@@ -283,7 +346,8 @@ export class DocumentTracker {
             importedAt: new Date().toISOString(),
             fileSize: content.length,
           },
-        }
+        },
+        timeoutMs
       );
 
       // Update tracking state
