@@ -2,6 +2,29 @@
 
 All notable changes to Memory Recall will be documented in this file.
 
+## [5.1.2] - 2026-04-02
+
+### Code Cleanup
+
+删除废弃的 lossless 架构服务，保持代码库整洁。
+
+#### 删除的服务
+- `raw_message_store.py` - 查询已删除的 `raw_messages` 表
+- `summary_store.py` - 查询已删除的 `summaries` 表
+- `context_store.py` - 使用旧架构
+- `compaction_engine.py` - 功能已合并到其他服务
+- `dag_expand_service.py` - 功能已合并到 `relation_service`
+- `memory_service.py` - 功能已合并到 `memory_store`
+- `lossless.py` - 废弃的数据模型
+
+#### 影响
+- 删除代码：~1,970 行
+- 不影响现有功能（这些服务已无调用）
+- 清理 `services/core/__init__.py` 废弃导出
+
+### Related
+- OpenSpec change: `codebase-cleanup-and-review`
+
 ## [5.1.1] - 2026-04-02
 
 ### Bug Fixes
