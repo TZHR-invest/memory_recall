@@ -424,7 +424,7 @@ class MemoryStore:
         rows = await db.fetch(
             """
             SELECT 
-                id, content, metadata, confidence, created_at,
+                id, content, metadata, confidence, created_at, embedding,
                 1 - (embedding <=> $1::vector) as similarity
             FROM memories
             WHERE container_tag = $2
@@ -450,6 +450,7 @@ class MemoryStore:
                 if row["created_at"]
                 else None,
                 "similarity": float(row["similarity"]) if row["similarity"] else 0.0,
+                "embedding": self._parse_embedding(row["embedding"]),
             }
             for row in rows
         ]

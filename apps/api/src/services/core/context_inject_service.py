@@ -105,7 +105,7 @@ class ContextInjectService:
                                 {
                                     "id": mem_id,
                                     "content": r.get("content", ""),
-                                    "embedding": None,
+                                    "embedding": r.get("embedding"),
                                     "is_static": False,
                                     "similarity": r.get("similarity", 0.0),
                                 }
@@ -129,7 +129,7 @@ class ContextInjectService:
                                             {
                                                 "id": m.id,
                                                 "content": m.content,
-                                                "embedding": None,
+                                                "embedding": m.embedding,
                                                 "is_static": m.is_static,
                                                 "source": "memory_graph",
                                             }
@@ -180,7 +180,7 @@ class ContextInjectService:
                                                 {
                                                     "id": m.id,
                                                     "content": m.content,
-                                                    "embedding": None,
+                                                    "embedding": m.embedding,
                                                     "is_static": m.is_static,
                                                     "source": "entity_graph",
                                                 }
