@@ -496,12 +496,11 @@ class LLMEntityExtractor:
 
 【实体类型】
 - person: 人物
-- location: 地点  
 - organization: 组织/公司
+- location: 地点
 - event: 事件
 - preference: 偏好
-- skill: 技能
-- occupation: 职业
+- thing: 物品/概念/技术/项目
 
 【关系类型】（优先使用预定义类型）
 {relation_types_list}
@@ -558,12 +557,11 @@ Return JSON format:
 
 【Entity Types】
 - person: Person name
-- location: Place
 - organization: Company/Organization
+- location: Place
 - event: Event
 - preference: Preference
-- skill: Skill
-- occupation: Job title
+- thing: Object/Concept/Technology/Project
 
 【Relation Types】 (use predefined types when applicable)
 {relation_types_list}
@@ -593,7 +591,6 @@ Output:
     def _filter_entities_with_types(
         self, entities: List[Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
-        """过滤无意义或类型不明确的实体"""
         filtered = []
 
         for entity in entities:
@@ -609,6 +606,11 @@ Output:
             if entity_type in SKIP_ENTITY_TYPES:
                 continue
 
+            # 验证实体类型，非标准类型映射到 thing
+            if entity_type not in ENTITY_TYPES:
+                entity_type = "thing"
+
+            entity["type"] = entity_type
             filtered.append(entity)
 
         return filtered

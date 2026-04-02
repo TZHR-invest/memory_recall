@@ -150,17 +150,13 @@ RELATION_TYPES = {
 
 RELATION_TYPE_LIST = list(RELATION_TYPES.keys())
 
-# 实体类型
 ENTITY_TYPES = {
     "person": "人物",
+    "organization": "组织",
     "location": "地点",
     "event": "事件",
-    "topic": "主题",
-    "emotion": "情感",
-    "time": "时间",
-    "task": "任务",
-    "decision": "决策",
-    "concept": "概念",
-    "solution": "解决方案",
-    "problem": "问题",
+    "preference": "偏好",
+    "thing": "物品/概念",
 }
+
+ENTITY_TYPE_LIST = list(ENTITY_TYPES.keys())
