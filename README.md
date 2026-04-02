@@ -1,8 +1,8 @@
 # Memory Recall - 统一记忆系统
 
-**版本**：v5.0.0  
+**版本**：v5.1.0  
 **状态**：生产就绪  
-**最后更新**：2026-04-01
+**最后更新**：2026-04-02
 
 ---
 
@@ -88,6 +88,67 @@ memory_recall/
 │           │                                                 │
 │  memory_profiles                                            │
 │  └─ static + dynamic 缓存（~50ms 获取）                     │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Entity Graph 架构（v5.1）
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Entity Graph 架构                         │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  entities (实体表)                                          │
+│  ├─ name: 实体名称（"张三"、"字节跳动"、"北京"）            │
+│  ├─ type: 实体类型（person/location/organization/event）    │
+│  └─ mention_count: 提及次数                                 │
+│           │                                                 │
+│           ↓ 实体关系                                        │
+│           │                                                 │
+│  entity_relations                                           │
+│  ├─ friend: 朋友关系                                        │
+│  ├─ colleague: 同事关系                                     │
+│  ├─ works_at: 工作关系                                      │
+│  ├─ lives_at: 居住关系                                      │
+│  └─ ... 更多关系类型                                        │
+│           │                                                 │
+│           ↓ 记忆关联                                        │
+│           │                                                 │
+│  memory_entities                                            │
+│  └─ 记忆 ↔ 实体 多对多关联                                  │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 双图谱召回系统
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    双图谱召回流程                            │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  用户查询 "张三在哪里工作？"                                 │
+│           │                                                 │
+│           ↓                                                 │
+│  ┌─────────────────┐                                        │
+│  │  1. Vector Search │ 语义相似度匹配                       │
+│  └────────┬────────┘                                        │
+│           │                                                 │
+│           ↓                                                 │
+│  ┌─────────────────┐                                        │
+│  │ 2. Memory Graph │ 遍历记忆演进关系（updates/extends）    │
+│  └────────┬────────┘                                        │
+│           │                                                 │
+│           ↓                                                 │
+│  ┌─────────────────┐                                        │
+│  │ 3. Entity Graph │ 遍历实体关系网络（张三--works_at-->?） │
+│  └────────┬────────┘                                        │
+│           │                                                 │
+│           ↓                                                 │
+│  ┌─────────────────┐                                        │
+│  │ 4. Merge & Dedup │ 合并去重后返回                        │
+│  └─────────────────┘                                        │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -561,11 +622,69 @@ client.close()
 | static_memories | JSONB | 静态记忆列表 |
 | dynamic_memories | JSONB | 动态记忆列表 |
 
+### 实体表（entities）- v5.1 新增
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | UUID | 主键 |
+| name | VARCHAR(255) | 实体名称 |
+| type | VARCHAR(50) | 实体类型（person/location/organization/event） |
+| container_tag | VARCHAR(100) | 容器标识 |
+| mention_count | INT | 提及次数 |
+| confidence | FLOAT | 置信度 |
+
+### 实体关系表（entity_relations）- v5.1 新增
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | UUID | 主键 |
+| from_entity_id | UUID | 源实体 |
+| to_entity_id | UUID | 目标实体 |
+| relation_type | VARCHAR(50) | 关系类型（friend/colleague/works_at/lives_at 等） |
+| weight | FLOAT | 关系权重 |
+| container_tag | VARCHAR(100) | 容器标识 |
+| source_memory_id | VARCHAR(24) | 来源记忆 |
+
+### 记忆-实体关联表（memory_entities）- v5.1 新增
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | UUID | 主键 |
+| memory_id | VARCHAR(24) | 记忆 ID |
+| entity_id | UUID | 实体 ID |
+| entity_type | VARCHAR(50) | 实体类型（冗余，便于查询） |
+
 ---
 
-## 关键变更（v5.0.0）
+## 关键变更
 
-### 新增功能
+### v5.1.0 (2026-04-02)
+
+#### 新增功能
+
+- **Entity Graph 架构**: 实体表、实体关系表、记忆-实体关联表
+- **双图谱召回系统**: Vector Search + Memory Graph + Entity Graph 三层召回
+- **实体关系类型**: 12 种预定义关系（friend/colleague/works_at/lives_at 等）
+- **Context Injection 增强**: 支持双图谱召回配置参数
+
+#### API 变更
+
+- `POST /context-inject` 新增参数：
+  - `enable_memory_graph`: 启用 Memory Graph 召回
+  - `enable_entity_graph`: 启用 Entity Graph 召回
+  - `memory_graph_depth/nodes`: Memory Graph 配置
+  - `entity_graph_depth/nodes`: Entity Graph 配置
+
+#### 数据库变更
+
+- 新增 `entities` 表（实体存储）
+- 新增 `entity_relations` 表（实体关系）
+- 新增 `memory_entities` 表（记忆-实体关联）
+- 新增索引：实体名称、关系端点、记忆-实体关联
+
+### v5.0.0 (2026-03-29)
+
+#### 新增功能
 
 - **统一 API**: 合并 v1/v2 为单一入口，无版本前缀
 - **完整认证**: API Key + 容器所有权验证 + 速率限制
@@ -576,20 +695,20 @@ client.close()
 - **智能文档分块**: AST-aware chunking + 上下文化嵌入
 - **项目文档跟踪**: 自动导入 README/AGENTS.md 等项目文档
 
-### 架构改进
+#### 架构改进
 
 - **简化容器所有权**: 一个 API Key = 一个 Container
 - **文档分离存储**: documents + chunks 表（与 memories 分离）
 - **上下文化嵌入**: 分块自动添加文件/类型/摘要上下文
 - **自动配置**: 插件首次运行自动初始化
 
-### Breaking Changes
+#### Breaking Changes
 
 - 所有端点需要 `X-API-Key` 认证
 - API 路径变更：`/v1/*` → `/*`（根路径）
 - `container_tag` 自动使用 API Key ID
 
-### 性能提升
+#### 性能提升
 
 - 召回延迟：1.5-4 秒 → ~50ms
 - 数据模型：6+ 表 → 3 核心表
