@@ -126,38 +126,27 @@ GRAPH_TOOLS = [
     NOOP_TOOL,
 ]
 
-# 关系类型映射
+# 关系类型映射（标准 10 个核心关系）
 RELATION_TYPES = {
-    # 人物关系
+    # 人际关系
     "friend": "朋友",
     "colleague": "同事",
-    "classmate": "同学",
-    "family": "家人",
-    "acquaintance": "熟人",
-    "met_at": "在...遇到",
-    # 地点关系
-    "at": "在...",
-    "visited": "访问过",
-    "lives_at": "居住在",
-    "works_at": "工作在",
-    "studied_at": "学习在",
-    # 事件关系
-    "participated": "参与",
-    "discussed": "讨论",
-    "mentioned": "提及",
-    "attended": "参加",
-    # 主题关系
-    "interested_in": "对...感兴趣",
-    "knows_about": "了解...",
-    "expert_in": "专长于",
-    # 情感关系
-    "likes": "喜欢",
-    "dislikes": "不喜欢",
-    "loves": "爱",
-    "respects": "尊敬",
-    # 通用关系（兜底，不推荐使用）
+    "knows": "认识",
+    # 位置关系
+    "lives_at": "居住于",
+    "works_at": "工作于",
+    # 偏好关系
+    "prefers": "偏好/喜欢",
+    "uses": "使用",
+    # 项目关系
+    "works_on": "从事/项目",
+    # 通用关系
     "related_to": "相关",
+    "mentioned_in": "提及来源",
 }
+
+# 关系类型列表（用于 LLM 约束）
+RELATION_TYPE_LIST = list(RELATION_TYPES.keys())
 
 # 实体类型
 ENTITY_TYPES = {
