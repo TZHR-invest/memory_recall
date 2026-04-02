@@ -648,7 +648,9 @@ class MemoryStore:
         container_tag: str,
     ) -> None:
         """
-        存储 Entity Graph 到数据库（复用 graph_builder_service 的去重逻辑）
+        存储 Entity Graph 到数据库
+
+        使用归一化实体名 + 类型的去重逻辑
 
         Args:
             memory_id: 记忆 ID
