@@ -658,13 +658,42 @@ client.close()
 
 ## 关键变更
 
+### v5.1.1 (2026-04-02)
+
+#### 新增功能
+
+- **AI 行为指导**: 上下文注入时自动添加行为指导，让 AI 优先使用 memory recall 召回记忆
+- **Search 工具增强**: 支持双图谱召回参数（enableMemoryGraph/enableEntityGraph）
+- **智能召回优化**: Session 开始注入 vs 智能召回区分明确，节省 68.9% Token
+
+#### 架构改进
+
+- **废弃代码清理**: 删除 `lossless_recall_service.py` 和 `smart_recall_service.py`
+- **召回统一**: 所有召回功能统一到 `context_inject_service.py`
+- **测试清理**: 删除 24 个废弃的测试文件
+
+#### 插件版本
+
+- **OpenCode 插件**: 1.7.5 → 1.7.8
+  - 1.7.6: AI 行为指导功能
+  - 1.7.8: Search 工具双图谱召回支持
+
+#### 性能对比
+
+| 功能 | Session 开始注入 | 智能召回 |
+|------|-----------------|---------|
+| Token 消耗 | ~4293 Token | ~1336 Token |
+| 条目数 | 25 条 | 6 条 |
+| 节省比例 | - | 68.9% |
+
 ### v5.1.0 (2026-04-02)
 
 #### 新增功能
 
 - **Entity Graph 架构**: 实体表、实体关系表、记忆-实体关联表
 - **双图谱召回系统**: Vector Search + Memory Graph + Entity Graph 三层召回
-- **实体关系类型**: 12 种预定义关系（friend/colleague/works_at/lives_at 等）
+- **实体关系类型**: 13 种预定义关系（friend/colleague/works_at/lives_at 等）
+- **实体类型**: 6 种核心类型（person/organization/location/event/preference/thing）
 - **Context Injection 增强**: 支持双图谱召回配置参数
 
 #### API 变更
@@ -673,7 +702,7 @@ client.close()
   - `enable_memory_graph`: 启用 Memory Graph 召回
   - `enable_entity_graph`: 启用 Entity Graph 召回
   - `memory_graph_depth/nodes`: Memory Graph 配置
-  - `entity_graph_depth/nodes`: Entity Graph 配置
+  - `entity_graph_depth/nodes`: Entity Graph 配uration
 
 #### 数据库变更
 

@@ -533,6 +533,72 @@ export function formatContext(options: ContextOptions): string {
   lines.push(sectionTitle);
   lines.push("");
 
+  const aiGuidance = isZh 
+    ? [
+        "### AI 行为指导",
+        "",
+        "**优先使用记忆系统**：",
+        "- 遇到涉及历史信息、用户偏好、项目决策的问题时，优先使用 `memory-recall` 工具召回相关记忆",
+        "- 减少重复探索：利用已有记忆上下文，避免重复查找相同信息",
+        "",
+        "**召回场景与参数选择**：",
+        "| 场景 | 参数 | 说明 |",
+        "|------|------|------|",
+        "| 快速检索 | 默认 | `search(query)` 仅向量搜索 |",
+        "| 需要最新信息 | `enableMemoryGraph: true` | 遍历信息演进链（updates/extends/derives） |",
+        "| 需要实体关系 | `enableEntityGraph: true` | 遍历实体关系网络（friend/colleague/works_at等） |",
+        "| 复杂查询 | 两者都启用 | 完整三层召回（Vector + Memory Graph + Entity Graph） |",
+        "",
+        "**主动召回时机**：",
+        "1. 用户提到\"之前\"、\"上次\"、\"以前\"等历史关键词",
+        "2. 需要用户偏好信息（代码风格、语言、框架等）",
+        "3. 需要项目历史决策（架构选择、技术选型等）",
+        "4. 需要实体关系信息（\"XX的朋友\"、\"XX在哪里工作\"）",
+        "5. 已注入上下文不足以回答问题",
+        "",
+        "**工作流程**：",
+        "1. 检查已注入的上下文（Session Summary、项目记忆）",
+        "2. 根据问题类型选择召回参数：",
+        "   - 简单查询 → `memory-recall(mode: \"search\", query: \"关键词\")`",
+        "   - 信息演进 → `memory-recall(mode: \"search\", query: \"关键词\", enableMemoryGraph: true)`",
+        "   - 实体关系 → `memory-recall(mode: \"search\", query: \"关键词\", enableEntityGraph: true)`",
+        "3. 结合召回的记忆与当前问题给出回答",
+        "",
+      ]
+    : [
+        "### AI Behavior Guidance",
+        "",
+        "**Prioritize Memory System**:",
+        "- When encountering questions about history, user preferences, or project decisions, prioritize using the `memory-recall` tool to retrieve relevant memories",
+        "- Reduce redundant exploration: Leverage existing memory context to avoid repeatedly searching for the same information",
+        "",
+        "**Recall Scenarios and Parameters**:",
+        "| Scenario | Parameters | Description |",
+        "|----------|------------|-------------|",
+        "| Quick retrieval | Default | `search(query)` vector search only |",
+        "| Need latest info | `enableMemoryGraph: true` | Traverse memory evolution chain (updates/extends/derives) |",
+        "| Need entity relations | `enableEntityGraph: true` | Traverse entity relation network (friend/colleague/works_at etc.) |",
+        "| Complex queries | Enable both | Full three-layer recall (Vector + Memory Graph + Entity Graph) |",
+        "",
+        "**When to actively recall**:",
+        "1. User mentions historical keywords like \"previously\", \"last time\", \"before\"",
+        "2. Need user preference information (coding style, language, framework, etc.)",
+        "3. Need project historical decisions (architecture choices, technology selections, etc.)",
+        "4. Need entity relation information (\"XX's friend\", \"Where does XX work\")",
+        "5. Injected context is insufficient to answer the question",
+        "",
+        "**Workflow**:",
+        "1. Check injected context (Session Summary, project memories)",
+        "2. Choose recall parameters based on question type:",
+        "   - Simple query → `memory-recall(mode: \"search\", query: \"keywords\")`",
+        "   - Memory evolution → `memory-recall(mode: \"search\", query: \"keywords\", enableMemoryGraph: true)`",
+        "   - Entity relations → `memory-recall(mode: \"search\", query: \"keywords\", enableEntityGraph: true)`",
+        "3. Combine recalled memories with current question to provide an answer",
+        "",
+      ];
+  
+  lines.push(...aiGuidance);
+
   let staticFacts: string[];
   let dynamicFacts: string[];
   let dedupedProjectMemories: Memory[];
