@@ -2,7 +2,63 @@
 
 All notable changes to Memory Recall will be documented in this file.
 
-## [4.0.0] - 2026-03-29
+## [5.1.0] - 2026-04-02
+
+### Major Changes
+
+#### Entity Graph 架构
+- 新增 `entities` 表：存储提取的实体（人物、地点、组织等）
+- 新增 `entity_relations` 表：存储实体间关系
+- 新增 `memory_entities` 关联表：连接记忆与实体
+- 支持 12 种预定义关系类型（friend/colleague/works_at/lives_at 等）
+
+#### 双图谱召回系统
+- **Memory Graph**：遍历记忆演进关系（updates/extends/derives）
+- **Entity Graph**：遍历实体关系网络
+- **三层召回**：Vector Search + Memory Graph + Entity Graph
+- 配置参数：`enable_memory_graph`, `enable_entity_graph`, `*_depth`, `*_nodes`
+
+#### Entity Graph 遍历服务
+- `traverse_entity_relations()` - 双向遍历实体关系
+- `get_entities_for_memories()` - 获取记忆关联实体
+- `find_memories_by_entities()` - 通过实体查找记忆
+
+#### Context Injection 增强
+- 集成双图谱召回到上下文注入流程
+- 新增 API 配置参数支持图谱召回控制
+- 前端 `ContextInjectConfig` 接口更新
+
+#### 数据迁移工具
+- `run_027_migrate_entities.py` - 从 metadata 迁移实体到新表
+- `run_028_reextract_relations.py` - 使用 LLM 重提取关系
+- `run_029_check_consistency.py` - 数据一致性检查
+
+### Database Changes
+- Migration 026: Create Entity Graph tables
+- 新增索引：`idx_entities_name`, `idx_entity_relations_from/to`, `idx_memory_entities_*`
+- UNIQUE 约束：实体去重、关系去重
+
+### API Changes
+- `POST /context-inject` 新增参数：
+  - `enable_memory_graph: bool` - 启用 Memory Graph 召回
+  - `enable_entity_graph: bool` - 启用 Entity Graph 召回
+  - `memory_graph_depth: int` - Memory Graph 遍历深度
+  - `memory_graph_nodes: int` - Memory Graph 最大节点数
+  - `entity_graph_depth: int` - Entity Graph 遍历深度
+  - `entity_graph_nodes: int` - Entity Graph 最大节点数
+  - `memory_similarity_threshold: float` - 记忆相似度阈值
+
+### Code Reuse
+- 复用 `graph_tools.RELATION_TYPES` 和 `ENTITY_TYPES`
+- 复用 `graph_builder_service._upsert_entity/relation()` 去重逻辑
+- 复用 `relation_service.get_related_memories()` 遍历逻辑
+
+### Tests
+- 新增 12 个 Entity Graph 遍历单元测试
+- 新增 4 个 Context Injection 集成测试
+- 修复 `TestTraverseMemoryRelations` mock 配置
+
+## [5.0.0] - 2026-03-29
 
 ### Major Changes
 

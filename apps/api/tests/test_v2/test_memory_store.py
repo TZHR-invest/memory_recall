@@ -404,22 +404,42 @@ class TestTraverseMemoryRelations:
         with patch("src.services.core.memory_store.db") as mock_db:
             mock_db.fetchrow = AsyncMock(
                 side_effect=[
-                    MagicMock(
-                        id="mem_1",
-                        container_tag="user_001",
-                        content="旧记忆",
-                        metadata=json.dumps({"relations": {"updates": ["mem_2"]}}),
-                        is_static=True,
-                        created_at=None,
-                    ),
-                    MagicMock(
-                        id="mem_2",
-                        container_tag="user_001",
-                        content="新记忆",
-                        metadata=json.dumps({"relations": {}}),
-                        is_static=True,
-                        created_at=None,
-                    ),
+                    {
+                        "id": "mem_1",
+                        "container_tag": "user_001",
+                        "content": "旧记忆",
+                        "metadata": {"relations": {"updates": ["mem_2"]}},
+                        "is_static": True,
+                        "created_at": None,
+                        "embedding": None,
+                        "is_latest": True,
+                        "valid_from": None,
+                        "valid_until": None,
+                        "confidence": 0.8,
+                        "is_forgotten": False,
+                        "version": 1,
+                        "root_memory_id": None,
+                        "source_count": 1,
+                        "is_inference": False,
+                    },
+                    {
+                        "id": "mem_2",
+                        "container_tag": "user_001",
+                        "content": "新记忆",
+                        "metadata": {"relations": {}},
+                        "is_static": True,
+                        "created_at": None,
+                        "embedding": None,
+                        "is_latest": True,
+                        "valid_from": None,
+                        "valid_until": None,
+                        "confidence": 0.8,
+                        "is_forgotten": False,
+                        "version": 1,
+                        "root_memory_id": None,
+                        "source_count": 1,
+                        "is_inference": False,
+                    },
                 ]
             )
 
@@ -435,30 +455,60 @@ class TestTraverseMemoryRelations:
         with patch("src.services.core.memory_store.db") as mock_db:
             mock_db.fetchrow = AsyncMock(
                 side_effect=[
-                    MagicMock(
-                        id="mem_1",
-                        container_tag="user_001",
-                        content="记忆1",
-                        metadata=json.dumps({"relations": {"updates": ["mem_2"]}}),
-                        is_static=True,
-                        created_at=None,
-                    ),
-                    MagicMock(
-                        id="mem_2",
-                        container_tag="user_001",
-                        content="记忆2",
-                        metadata=json.dumps({"relations": {"extends": ["mem_3"]}}),
-                        is_static=True,
-                        created_at=None,
-                    ),
-                    MagicMock(
-                        id="mem_3",
-                        container_tag="user_001",
-                        content="记忆3",
-                        metadata=json.dumps({"relations": {}}),
-                        is_static=True,
-                        created_at=None,
-                    ),
+                    {
+                        "id": "mem_1",
+                        "container_tag": "user_001",
+                        "content": "记忆1",
+                        "metadata": {"relations": {"updates": ["mem_2"]}},
+                        "is_static": True,
+                        "created_at": None,
+                        "embedding": None,
+                        "is_latest": True,
+                        "valid_from": None,
+                        "valid_until": None,
+                        "confidence": 0.8,
+                        "is_forgotten": False,
+                        "version": 1,
+                        "root_memory_id": None,
+                        "source_count": 1,
+                        "is_inference": False,
+                    },
+                    {
+                        "id": "mem_2",
+                        "container_tag": "user_001",
+                        "content": "记忆2",
+                        "metadata": {"relations": {"extends": ["mem_3"]}},
+                        "is_static": True,
+                        "created_at": None,
+                        "embedding": None,
+                        "is_latest": True,
+                        "valid_from": None,
+                        "valid_until": None,
+                        "confidence": 0.8,
+                        "is_forgotten": False,
+                        "version": 1,
+                        "root_memory_id": None,
+                        "source_count": 1,
+                        "is_inference": False,
+                    },
+                    {
+                        "id": "mem_3",
+                        "container_tag": "user_001",
+                        "content": "记忆3",
+                        "metadata": {"relations": {}},
+                        "is_static": True,
+                        "created_at": None,
+                        "embedding": None,
+                        "is_latest": True,
+                        "valid_from": None,
+                        "valid_until": None,
+                        "confidence": 0.8,
+                        "is_forgotten": False,
+                        "version": 1,
+                        "root_memory_id": None,
+                        "source_count": 1,
+                        "is_inference": False,
+                    },
                 ]
             )
 
@@ -472,22 +522,42 @@ class TestTraverseMemoryRelations:
         with patch("src.services.core.memory_store.db") as mock_db:
             mock_db.fetchrow = AsyncMock(
                 side_effect=[
-                    MagicMock(
-                        id="mem_1",
-                        container_tag="user_001",
-                        content="记忆1",
-                        metadata=json.dumps({"relations": {"updates": ["mem_2"]}}),
-                        is_static=True,
-                        created_at=None,
-                    ),
-                    MagicMock(
-                        id="mem_2",
-                        container_tag="user_001",
-                        content="记忆2",
-                        metadata=json.dumps({"relations": {"extends": ["mem_3"]}}),
-                        is_static=True,
-                        created_at=None,
-                    ),
+                    {
+                        "id": "mem_1",
+                        "container_tag": "user_001",
+                        "content": "记忆1",
+                        "metadata": {"relations": {"updates": ["mem_2"]}},
+                        "is_static": True,
+                        "created_at": None,
+                        "embedding": None,
+                        "is_latest": True,
+                        "valid_from": None,
+                        "valid_until": None,
+                        "confidence": 0.8,
+                        "is_forgotten": False,
+                        "version": 1,
+                        "root_memory_id": None,
+                        "source_count": 1,
+                        "is_inference": False,
+                    },
+                    {
+                        "id": "mem_2",
+                        "container_tag": "user_001",
+                        "content": "记忆2",
+                        "metadata": {"relations": {"extends": ["mem_3"]}},
+                        "is_static": True,
+                        "created_at": None,
+                        "embedding": None,
+                        "is_latest": True,
+                        "valid_from": None,
+                        "valid_until": None,
+                        "confidence": 0.8,
+                        "is_forgotten": False,
+                        "version": 1,
+                        "root_memory_id": None,
+                        "source_count": 1,
+                        "is_inference": False,
+                    },
                 ]
             )
 
@@ -501,24 +571,42 @@ class TestTraverseMemoryRelations:
         with patch("src.services.core.memory_store.db") as mock_db:
             mock_db.fetchrow = AsyncMock(
                 side_effect=[
-                    MagicMock(
-                        id="mem_1",
-                        container_tag="user_001",
-                        content="记忆1",
-                        metadata=json.dumps(
-                            {"relations": {"updates": ["mem_2", "mem_3"]}}
-                        ),
-                        is_static=True,
-                        created_at=None,
-                    ),
-                    MagicMock(
-                        id="mem_2",
-                        container_tag="user_001",
-                        content="记忆2",
-                        metadata=json.dumps({"relations": {}}),
-                        is_static=True,
-                        created_at=None,
-                    ),
+                    {
+                        "id": "mem_1",
+                        "container_tag": "user_001",
+                        "content": "记忆1",
+                        "metadata": {"relations": {"updates": ["mem_2", "mem_3"]}},
+                        "is_static": True,
+                        "created_at": None,
+                        "embedding": None,
+                        "is_latest": True,
+                        "valid_from": None,
+                        "valid_until": None,
+                        "confidence": 0.8,
+                        "is_forgotten": False,
+                        "version": 1,
+                        "root_memory_id": None,
+                        "source_count": 1,
+                        "is_inference": False,
+                    },
+                    {
+                        "id": "mem_2",
+                        "container_tag": "user_001",
+                        "content": "记忆2",
+                        "metadata": {"relations": {}},
+                        "is_static": True,
+                        "created_at": None,
+                        "embedding": None,
+                        "is_latest": True,
+                        "valid_from": None,
+                        "valid_until": None,
+                        "confidence": 0.8,
+                        "is_forgotten": False,
+                        "version": 1,
+                        "root_memory_id": None,
+                        "source_count": 1,
+                        "is_inference": False,
+                    },
                 ]
             )
 
@@ -534,29 +622,47 @@ class TestTraverseMemoryRelations:
         with patch("src.services.core.memory_store.db") as mock_db:
             mock_db.fetchrow = AsyncMock(
                 side_effect=[
-                    MagicMock(
-                        id="mem_1",
-                        container_tag="user_001",
-                        content="记忆1",
-                        metadata=json.dumps(
-                            {
-                                "relations": {
-                                    "updates": ["mem_2"],
-                                    "extends": ["mem_3"],
-                                }
+                    {
+                        "id": "mem_1",
+                        "container_tag": "user_001",
+                        "content": "记忆1",
+                        "metadata": {
+                            "relations": {
+                                "updates": ["mem_2"],
+                                "extends": ["mem_3"],
                             }
-                        ),
-                        is_static=True,
-                        created_at=None,
-                    ),
-                    MagicMock(
-                        id="mem_2",
-                        container_tag="user_001",
-                        content="记忆2",
-                        metadata=json.dumps({"relations": {}}),
-                        is_static=True,
-                        created_at=None,
-                    ),
+                        },
+                        "is_static": True,
+                        "created_at": None,
+                        "embedding": None,
+                        "is_latest": True,
+                        "valid_from": None,
+                        "valid_until": None,
+                        "confidence": 0.8,
+                        "is_forgotten": False,
+                        "version": 1,
+                        "root_memory_id": None,
+                        "source_count": 1,
+                        "is_inference": False,
+                    },
+                    {
+                        "id": "mem_2",
+                        "container_tag": "user_001",
+                        "content": "记忆2",
+                        "metadata": {"relations": {}},
+                        "is_static": True,
+                        "created_at": None,
+                        "embedding": None,
+                        "is_latest": True,
+                        "valid_from": None,
+                        "valid_until": None,
+                        "confidence": 0.8,
+                        "is_forgotten": False,
+                        "version": 1,
+                        "root_memory_id": None,
+                        "source_count": 1,
+                        "is_inference": False,
+                    },
                 ]
             )
 
@@ -575,25 +681,371 @@ class TestTraverseMemoryRelations:
         with patch("src.services.core.memory_store.db") as mock_db:
             mock_db.fetchrow = AsyncMock(
                 side_effect=[
-                    MagicMock(
-                        id="mem_1",
-                        container_tag="user_001",
-                        content="记忆1",
-                        metadata=json.dumps({"relations": {"updates": ["mem_2"]}}),
-                        is_static=True,
-                        created_at=None,
-                    ),
-                    MagicMock(
-                        id="mem_2",
-                        container_tag="user_001",
-                        content="记忆2",
-                        metadata=json.dumps({"relations": {"updates": ["mem_1"]}}),
-                        is_static=True,
-                        created_at=None,
-                    ),
+                    {
+                        "id": "mem_1",
+                        "container_tag": "user_001",
+                        "content": "记忆1",
+                        "metadata": {"relations": {"updates": ["mem_2"]}},
+                        "is_static": True,
+                        "created_at": None,
+                        "embedding": None,
+                        "is_latest": True,
+                        "valid_from": None,
+                        "valid_until": None,
+                        "confidence": 0.8,
+                        "is_forgotten": False,
+                        "version": 1,
+                        "root_memory_id": None,
+                        "source_count": 1,
+                        "is_inference": False,
+                    },
+                    {
+                        "id": "mem_2",
+                        "container_tag": "user_001",
+                        "content": "记忆2",
+                        "metadata": {"relations": {"updates": ["mem_1"]}},
+                        "is_static": True,
+                        "created_at": None,
+                        "embedding": None,
+                        "is_latest": True,
+                        "valid_from": None,
+                        "valid_until": None,
+                        "confidence": 0.8,
+                        "is_forgotten": False,
+                        "version": 1,
+                        "root_memory_id": None,
+                        "source_count": 1,
+                        "is_inference": False,
+                    },
                 ]
             )
 
             results = await self.store.traverse_memory_relations("mem_1", max_depth=5)
 
             assert len(results) == 2
+
+
+class TestTraverseEntityRelations:
+    """测试 traverse_entity_relations() 方法"""
+
+    def setup_method(self):
+        self.store = MemoryStore()
+
+    @pytest.mark.asyncio
+    async def test_traverse_entity_relations_single_hop(self):
+        """测试实体关系单跳遍历"""
+        entity_id = "00000000-0000-0000-0000-000000000001"
+
+        with patch("src.services.core.memory_store.db") as mock_db:
+            mock_db.fetchrow = AsyncMock(
+                return_value={
+                    "id": entity_id,
+                    "name": "张三",
+                    "type": "person",
+                    "container_tag": "user_001",
+                    "mention_count": 1,
+                    "confidence": 0.9,
+                    "created_at": None,
+                    "updated_at": None,
+                }
+            )
+            mock_db.fetch = AsyncMock(return_value=[])
+
+            results = await self.store.traverse_entity_relations(entity_id)
+
+            assert len(results) == 1
+            assert results[0].name == "张三"
+
+    @pytest.mark.asyncio
+    async def test_traverse_entity_relations_multi_hop(self):
+        """测试实体关系多跳遍历"""
+        entity_id_1 = "00000000-0000-0000-0000-000000000001"
+        entity_id_2 = "00000000-0000-0000-0000-000000000002"
+
+        with patch("src.services.core.memory_store.db") as mock_db:
+            mock_db.fetchrow = AsyncMock(
+                side_effect=[
+                    {
+                        "id": entity_id_1,
+                        "name": "张三",
+                        "type": "person",
+                        "container_tag": "user_001",
+                        "mention_count": 1,
+                        "confidence": 0.9,
+                        "created_at": None,
+                        "updated_at": None,
+                    },
+                    {
+                        "id": entity_id_2,
+                        "name": "字节跳动",
+                        "type": "organization",
+                        "container_tag": "user_001",
+                        "mention_count": 1,
+                        "confidence": 0.8,
+                        "created_at": None,
+                        "updated_at": None,
+                    },
+                ]
+            )
+            mock_db.fetch = AsyncMock(
+                side_effect=[
+                    [{"entity_id": entity_id_2}],
+                    [],
+                    [],
+                    [],
+                ]
+            )
+
+            results = await self.store.traverse_entity_relations(
+                entity_id_1, max_depth=2
+            )
+
+            assert len(results) == 2
+
+    @pytest.mark.asyncio
+    async def test_traverse_entity_relations_depth_limit(self):
+        """测试实体关系遍历深度限制"""
+        entity_id = "00000000-0000-0000-0000-000000000001"
+
+        with patch("src.services.core.memory_store.db") as mock_db:
+            mock_db.fetchrow = AsyncMock(
+                return_value={
+                    "id": entity_id,
+                    "name": "张三",
+                    "type": "person",
+                    "container_tag": "user_001",
+                    "mention_count": 1,
+                    "confidence": 0.9,
+                    "created_at": None,
+                    "updated_at": None,
+                }
+            )
+            mock_db.fetch = AsyncMock(return_value=[])
+
+            results = await self.store.traverse_entity_relations(entity_id, max_depth=1)
+
+            assert len(results) == 1
+
+    @pytest.mark.asyncio
+    async def test_traverse_entity_relations_type_filter(self):
+        """测试实体关系类型过滤"""
+        entity_id = "00000000-0000-0000-0000-000000000001"
+
+        with patch("src.services.core.memory_store.db") as mock_db:
+            mock_db.fetchrow = AsyncMock(
+                return_value={
+                    "id": entity_id,
+                    "name": "张三",
+                    "type": "person",
+                    "container_tag": "user_001",
+                    "mention_count": 1,
+                    "confidence": 0.9,
+                    "created_at": None,
+                    "updated_at": None,
+                }
+            )
+            mock_db.fetch = AsyncMock(return_value=[])
+
+            results = await self.store.traverse_entity_relations(
+                entity_id, relation_types=["works_at", "friend"]
+            )
+
+            assert len(results) == 1
+
+
+class TestGetEntitiesForMemories:
+    """测试 get_entities_for_memories() 方法"""
+
+    def setup_method(self):
+        self.store = MemoryStore()
+
+    @pytest.mark.asyncio
+    async def test_get_entities_for_memories_empty_list(self):
+        """测试空记忆列表"""
+        results = await self.store.get_entities_for_memories([])
+        assert results == []
+
+    @pytest.mark.asyncio
+    async def test_get_entities_for_memories_single_memory(self):
+        """测试单个记忆的实体获取"""
+        entity_id = "00000000-0000-0000-0000-000000000001"
+
+        with patch("src.services.core.memory_store.db") as mock_db:
+            mock_db.fetch = AsyncMock(
+                return_value=[
+                    {
+                        "id": entity_id,
+                        "name": "张三",
+                        "type": "person",
+                        "container_tag": "user_001",
+                        "mention_count": 2,
+                        "confidence": 0.9,
+                        "created_at": None,
+                        "updated_at": None,
+                    }
+                ]
+            )
+
+            results = await self.store.get_entities_for_memories(["mem_1"])
+
+            assert len(results) == 1
+            assert results[0].name == "张三"
+            assert results[0].type == "person"
+
+    @pytest.mark.asyncio
+    async def test_get_entities_for_memories_multiple_memories(self):
+        """测试多个记忆的实体获取"""
+        with patch("src.services.core.memory_store.db") as mock_db:
+            mock_db.fetch = AsyncMock(
+                return_value=[
+                    {
+                        "id": "00000000-0000-0000-0000-000000000001",
+                        "name": "张三",
+                        "type": "person",
+                        "container_tag": "user_001",
+                        "mention_count": 2,
+                        "confidence": 0.9,
+                        "created_at": None,
+                        "updated_at": None,
+                    },
+                    {
+                        "id": "00000000-0000-0000-0000-000000000002",
+                        "name": "北京",
+                        "type": "location",
+                        "container_tag": "user_001",
+                        "mention_count": 1,
+                        "confidence": 0.8,
+                        "created_at": None,
+                        "updated_at": None,
+                    },
+                ]
+            )
+
+            results = await self.store.get_entities_for_memories(["mem_1", "mem_2"])
+
+            assert len(results) == 2
+
+
+class TestFindMemoriesByEntities:
+    """测试 find_memories_by_entities() 方法"""
+
+    def setup_method(self):
+        self.store = MemoryStore()
+
+    @pytest.mark.asyncio
+    async def test_find_memories_by_entities_empty_list(self):
+        """测试空实体列表"""
+        results = await self.store.find_memories_by_entities([], "user_001")
+        assert results == []
+
+    @pytest.mark.asyncio
+    async def test_find_memories_by_entities_single_entity(self):
+        """测试单个实体的记忆查找"""
+        entity_id = "00000000-0000-0000-0000-000000000001"
+
+        with patch("src.services.core.memory_store.db") as mock_db:
+            mock_db.fetch = AsyncMock(
+                return_value=[
+                    {
+                        "id": "mem_1",
+                        "container_tag": "user_001",
+                        "content": "张三在北京工作",
+                        "embedding": None,
+                        "is_static": False,
+                        "is_latest": True,
+                        "valid_from": None,
+                        "valid_until": None,
+                        "metadata": {},
+                        "confidence": 0.8,
+                        "created_at": None,
+                        "is_forgotten": False,
+                    }
+                ]
+            )
+
+            results = await self.store.find_memories_by_entities(
+                [entity_id], "user_001"
+            )
+
+            assert len(results) == 1
+            assert "张三" in results[0].content
+
+    @pytest.mark.asyncio
+    async def test_find_memories_by_entities_multiple_entities(self):
+        """测试多个实体的记忆查找"""
+        entity_id_1 = "00000000-0000-0000-0000-000000000001"
+        entity_id_2 = "00000000-0000-0000-0000-000000000002"
+
+        with patch("src.services.core.memory_store.db") as mock_db:
+            mock_db.fetch = AsyncMock(
+                return_value=[
+                    {
+                        "id": "mem_1",
+                        "container_tag": "user_001",
+                        "content": "张三在字节跳动工作",
+                        "embedding": None,
+                        "is_static": False,
+                        "is_latest": True,
+                        "valid_from": None,
+                        "valid_until": None,
+                        "metadata": {},
+                        "confidence": 0.8,
+                        "created_at": None,
+                        "is_forgotten": False,
+                    }
+                ]
+            )
+
+            results = await self.store.find_memories_by_entities(
+                [entity_id_1, entity_id_2], "user_001"
+            )
+
+            assert len(results) == 1
+
+    @pytest.mark.asyncio
+    async def test_find_memories_by_entities_limit(self):
+        """测试记忆数量限制"""
+        entity_id = "00000000-0000-0000-0000-000000000001"
+
+        with patch("src.services.core.memory_store.db") as mock_db:
+            mock_db.fetch = AsyncMock(
+                return_value=[
+                    {
+                        "id": f"mem_{i}",
+                        "container_tag": "user_001",
+                        "content": f"记忆{i}",
+                        "embedding": None,
+                        "is_static": False,
+                        "is_latest": True,
+                        "valid_from": None,
+                        "valid_until": None,
+                        "metadata": {},
+                        "confidence": 0.8,
+                        "created_at": None,
+                        "is_forgotten": False,
+                    }
+                    for i in range(3)
+                ]
+            )
+
+            results = await self.store.find_memories_by_entities(
+                [entity_id], "user_001", limit=3
+            )
+
+            assert len(results) == 3
+
+    @pytest.mark.asyncio
+    async def test_find_memories_by_entities_container_isolation(self):
+        """测试容器隔离"""
+        entity_id = "00000000-0000-0000-0000-000000000001"
+
+        with patch("src.services.core.memory_store.db") as mock_db:
+            mock_db.fetch = AsyncMock(return_value=[])
+
+            results = await self.store.find_memories_by_entities(
+                [entity_id], "user_002"
+            )
+
+            assert results == []
+            call_args = mock_db.fetch.call_args
+            assert "user_002" in str(call_args)

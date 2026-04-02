@@ -44,6 +44,20 @@ class Memory:
     is_inference: bool = False
 
 
+@dataclass
+class Entity:
+    """实体数据类"""
+
+    id: str
+    name: str
+    type: str
+    container_tag: str
+    mention_count: int = 1
+    confidence: float = 0.8
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
 class MemoryStore:
     def __init__(self):
         self.embedding_client = get_embedding_client()
@@ -806,6 +820,151 @@ class MemoryStore:
 
         await _traverse(memory_id, 0)
         return results[:max_nodes]
+
+    async def traverse_entity_relations(
+        self,
+        entity_id: str,
+        max_depth: int = 2,
+        max_nodes: int = 5,
+        relation_types: Optional[List[str]] = None,
+        container_tag: Optional[str] = None,
+    ) -> List[Entity]:
+        visited = set()
+        results = []
+
+        async def _traverse(current_id: str, depth: int):
+            if depth > max_depth or len(results) >= max_nodes:
+                return
+
+            if current_id in visited:
+                return
+            visited.add(current_id)
+
+            row = await db.fetchrow(
+                "SELECT * FROM entities WHERE id = $1",
+                current_id,
+            )
+            if not row:
+                return
+
+            results.append(
+                Entity(
+                    id=str(row["id"]),
+                    name=row["name"],
+                    type=row["type"],
+                    container_tag=row["container_tag"],
+                    mention_count=row["mention_count"],
+                    confidence=row["confidence"],
+                    created_at=row["created_at"],
+                    updated_at=row["updated_at"],
+                )
+            )
+
+            query = """
+                SELECT to_entity_id as entity_id FROM entity_relations
+                WHERE from_entity_id = $1
+            """
+            params: List[Any] = [current_id]
+
+            if relation_types:
+                query += " AND relation_type = ANY($2)"
+                params.append(list(relation_types))
+
+            if container_tag:
+                param_idx = len(params) + 1
+                query += f" AND container_tag = ${param_idx}"
+                params.append(container_tag)
+
+            related = await db.fetch(query, *params)
+
+            for rel in related:
+                if len(results) >= max_nodes:
+                    return
+                await _traverse(str(rel["entity_id"]), depth + 1)
+
+            reverse_query = """
+                SELECT from_entity_id as entity_id FROM entity_relations
+                WHERE to_entity_id = $1
+            """
+            reverse_params: List[Any] = [current_id]
+
+            if relation_types:
+                reverse_query += " AND relation_type = ANY($2)"
+                reverse_params.append(list(relation_types))
+
+            if container_tag:
+                param_idx = len(reverse_params) + 1
+                reverse_query += f" AND container_tag = ${param_idx}"
+                reverse_params.append(container_tag)
+
+            reverse_related = await db.fetch(reverse_query, *reverse_params)
+
+            for rel in reverse_related:
+                if len(results) >= max_nodes:
+                    return
+                await _traverse(str(rel["entity_id"]), depth + 1)
+
+        await _traverse(entity_id, 0)
+        return results[:max_nodes]
+
+    async def get_entities_for_memories(
+        self,
+        memory_ids: List[str],
+    ) -> List[Entity]:
+        if not memory_ids:
+            return []
+
+        rows = await db.fetch(
+            """
+            SELECT DISTINCT e.* FROM entities e
+            JOIN memory_entities me ON e.id = me.entity_id
+            WHERE me.memory_id = ANY($1)
+            """,
+            memory_ids,
+        )
+
+        return [
+            Entity(
+                id=str(row["id"]),
+                name=row["name"],
+                type=row["type"],
+                container_tag=row["container_tag"],
+                mention_count=row["mention_count"],
+                confidence=row["confidence"],
+                created_at=row["created_at"],
+                updated_at=row["updated_at"],
+            )
+            for row in rows
+        ]
+
+    async def find_memories_by_entities(
+        self,
+        entity_ids: List[str],
+        container_tag: str,
+        limit: int = 10,
+    ) -> List[Memory]:
+        if not entity_ids:
+            return []
+
+        rows = await db.fetch(
+            """
+            SELECT m.*, COUNT(me.entity_id) as entity_match_count
+            FROM memories m
+            JOIN memory_entities me ON m.id = me.memory_id
+            WHERE me.entity_id = ANY($1)
+            AND m.container_tag = $2
+            AND m.is_latest = TRUE
+            AND m.is_forgotten = FALSE
+            GROUP BY m.id
+            ORDER BY entity_match_count DESC, m.created_at DESC
+            LIMIT $3
+            """,
+            entity_ids,
+            container_tag,
+            limit,
+        )
+
+        return [self._row_to_memory(row) for row in rows]
 
 
 memory_store = MemoryStore()

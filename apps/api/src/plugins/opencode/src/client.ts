@@ -87,9 +87,13 @@ export interface ContextInjectConfig {
   max_chunks?: number;
   enable_semantic_dedup?: boolean;
   dedup_threshold?: number;
-  enable_graph_recall?: boolean;
-  graph_max_depth?: number;
-  graph_max_nodes?: number;
+  enable_memory_graph?: boolean;
+  memory_graph_depth?: number;
+  memory_graph_nodes?: number;
+  enable_entity_graph?: boolean;
+  entity_graph_depth?: number;
+  entity_graph_nodes?: number;
+  memory_similarity_threshold?: number;
   language?: string;
   enable_chunks_search?: boolean;
   chunks_similarity_threshold?: number;
