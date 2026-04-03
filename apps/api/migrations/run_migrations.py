@@ -36,7 +36,7 @@ def split_sql_statements(sql: str) -> list:
 
     while i < len(sql):
         # 处理单引号字符串（转义的单引号 '' 不结束字符串）
-        if sql[i] == "'" and not in_dollar_quote:
+        if sql[i] == "'":
             if i + 1 < len(sql) and sql[i + 1] == "'":
                 # 转义的单引号，跳过两个
                 current_stmt.append("''")
