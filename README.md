@@ -1,8 +1,8 @@
 # Memory Recall - 统一记忆系统
 
-**版本**：v5.1.3  
+**版本**：v5.1.4  
 **状态**：生产就绪  
-**最后更新**：2026-04-02
+**最后更新**：2026-04-03
 
 ---
 
@@ -215,6 +215,51 @@ python migrations/run_migrations.py
 cd apps/api
 source venv/bin/activate
 uvicorn main:app --host 0.0.0.0 --port 8000
+```
+
+---
+
+## Docker 部署
+
+### 使用 Docker Compose（推荐）
+
+```bash
+cd apps/api
+
+# 1. 启动所有服务
+docker-compose up -d
+
+# 2. 查看服务状态
+docker-compose ps
+
+# 3. 运行数据库迁移
+docker-compose exec api python migrations/run_migrations.py
+
+# 4. 查看日志
+docker-compose logs -f api
+```
+
+### 服务地址
+
+| 服务 | 地址 | 说明 |
+|------|------|------|
+| API | http://localhost:8000 | FastAPI 服务 |
+| API 文档 | http://localhost:8000/docs | Swagger UI |
+| pgAdmin | http://localhost:5050 | 数据库管理界面 |
+| PostgreSQL | localhost:5432 | 数据库连接 |
+
+### pgAdmin 登录
+
+- **邮箱**: admin@local.com
+- **密码**: admin123
+
+### 停止服务
+
+```bash
+docker-compose down
+
+# 删除数据卷（清空数据）
+docker-compose down -v
 ```
 
 ---

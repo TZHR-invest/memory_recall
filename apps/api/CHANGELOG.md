@@ -2,6 +2,23 @@
 
 All notable changes to Memory Recall will be documented in this file.
 
+## [5.1.4] - 2026-04-03
+
+### Bug Fixes
+
+#### 数据库迁移修复
+- 修复 `002_add_indexes.sql` 中错误的列名（`entity_type` → `type`, `relationship` → `relation_type`）
+- 修复 `002_add_indexes.sql` 迁移顺序问题（移除 `memories` 表索引，表在迁移 007 才创建）
+- 在 `003_add_embedding.sql` 中添加 `CREATE EXTENSION IF NOT EXISTS vector;`
+
+#### Docker 部署优化
+- 添加 `docker-entrypoint-initdb.d/00_install_extensions.sql` 自动安装 pgvector 扩展
+- 更新 `docker-compose.yml` 挂载初始化脚本目录
+
+#### 文档更新
+- README 添加 Docker 部署说明
+- 添加服务地址和 pgAdmin 登录信息
+
 ## [5.1.3] - 2026-04-02
 
 ### Code Cleanup
