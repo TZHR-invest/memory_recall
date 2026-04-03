@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS api_keys (
     key_hash VARCHAR(64) NOT NULL,
     key_prefix VARCHAR(12) NOT NULL,
     name VARCHAR(100),
-    permissions JSONB DEFAULT '["read"]'::jsonb,
+    permissions TEXT[] DEFAULT ARRAY['read']::TEXT[],
     is_active BOOLEAN DEFAULT TRUE,
     is_test BOOLEAN DEFAULT FALSE,
     last_used_at TIMESTAMP WITH TIME ZONE,
@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS memories (
     container_tag VARCHAR(100) NOT NULL,
     content TEXT NOT NULL,
     embedding vector(1024),
+    embedding_model VARCHAR(100),
     
     -- Temporal semantics
     is_static BOOLEAN DEFAULT FALSE,
@@ -97,6 +98,7 @@ CREATE TRIGGER trigger_memories_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION update_memories_updated_at();
 
+COMMENT ON COLUMN memories.embedding_model IS 'Embedding model used for vectorization (e.g., doubao-embedding-vision-251215)';
 COMMENT ON COLUMN memories.version IS 'Version number for memory evolution tracking';
 COMMENT ON COLUMN memories.root_memory_id IS 'Reference to the original memory in version chain';
 COMMENT ON COLUMN memories.source_count IS 'Number of sources contributing to this memory';
@@ -160,7 +162,6 @@ CREATE TABLE IF NOT EXISTS documents (
 CREATE INDEX IF NOT EXISTS idx_documents_container ON documents(container_tag);
 CREATE INDEX IF NOT EXISTS idx_documents_hash ON documents(content_hash);
 CREATE INDEX IF NOT EXISTS idx_documents_url ON documents(container_tag, url);
-CREATE INDEX IF NOT EXISTS idx_documents_source ON documents(container_tag, source);
 
 COMMENT ON TABLE documents IS 'Document metadata storage. Actual content stored in chunks table.';
 COMMENT ON COLUMN documents.doc_type IS 'Document type: text, markdown, pdf, etc.';

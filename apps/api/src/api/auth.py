@@ -129,25 +129,33 @@ class AuthService:
         key_id = str(uuid.uuid4())
         now = datetime.utcnow()
 
-        await self.db.execute(
-            """
-            INSERT INTO api_keys (
-                id, user_id, user_name, key_hash, key_prefix, name, 
-                permissions, is_active, is_test, expires_at, created_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-            """,
-            key_id,
-            user_id,
-            user_name,
-            key_hash,
-            prefix,
-            name,
-            list(valid_perms),
-            True,
-            is_test,
-            expires_at,
-            now,
-        )
+        try:
+            await self.db.execute(
+                """
+                INSERT INTO api_keys (
+                    id, user_id, user_name, key_hash, key_prefix, name, 
+                    permissions, is_active, is_test, expires_at, created_at
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                """,
+                key_id,
+                user_id,
+                user_name,
+                key_hash,
+                prefix,
+                name,
+                list(valid_perms),
+                True,
+                is_test,
+                expires_at,
+                now,
+            )
+        except Exception as e:
+            print(f"❌ Failed to create API key: {e}")
+            print(f"   Parameters: user_id={user_id}, permissions={list(valid_perms)}")
+            print(f"   Error type: {type(e).__name__}")
+            import traceback
+            print(traceback.format_exc())
+            raise
 
         return APIKeyCreated(
             id=key_id,
