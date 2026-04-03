@@ -154,6 +154,7 @@ class AuthService:
             print(f"   Parameters: user_id={user_id}, permissions={list(valid_perms)}")
             print(f"   Error type: {type(e).__name__}")
             import traceback
+
             print(traceback.format_exc())
             raise
 
@@ -348,16 +349,29 @@ def verify_container_ownership(
     container_tag: str,
     api_key_id: str,
 ) -> str:
-    """Verify that container_tag matches the API key ID.
+    """Verify that container_tag belongs to the API key.
 
-    One API key = one container. The container_tag must equal the API key's ID.
+    Supports two modes:
+    1. Exact match: container_tag == api_key_id (user profile/memories)
+    2. Prefix match: container_tag starts with api_key_id + "_" (project isolation)
+
+    Examples:
+        api_key_id = "abc-123"
+        ✅ "abc-123"                    (user level)
+        ✅ "abc-123_project-memory_recall"  (project level)
+        ❌ "xyz-other"                  (other key's container)
     """
-    if container_tag != api_key_id:
-        raise HTTPException(
-            status_code=403,
-            detail=f"Container access denied. Your API key can only access container '{api_key_id}'.",
-        )
-    return container_tag
+    if container_tag == api_key_id:
+        return container_tag
+
+    prefix = f"{api_key_id}_"
+    if container_tag.startswith(prefix):
+        return container_tag
+
+    raise HTTPException(
+        status_code=403,
+        detail=f"Container access denied. Container must start with '{api_key_id}_' or equal '{api_key_id}'.",
+    )
 
 
 # Singleton

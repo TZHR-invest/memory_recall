@@ -73,6 +73,7 @@ export interface Config {
   apiKey: string | null;
   baseUrl: string;
   userName: string;
+  keyId: string | null;
   userContainerTag: string | null;
   projectContainerTag: string | null;
   similarityThreshold: number;
@@ -114,6 +115,7 @@ export interface Config {
 const DEFAULT_CONFIG: Omit<Config, "apiKey"> = {
   baseUrl: "http://localhost:8000",
   userName: "User",
+  keyId: null,
   userContainerTag: null,
   projectContainerTag: null,
   similarityThreshold: 0.4,
@@ -249,6 +251,10 @@ function buildRawConfig(
       (overrides.userName as string) ||
       (fileConfig.userName as string) ||
       DEFAULT_CONFIG.userName,
+    keyId:
+      (overrides.keyId as string | null) ||
+      (fileConfig.keyId as string | null) ||
+      DEFAULT_CONFIG.keyId,
     userContainerTag:
       (overrides.userContainerTag as string | null) ||
       (fileConfig.userContainerTag as string | null) ||
@@ -478,13 +484,29 @@ export function isConfigured(config: Config): boolean {
 }
 
 export function getUserTag(config: Config): string {
-  return config.userContainerTag || `user-${config.userName.toLowerCase().replace(/\s+/g, "-")}`;
+  // 优先使用显式配置的 userContainerTag（向后兼容）
+  if (config.userContainerTag) {
+    return config.userContainerTag;
+  }
+  // 其次使用 keyId（推荐方式）
+  if (config.keyId) {
+    return config.keyId;
+  }
+  // 兜底：使用 userName 生成
+  return `user-${config.userName.toLowerCase().replace(/\s+/g, "-")}`;
 }
 
 export function getProjectTag(config: Config, directory: string): string {
+  // 优先使用显式配置的 projectContainerTag（向后兼容）
   if (config.projectContainerTag) {
     return config.projectContainerTag;
   }
+  // 其次使用 keyId + 项目名生成（推荐方式）
+  if (config.keyId) {
+    const projectName = path.basename(directory);
+    return `${config.keyId}_project-${projectName.toLowerCase().replace(/\s+/g, "-")}`;
+  }
+  // 兜底：仅使用项目名（需要后端允许）
   const projectName = path.basename(directory);
   return `project-${projectName.toLowerCase().replace(/\s+/g, "-")}`;
 }

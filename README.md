@@ -1,8 +1,8 @@
 # Memory Recall - 统一记忆系统
 
-**版本**：v5.1.5  
+**版本**：v5.1.6  
 **状态**：生产就绪  
-**最后更新**：2026-04-03
+**最后更新**：2026-04-04
 
 ---
 
@@ -426,11 +426,14 @@ bunx memory-recall-opencode install
 
 ### 配置
 
+插件使用 `keyId` 自动生成项目隔离的 container_tag：
+
 ```json
 {
     "apiKey": "your-api-key",
     "baseUrl": "http://localhost:8000",
-    "containerTagPrefix": "opencode",
+    "userName": "YourName",
+    "keyId": "b262d2f1-6232-49f4-820e-3f5e4cf6b956",
     "injectionStrategy": "smart",
     "initialInjection": {
         "profile": true,
@@ -449,6 +452,24 @@ bunx memory-recall-opencode install
     "graphMaxDepth": 2,
     "graphMaxNodes": 5
 }
+```
+
+### 项目隔离（v5.1.6 新增）
+
+插件自动为每个项目生成独立的 container_tag，实现数据隔离：
+
+```
+keyId: b262d2f1-6232-49f4-820e-3f5e4cf6b956
+
+用户画像 container: b262d2f1-6232-49f4-820e-3f5e4cf6b956
+项目 A container: b262d2f1-6232-49f4-820e-3f5e4cf6b956_project-memory_recall
+项目 B container: b262d2f1-6232-49f4-820e-3f5e4cf6b956_project-shuihu_card_game
+```
+
+**隔离效果**：
+- 用户画像：跨项目共享（偏好、习惯等）
+- 项目记忆：按项目隔离（架构决策、Session Summary 等）
+- 项目文档：按项目隔离（README、AGENTS.md 等）
 ```
 
 ### 智能注入策略
@@ -734,7 +755,26 @@ client.close()
 
 ## 关键变更
 
-### v5.1.1 (2026-04-02)
+### v5.1.6 (2026-04-04)
+
+#### 新增功能
+
+- **项目隔离**: 自动为每个项目生成独立的 container_tag，项目记忆和文档按项目隔离
+- **keyId 配置**: 插件配置改用 `keyId`，自动生成 `userTag` 和 `projectTag`
+- **后端验证增强**: `verify_container_ownership` 支持前缀匹配，允许 `{keyId}_*` 格式
+
+#### 架构改进
+
+- **Session Summary 过滤**: 后端 `context_inject_service.py` 自动过滤 Session Summary
+- **向后兼容**: 支持旧的 `userContainerTag`/`projectContainerTag` 配置
+
+#### 插件版本
+
+- **OpenCode 插件**: 1.7.8 → 1.7.9
+  - CLI 使用 `keyId` 配置
+  - 自动生成项目隔离的 container_tag
+
+### v5.1.5 (2026-04-03)
 
 #### 新增功能
 
@@ -831,4 +871,4 @@ MIT License
 
 *创建者：颓弟*
 *创建时间：2026-03-19*
-*最后更新：2026-04-02*
+*最后更新：2026-04-04*
