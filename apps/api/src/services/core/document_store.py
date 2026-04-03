@@ -82,11 +82,28 @@ class DocumentStore:
         word_count = len(content.split())
         content_hash = compute_content_hash(content)
 
-        if url:
-            existing = await self.find_by_url(container_tag, url)
+        # Priority 1: Deduplicate by source (document path)
+        if source:
+            existing = await self.find_by_source(container_tag, source)
             if existing:
+                # Content changed → update document and chunks
+                if existing.content_hash != content_hash:
+                    updated, unchanged = await self.update(
+                        existing.id,
+                        content,
+                        title=title,
+                        metadata=metadata,
+                        auto_chunk=auto_chunk,
+                        chunk_config=chunk_config,
+                        generate_embeddings=generate_embeddings,
+                    )
+                    if updated is None:
+                        raise RuntimeError(f"Failed to update document {existing.id}")
+                    return updated, unchanged
+                # Content unchanged → return existing
                 return existing, True
 
+        # Priority 2: Deduplicate by content hash (same content, no source)
         existing = await self.find_by_content_hash(container_tag, content_hash)
         if existing:
             return existing, True
@@ -279,6 +296,20 @@ class DocumentStore:
             """,
             container_tag,
             content_hash,
+        )
+        return self._row_to_document(row) if row else None
+
+    async def find_by_source(
+        self, container_tag: str, source: str
+    ) -> Optional[Document]:
+        """Find document by source path within a container."""
+        row = await db.fetchrow(
+            """
+            SELECT * FROM documents
+            WHERE container_tag = $1 AND source = $2
+            """,
+            container_tag,
+            source,
         )
         return self._row_to_document(row) if row else None
 

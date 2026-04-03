@@ -160,6 +160,7 @@ CREATE TABLE IF NOT EXISTS documents (
 CREATE INDEX IF NOT EXISTS idx_documents_container ON documents(container_tag);
 CREATE INDEX IF NOT EXISTS idx_documents_hash ON documents(content_hash);
 CREATE INDEX IF NOT EXISTS idx_documents_url ON documents(container_tag, url);
+CREATE INDEX IF NOT EXISTS idx_documents_source ON documents(container_tag, source);
 
 COMMENT ON TABLE documents IS 'Document metadata storage. Actual content stored in chunks table.';
 COMMENT ON COLUMN documents.doc_type IS 'Document type: text, markdown, pdf, etc.';
