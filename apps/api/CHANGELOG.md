@@ -2,6 +2,30 @@
 
 All notable changes to Memory Recall will be documented in this file.
 
+## [5.1.5] - 2026-04-03
+
+### Breaking Changes
+
+#### 废弃 Migration 机制
+- **删除** `migrations/` 目录
+- **使用** `schema.sql` + `init_db.py` 初始化新环境
+- 新环境部署：`python init_db.py`
+
+#### 数据库结构更新
+- **api_keys**: 添加 `user_name` 字段
+- **memories**: 保留版本控制字段（`version`, `root_memory_id`, `source_count`, `is_inference`）
+- **memory_profiles**: 保留 `entity_context` 字段
+- **documents**: 重构为元数据表（添加 `title`, `url`, `source`, `doc_type`, `token_count`, `word_count`, `chunk_count`）
+- **chunks**: 新增表，存储文档分块和嵌入
+
+### Removed
+- `migrations/` 目录（26个迁移文件已废弃）
+- `container_registry` 表（不再需要）
+
+### Added
+- `schema.sql`：完整的数据库结构定义
+- `chunks` 表：文档内容分块存储
+
 ## [5.1.4] - 2026-04-03
 
 ### Bug Fixes

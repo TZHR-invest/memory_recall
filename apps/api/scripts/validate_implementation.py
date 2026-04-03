@@ -1,5 +1,5 @@
 """
-Validation Script for Memory Recall v4.0.0
+Validation Script for Memory Recall v5.1.5
 
 Run this script to validate the implementation:
     python scripts/validate_implementation.py
@@ -60,171 +60,143 @@ def check_directory_exists(path: str) -> bool:
     return Path(path).is_dir()
 
 
-def validate_phase_1_3(result: ValidationResult):
-    """Validate: Database Schema Clean"""
-    print("\n[Phase 1-3] Database Schema Clean...")
+def validate_database_schema(result: ValidationResult):
+    """Validate: Database Schema"""
+    print("\n[Database Schema] Checking schema.sql...")
 
-    if check_file_exists("migrations/017_clean_and_evolve.sql"):
-        result.add("Migration 017 exists", PASS)
+    schema_content = ""
+    schema_path = Path("schema.sql")
+    if schema_path.exists():
+        schema_content = schema_path.read_text()
+        result.add("schema.sql exists", PASS)
     else:
-        result.add("Migration 017 exists", FAIL, "File not found")
+        result.add("schema.sql exists", FAIL, "File not found")
+        return
 
-    if not check_directory_exists("src/openclaw_plugin"):
-        result.add("openclaw_plugin deleted", PASS)
-    else:
-        result.add("openclaw_plugin deleted", FAIL, "Directory still exists")
-
-    if not check_file_exists("src/services/memory_service.py"):
-        result.add("Legacy memory_service.py deleted", PASS)
-    else:
-        result.add("Legacy memory_service.py deleted", FAIL, "File still exists")
-
-
-def validate_phase_4_6(result: ValidationResult):
-    """Validate: Schema Evolution"""
-    print("\n[Phase 4-6] Schema Evolution...")
-
-    migration_content = ""
-    migration_path = Path("migrations/017_clean_and_evolve.sql")
-    if migration_path.exists():
-        migration_content = migration_path.read_text()
-
+    # Check required tables
     tables = [
-        "api_keys",
-        "memory_relations",
-        "user_profiles",
-        "facts",
-        "notifications",
-        "content_chunks",
-    ]
-    for table in tables:
-        if f"CREATE TABLE IF NOT EXISTS {table}" in migration_content:
-            result.add(f"Table {table} defined", PASS)
-        else:
-            result.add(f"Table {table} defined", FAIL, "Not found in migration")
-
-    columns = [
-        "event_date",
-        "expiration_date",
-        "memory_lifespan",
-        "memory_behavior",
-        "chunk_count",
-    ]
-    for col in columns:
-        if col in migration_content:
-            result.add(f"Column {col} defined", PASS)
-        else:
-            result.add(f"Column {col} defined", FAIL, "Not found in migration")
-
-
-def validate_phase_7_8(result: ValidationResult):
-    """Validate: Core Refactor + Auth"""
-    print("\n[Phase 7-8] Core Refactor + Auth...")
-
-    if check_directory_exists("src/services/core"):
-        result.add("services/core/ directory exists", PASS)
-    else:
-        result.add("services/core/ directory exists", FAIL)
-
-    if check_file_exists("src/services/core/memory_service.py"):
-        result.add("memory_service.py renamed", PASS)
-    else:
-        result.add("memory_service.py renamed", FAIL)
-
-    if check_file_exists("src/api/auth.py"):
-        result.add("auth.py exists", PASS)
-    else:
-        result.add("auth.py exists", FAIL)
-
-
-def validate_phase_9(result: ValidationResult):
-    """Validate: API v1"""
-    print("\n[Phase 9] API v1 Endpoints...")
-
-    endpoints = [
-        "src/api/v1/auth.py",
-        "src/api/v1/memories.py",
-        "src/api/v1/recall.py",
-        "src/api/v1/containers.py",
-        "src/api/v1/relations.py",
-        "src/api/v1/profile.py",
-        "src/api/v1/notifications.py",
+        ("api_keys", "API密钥管理"),
+        ("memories", "核心记忆存储"),
+        ("memory_relations", "记忆关系"),
+        ("memory_profiles", "用户画像"),
+        ("documents", "文档元数据"),
+        ("chunks", "文档分块"),
+        ("entities", "实体/知识图谱"),
+        ("entity_relations", "实体关系"),
+        ("memory_entities", "记忆-实体关联"),
     ]
 
-    for endpoint in endpoints:
-        if check_file_exists(endpoint):
-            result.add(f"{Path(endpoint).name} exists", PASS)
+    for table, desc in tables:
+        if f"CREATE TABLE IF NOT EXISTS {table}" in schema_content:
+            result.add(f"Table {table} ({desc})", PASS)
         else:
-            result.add(f"{Path(endpoint).name} exists", FAIL)
+            result.add(f"Table {table} ({desc})", FAIL, "Not found in schema")
+
+    # Check key fields
+    key_fields = [
+        ("memories.version", "版本控制"),
+        ("memories.root_memory_id", "根记忆ID"),
+        ("memories.is_inference", "推断标记"),
+        ("memory_profiles.entity_context", "实体上下文"),
+        ("api_keys.user_name", "用户名"),
+        ("chunks.embedding", "分块嵌入"),
+    ]
+
+    for field, desc in key_fields:
+        if field in schema_content:
+            result.add(f"Field {field} ({desc})", PASS)
+        else:
+            result.add(f"Field {field} ({desc})", FAIL, "Not found in schema")
 
 
-def validate_phase_10_17(result: ValidationResult):
-    """Validate: Evolution Services"""
-    print("\n[Phase 10-17] Evolution Services...")
+def validate_core_services(result: ValidationResult):
+    """Validate: Core Services"""
+    print("\n[Core Services] Checking service files...")
 
     services = [
-        "src/services/evolution/user_profile_service.py",
-        "src/services/evolution/temporal_service.py",
-        "src/services/evolution/forgetting_service.py",
-        "src/services/evolution/chunking_service.py",
-        "src/services/evolution/fact_extraction_service.py",
-        "src/services/evolution/importance_service.py",
-        "src/services/evolution/fusion_service.py",
-        "src/services/evolution/memory_behavior_service.py",
+        ("src/services/core/memory_store.py", "记忆存储"),
+        ("src/services/core/relation_service.py", "关系服务"),
+        ("src/services/core/profile_service.py", "画像服务"),
+        ("src/services/core/document_store.py", "文档存储"),
+        ("src/services/core/entity_extraction.py", "实体提取"),
+        ("src/services/core/llm_entity_extraction.py", "LLM实体提取"),
     ]
 
-    for service in services:
+    for service, desc in services:
         if check_file_exists(service):
-            result.add(f"{Path(service).stem} exists", PASS)
+            result.add(f"Service: {desc}", PASS)
         else:
-            result.add(f"{Path(service).stem} exists", FAIL)
+            result.add(f"Service: {desc}", FAIL, f"Missing {service}")
 
 
-def validate_phase_18(result: ValidationResult):
-    """Validate: Background Tasks"""
-    print("\n[Phase 18] Background Tasks...")
+def validate_api_endpoints(result: ValidationResult):
+    """Validate: API Endpoints"""
+    print("\n[API Endpoints] Checking endpoint files...")
 
-    if check_file_exists("src/background/scheduler.py"):
-        result.add("scheduler.py exists", PASS)
+    endpoints = [
+        ("src/api/memories.py", "记忆接口"),
+        ("src/api/auth.py", "认证接口"),
+        ("src/api/graph.py", "图谱接口"),
+        ("src/api/health.py", "健康检查"),
+    ]
+
+    for endpoint, desc in endpoints:
+        if check_file_exists(endpoint):
+            result.add(f"Endpoint: {desc}", PASS)
+        else:
+            result.add(f"Endpoint: {desc}", FAIL, f"Missing {endpoint}")
+
+
+def validate_initialization(result: ValidationResult):
+    """Validate: Initialization Files"""
+    print("\n[Initialization] Checking init files...")
+
+    if check_file_exists("init_db.py"):
+        result.add("init_db.py exists", PASS)
     else:
-        result.add("scheduler.py exists", FAIL)
+        result.add("init_db.py exists", FAIL, "File not found")
 
-
-def validate_phase_23_25(result: ValidationResult):
-    """Validate: Tests + Docs + Release"""
-    print("\n[Phase 23-25] Tests + Docs + Release...")
-
-    if check_file_exists("tests/test_v1/test_auth.py"):
-        result.add("test_auth.py exists", PASS)
+    if check_file_exists("docker-entrypoint-initdb.d/schema.sql"):
+        result.add("Docker init schema.sql", PASS)
     else:
-        result.add("test_auth.py exists", SKIP, "Optional")
+        result.add("Docker init schema.sql", FAIL, "File not found")
 
-    if check_file_exists("CHANGELOG.md"):
-        result.add("CHANGELOG.md exists", PASS)
+    if not check_directory_exists("migrations"):
+        result.add("migrations/ directory removed", PASS)
     else:
-        result.add("CHANGELOG.md exists", FAIL)
+        result.add("migrations/ directory removed", FAIL, "Directory still exists")
 
-    if check_file_exists("docs/DATABASE_SCHEMA.md"):
-        result.add("DATABASE_SCHEMA.md exists", PASS)
-    else:
-        result.add("DATABASE_SCHEMA.md exists", FAIL)
+
+def validate_documentation(result: ValidationResult):
+    """Validate: Documentation"""
+    print("\n[Documentation] Checking docs...")
+
+    docs = [
+        ("README.md", "主文档"),
+        ("CHANGELOG.md", "变更日志"),
+        ("docs/DEPLOYMENT.md", "部署文档"),
+    ]
+
+    for doc, desc in docs:
+        if check_file_exists(doc):
+            result.add(f"Doc: {desc}", PASS)
+        else:
+            result.add(f"Doc: {desc}", FAIL, f"Missing {doc}")
 
 
 async def main():
     print("=" * 60)
-    print("MEMORY RECALL v4.0.0 - VALIDATION SCRIPT")
+    print("MEMORY RECALL v5.1.5 - VALIDATION SCRIPT")
     print(f"Run Time: {datetime.now().isoformat()}")
     print("=" * 60)
 
     result = ValidationResult()
 
-    validate_phase_1_3(result)
-    validate_phase_4_6(result)
-    validate_phase_7_8(result)
-    validate_phase_9(result)
-    validate_phase_10_17(result)
-    validate_phase_18(result)
-    validate_phase_23_25(result)
+    validate_database_schema(result)
+    validate_core_services(result)
+    validate_api_endpoints(result)
+    validate_initialization(result)
+    validate_documentation(result)
 
     success = result.print_report()
 
