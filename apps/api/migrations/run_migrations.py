@@ -33,15 +33,12 @@ def split_sql_statements(sql: str) -> list:
     current_tag = None
 
     while i < len(sql):
-        # 检查 dollar quote 开始/结束
         if sql[i] == "$":
-            # 匹配 $tag$ 或 $$
             tag_match = re.match(r"\$([a-zA-Z_][a-zA-Z0-9_]*)?\$", sql[i:])
             if tag_match:
-                tag = tag_match.group(1)  # None for $$, or tag name
+                tag = tag_match.group(1)
 
                 if not in_dollar_quote:
-                    # 进入 dollar quote
                     in_dollar_quote = True
                     current_tag = tag
                     end_pos = i + len(tag_match.group(0))
@@ -49,7 +46,6 @@ def split_sql_statements(sql: str) -> list:
                     i = end_pos
                     continue
                 elif tag == current_tag:
-                    # 退出 dollar quote（标签必须匹配）
                     in_dollar_quote = False
                     current_tag = None
                     end_pos = i + len(tag_match.group(0))
@@ -57,7 +53,6 @@ def split_sql_statements(sql: str) -> list:
                     i = end_pos
                     continue
 
-        # 处理分号（在 dollar quote 外）
         if sql[i] == ";" and not in_dollar_quote:
             current_stmt.append(";")
             stmt = "".join(current_stmt).strip()
@@ -69,13 +64,18 @@ def split_sql_statements(sql: str) -> list:
 
         i += 1
 
-    # 处理最后一个语句
     if current_stmt:
         stmt = "".join(current_stmt).strip()
         if stmt and stmt != ";":
             statements.append(stmt)
 
-    return statements
+    # 过滤掉纯注释的语句
+    def is_valid_statement(stmt: str) -> bool:
+        lines = stmt.split("\n")
+        code_lines = [l for l in lines if l.strip() and not l.strip().startswith("--")]
+        return len(code_lines) > 0
+
+    return [s for s in statements if is_valid_statement(s)]
 
 
 async def run_migration(migration_file: str):
