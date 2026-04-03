@@ -29,37 +29,36 @@ def split_sql_statements(sql: str) -> list:
     """
     statements = []
     current_statement = []
-    dollar_quote_depth = 0  # 跟踪 $$ 嵌套层级
+    in_dollar_quote = False  # 是否在 $$ 代码块内
 
     for line in sql.split("\n"):
         stripped_line = line.strip()
 
         # 跳过空行（但在代码块内保留）
-        if not stripped_line and dollar_quote_depth == 0:
+        if not stripped_line and not in_dollar_quote:
             continue
 
         # 处理单行注释（以 -- 开头，不在代码块内时跳过）
-        if stripped_line.startswith("--") and dollar_quote_depth == 0:
+        if stripped_line.startswith("--") and not in_dollar_quote:
             if not current_statement:
                 continue
 
-        # 统计当前行的 $$ 出现次数
-        dollar_count = line.count("$$")
-
-        # 更新嵌套层级
-        if dollar_count > 0:
-            # 奇数次切换状态
-            if dollar_count % 2 == 1:
-                dollar_quote_depth = 1 - dollar_quote_depth
-            elif dollar_count == 2:
-                # 同一行有开始和结束，保持当前状态
-                pass
+        # 处理 $$ 引用
+        # 找到所有 $$ 的位置
+        pos = 0
+        while True:
+            idx = line.find("$$", pos)
+            if idx == -1:
+                break
+            # 切换状态
+            in_dollar_quote = not in_dollar_quote
+            pos = idx + 2
 
         # 添加到当前语句
         current_statement.append(line)
 
         # 只在代码块外检测语句结束
-        if dollar_quote_depth == 0 and stripped_line.endswith(";"):
+        if not in_dollar_quote and stripped_line.endswith(";"):
             statements.append("\n".join(current_statement))
             current_statement = []
 
