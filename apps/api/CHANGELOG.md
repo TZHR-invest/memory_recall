@@ -2,6 +2,33 @@
 
 All notable changes to Memory Recall will be documented in this file.
 
+## [5.1.7] - 2026-04-04
+
+### Added
+- Session Summary 提取优化：只保存重要内容（偏好/约束、发现/决策、明确约束）
+- 自动去重：避免重复存储相似内容
+- 存储格式优化：从几千字压缩到几百字
+
+### Changed
+- OpenCode 插件版本：1.7.9 → 1.8.0
+- 新增 `summary-extractor.ts` 提取重要内容
+- 修改 `compaction.ts` 使用新提取逻辑
+
+## [5.1.6] - 2026-04-04
+
+### Added
+- 项目隔离：自动为每个项目生成独立的 container_tag
+- keyId 配置：插件配置改用 `keyId`，自动生成 `userTag` 和 `projectTag`
+- 后端验证增强：`verify_container_ownership` 支持前缀匹配
+
+### Changed
+- OpenCode 插件版本：1.7.8 → 1.7.9
+- CLI 使用 `keyId` 配置
+- 自动生成项目隔离的 container_tag
+
+### Fixed
+- 后端 Session Summary 过滤：`context_inject_service.py` 自动过滤
+
 ## [5.1.5] - 2026-04-03
 
 ### Breaking Changes
