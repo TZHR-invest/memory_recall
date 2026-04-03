@@ -205,14 +205,31 @@ VOLC_EMBEDDING_MODEL=doubao-embedding-vision-251215
 
 ### 初始化数据库
 
-新环境使用 `init_db.py` 直接创建完整的数据库结构：
+**方式一：完整初始化（推荐新环境）**
+
+使用 `setup_database.py` 自动创建数据库和表：
+
+```bash
+cd apps/api
+python setup_database.py
+```
+
+此脚本会：
+1. 连接到 PostgreSQL 服务器
+2. 创建数据库（如果不存在）
+3. 安装 pgvector 扩展
+4. 创建所有表和索引
+
+**方式二：仅创建表（数据库已存在时）**
+
+如果数据库已存在，使用 `init_db.py`：
 
 ```bash
 cd apps/api
 python init_db.py
 ```
 
-**注意**：不再需要运行迁移脚本，`init_db.py` 会创建所有必要的表和索引。
+**注意**：不再需要运行迁移脚本，schema.sql 包含完整的数据库结构。
 
 ### 启动 API 服务
 
