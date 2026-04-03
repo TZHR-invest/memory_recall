@@ -1,6 +1,6 @@
 # Memory Recall - 统一记忆系统
 
-**版本**：v5.1.4  
+**版本**：v5.1.5  
 **状态**：生产就绪  
 **最后更新**：2026-04-03
 
@@ -202,12 +202,16 @@ VOLC_LLM_MODEL=doubao-seed-2-0-mini-260215
 VOLC_EMBEDDING_MODEL=doubao-embedding-vision-251215
 ```
 
-### 运行数据库迁移
+### 初始化数据库
+
+新环境使用 `init_db.py` 直接创建完整的数据库结构：
 
 ```bash
 cd apps/api
-python migrations/run_migrations.py
+python init_db.py
 ```
+
+**注意**：不再需要运行迁移脚本，`init_db.py` 会创建所有必要的表和索引。
 
 ### 启动 API 服务
 
@@ -232,8 +236,8 @@ docker-compose up -d
 # 2. 查看服务状态
 docker-compose ps
 
-# 3. 运行数据库迁移
-docker-compose exec api python migrations/run_migrations.py
+# 3. 初始化数据库
+docker-compose exec api python init_db.py
 
 # 4. 查看日志
 docker-compose logs -f api
