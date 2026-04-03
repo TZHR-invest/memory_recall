@@ -248,17 +248,26 @@ uvicorn main:app --host 0.0.0.0 --port 8000
 ```bash
 cd apps/api
 
-# 1. 启动所有服务
+# 启动所有服务（首次启动会自动创建数据库和表）
 docker-compose up -d
 
-# 2. 查看服务状态
+# 查看服务状态
 docker-compose ps
 
-# 3. 初始化数据库
-docker-compose exec api python init_db.py
+# 查看日志
+docker-compose logs -f postgres  # 查看数据库初始化日志
+docker-compose logs -f api       # 查看 API 日志
+```
 
-# 4. 查看日志
-docker-compose logs -f api
+**首次启动自动完成**：
+1. 创建 `memory_recall` 数据库
+2. 安装 pgvector 扩展
+3. 创建所有表和索引
+
+**重置数据库**（删除所有数据重新初始化）：
+```bash
+docker-compose down -v  # 删除数据卷
+docker-compose up -d    # 重新启动
 ```
 
 ### 服务地址
