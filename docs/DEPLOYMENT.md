@@ -108,12 +108,14 @@ HOST=0.0.0.0
 PORT=8000
 ```
 
-### 7. 运行数据库迁移
+### 7. 初始化数据库
 
 ```bash
-# 运行迁移脚本
-python migrations/run_migrations.py
+# 执行数据库初始化脚本（使用 schema.sql）
+python init_db.py
 ```
+
+**注意**：新环境使用 `schema.sql` 直接创建数据库结构，不再需要运行迁移脚本。
 
 ---
 
@@ -218,8 +220,8 @@ curl http://localhost:8000/health
 ### 1. 数据库优化
 
 ```sql
--- 添加索引（执行 migrations/002_add_indexes.sql）
-psql -d memory_recall -f migrations/002_add_indexes.sql
+-- 索引已在 schema.sql 中创建，无需单独执行
+-- 如需手动添加索引，参考 schema.sql 中的 CREATE INDEX 语句
 
 -- 配置连接池
 ALTER SYSTEM SET max_connections = 200;

@@ -44,7 +44,8 @@ memory_recall/
 │   │   ├── plugins/             # OpenClaw/OpenCode 插件
 │   │   ├── llm/                 # LLM 客户端
 │   │   └── embedding/           # 向量嵌入
-│   ├── migrations/              # 数据库迁移
+│   ├── schema.sql              # 数据库结构（新环境初始化）
+│   ├── init_db.py              # 数据库初始化脚本
 │   └── tests/                   # 测试用例
 ├── docs/                        # 设计文档
 └── web/                         # 前端界面
