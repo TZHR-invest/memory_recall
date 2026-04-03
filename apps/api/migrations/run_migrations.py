@@ -25,15 +25,31 @@ def split_sql_statements(sql: str) -> list:
     - $$ ... $$
     - $tag$ ... $tag$
     - 嵌套的 dollar-quoted strings
+    - 单引号字符串中的 $$ (忽略)
     """
     statements = []
     current_stmt = []
     i = 0
     in_dollar_quote = False
     current_tag = None
+    in_single_quote = False  # 跟踪单引号字符串
 
     while i < len(sql):
-        if sql[i] == "$":
+        # 处理单引号字符串（转义的单引号 '' 不结束字符串）
+        if sql[i] == "'" and not in_dollar_quote:
+            if i + 1 < len(sql) and sql[i + 1] == "'":
+                # 转义的单引号，跳过两个
+                current_stmt.append("''")
+                i += 2
+                continue
+            else:
+                in_single_quote = not in_single_quote
+                current_stmt.append(sql[i])
+                i += 1
+                continue
+
+        # 只在单引号字符串外处理 dollar quote
+        if not in_single_quote and sql[i] == "$":
             tag_match = re.match(r"\$([a-zA-Z_][a-zA-Z0-9_]*)?\$", sql[i:])
             if tag_match:
                 tag = tag_match.group(1)
@@ -53,7 +69,7 @@ def split_sql_statements(sql: str) -> list:
                     i = end_pos
                     continue
 
-        if sql[i] == ";" and not in_dollar_quote:
+        if sql[i] == ";" and not in_dollar_quote and not in_single_quote:
             current_stmt.append(";")
             stmt = "".join(current_stmt).strip()
             if stmt and stmt != ";":
