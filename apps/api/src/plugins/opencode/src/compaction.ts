@@ -6,6 +6,7 @@ import type { ApiClient } from "./client";
 import type { Config } from "./config";
 import type { Logger } from "./logging";
 import { detectLocaleFromText, getLocale, type Locale } from "./i18n";
+import { extractImportantSections, shouldSave } from "./summary-extractor";
 
 const MESSAGE_STORAGE = path.join(os.homedir(), ".opencode", "messages");
 const PART_STORAGE = path.join(os.homedir(), ".opencode", "parts");
@@ -396,14 +397,28 @@ export class CompactionHook {
     }
 
     try {
-      const locale = this.config.language === "auto" ? "en_US" : this.config.language;
-      const prefix = locale === "zh_CN" ? "[会话摘要]\n" : "[Session Summary]\n";
+      const importantContent = extractImportantSections(summaryContent);
+      
+      if (!importantContent || importantContent.length < 100) {
+        if (this.logger) {
+          this.logger.debug("No important content extracted from summary", { sessionID: sessionId });
+        }
+        return null;
+      }
+
+      const existingMemories = await this.client.listMemories(this.tags.project, 50);
+      if (!shouldSave(importantContent, existingMemories)) {
+        if (this.logger) {
+          this.logger.debug("Extracted content is duplicate, skipping", { sessionID: sessionId });
+        }
+        return null;
+      }
 
       const result = await this.client.addMemory(
-        prefix + summaryContent,
+        importantContent,
         this.tags.project,
         false,
-        "conversation"
+        "learned-pattern"
       );
 
       if (result?.id) {
@@ -416,7 +431,7 @@ export class CompactionHook {
           this.logger.summaryCaptured({
             sessionId,
             memoryId: result.id,
-            contentLength: summaryContent.length,
+            contentLength: importantContent.length,
           });
         }
         return result.id;

@@ -1,6 +1,6 @@
 {
   "name": "memory-recall-opencode",
-  "version": "1.7.9",
+  "version": "1.8.0",
   "description": "Memory Recall plugin for OpenCode - persistent memory across sessions",
   "type": "module",
   "main": "dist/index.js",
