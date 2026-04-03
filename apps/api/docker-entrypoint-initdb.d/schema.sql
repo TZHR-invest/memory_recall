@@ -14,9 +14,8 @@ CREATE EXTENSION IF NOT EXISTS vector;
 CREATE TABLE IF NOT EXISTS api_keys (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id VARCHAR(100) NOT NULL,
-    user_name VARCHAR(100),
     key_hash VARCHAR(64) NOT NULL,
-    key_prefix VARCHAR(12) NOT NULL,
+    key_prefix VARCHAR(20) NOT NULL,
     name VARCHAR(100),
     permissions TEXT[] DEFAULT ARRAY['read']::TEXT[],
     is_active BOOLEAN DEFAULT TRUE,
@@ -25,13 +24,19 @@ CREATE TABLE IF NOT EXISTS api_keys (
     usage_count INTEGER DEFAULT 0,
     expires_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    revoked_at TIMESTAMP WITH TIME ZONE
+    revoked_at TIMESTAMP WITH TIME ZONE,
+    user_name VARCHAR(100)
 );
 
 -- API Keys indexes
 CREATE INDEX IF NOT EXISTS idx_api_keys_user ON api_keys(user_id);
 CREATE INDEX IF NOT EXISTS idx_api_keys_prefix ON api_keys(key_prefix);
-CREATE INDEX IF NOT EXISTS idx_api_keys_active ON api_keys(is_active) WHERE is_active = TRUE;
+CREATE INDEX IF NOT EXISTS idx_api_keys_active ON api_keys(user_id, is_active) WHERE is_active = TRUE;
+CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash);
+CREATE INDEX IF NOT EXISTS idx_api_keys_user_name ON api_keys(user_name);
+
+-- API Keys constraints
+ALTER TABLE api_keys ADD CONSTRAINT api_keys_key_hash_key UNIQUE (key_hash);
 
 COMMENT ON TABLE api_keys IS 'API authentication keys with permissions and usage tracking';
 COMMENT ON COLUMN api_keys.key_hash IS 'SHA-256 hash of the full API key';
@@ -42,7 +47,7 @@ COMMENT ON COLUMN api_keys.user_name IS 'Display name for the user';
 -- 2. Memories Table (Core Memory Storage)
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS memories (
-    id VARCHAR(24) PRIMARY KEY DEFAULT 'mem_' || replace(gen_random_uuid()::text, '-', ''),
+    id VARCHAR(24) PRIMARY KEY DEFAULT 'mem_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 20),
     container_tag VARCHAR(100) NOT NULL,
     content TEXT NOT NULL,
     embedding vector(1024),
@@ -68,9 +73,8 @@ CREATE TABLE IF NOT EXISTS memories (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     is_forgotten BOOLEAN DEFAULT FALSE,
-    
-    -- Constraints
-    CONSTRAINT chk_version_positive CHECK (version >= 1)
+    forget_after TIMESTAMP WITH TIME ZONE,
+    forget_reason VARCHAR(500)
 );
 
 -- Memories indexes
@@ -143,26 +147,29 @@ COMMENT ON COLUMN memory_profiles.entity_context IS 'Per-container context to gu
 -- 5. Documents Table (Document Metadata)
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS documents (
-    id VARCHAR(24) PRIMARY KEY DEFAULT 'doc_' || replace(gen_random_uuid()::text, '-', ''),
+    id VARCHAR(24) PRIMARY KEY DEFAULT 'doc_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 20),
     container_tag VARCHAR(100) NOT NULL,
     title VARCHAR(500),
     url TEXT,
-    source VARCHAR(200),
+    source VARCHAR(100),
     doc_type VARCHAR(50) DEFAULT 'text',
     token_count INTEGER DEFAULT 0,
     word_count INTEGER DEFAULT 0,
     chunk_count INTEGER DEFAULT 0,
-    content_hash VARCHAR(64),
-    status VARCHAR(20) DEFAULT 'done' CHECK (status IN ('queued', 'processing', 'done')),
+    status VARCHAR(20) DEFAULT 'done' CHECK (status IN ('queued', 'extracting', 'chunking', 'embedding', 'indexing', 'done', 'failed')),
     metadata JSONB DEFAULT '{}',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    content_hash VARCHAR(64)
 );
 
 CREATE INDEX IF NOT EXISTS idx_documents_container ON documents(container_tag);
-CREATE INDEX IF NOT EXISTS idx_documents_hash ON documents(content_hash);
+CREATE INDEX IF NOT EXISTS idx_documents_created ON documents(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_documents_status ON documents(status);
+CREATE INDEX IF NOT EXISTS idx_documents_content_hash ON documents(container_tag, content_hash);
 CREATE INDEX IF NOT EXISTS idx_documents_url ON documents(container_tag, url);
 
+COMMENT ON COLUMN documents.content_hash IS 'SHA-256 hash of document content for deduplication';
 COMMENT ON TABLE documents IS 'Document metadata storage. Actual content stored in chunks table.';
 COMMENT ON COLUMN documents.doc_type IS 'Document type: text, markdown, pdf, etc.';
 COMMENT ON COLUMN documents.token_count IS 'Estimated token count';
@@ -173,23 +180,25 @@ COMMENT ON COLUMN documents.chunk_count IS 'Number of chunks';
 -- 6. Chunks Table (Document Content Chunks)
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS chunks (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id VARCHAR(24) PRIMARY KEY DEFAULT 'chk_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 20),
     document_id VARCHAR(24) NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
     content TEXT NOT NULL,
     embedded_content TEXT,
-    position INTEGER NOT NULL,
+    position INTEGER DEFAULT 0,
     chunk_type VARCHAR(20) DEFAULT 'text',
-    content_hash VARCHAR(64),
     embedding vector(1024),
     embedding_model VARCHAR(100),
     metadata JSONB DEFAULT '{}',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    content_hash VARCHAR(64)
 );
 
 CREATE INDEX IF NOT EXISTS idx_chunks_document ON chunks(document_id);
 CREATE INDEX IF NOT EXISTS idx_chunks_embedding ON chunks USING hnsw (embedding vector_cosine_ops);
-CREATE INDEX IF NOT EXISTS idx_chunks_content_hash ON chunks(content_hash);
+CREATE INDEX IF NOT EXISTS idx_chunks_position ON chunks(document_id, position);
+CREATE INDEX IF NOT EXISTS idx_chunks_content_hash ON chunks(document_id, content_hash);
 
+COMMENT ON COLUMN chunks.content_hash IS 'SHA-256 hash of chunk content for incremental updates';
 COMMENT ON TABLE chunks IS 'Document content chunks with embeddings.';
 COMMENT ON COLUMN chunks.embedded_content IS 'Contextualized content for embedding (with surrounding context)';
 COMMENT ON COLUMN chunks.position IS 'Position of this chunk in the original document';
