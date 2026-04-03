@@ -1,12 +1,12 @@
 # Memory Recall OpenCode Plugin
 
-为 OpenCode 提供持久化记忆能力，支持跨会话上下文召回。
+为 OpenCode 提供持久化记忆能力，支持跨会话上下文召回和项目隔离。
 
 ## 安装
 
 ```bash
 # 1. 解压
-tar -xzf memory-recall-opencode-1.3.1.tar.gz
+tar -xzf memory-recall-opencode-1.7.9.tar.gz
 
 # 2. 进入目录并运行安装
 cd memory-recall-opencode
@@ -14,6 +14,11 @@ node dist/cli.js install
 
 # 3. 重启 OpenCode（依赖会自动安装）
 ```
+
+安装时会自动：
+1. 连接后端 API 验证 API Key
+2. 获取 `keyId` 并写入配置
+3. 自动生成项目隔离的 container_tag
 
 ## 目录结构
 
@@ -208,6 +213,46 @@ memory-recall(mode: "import-docs", force: true)
 ## 配置文件
 
 `~/.config/opencode/memory-recall.jsonc`
+
+### 基础配置
+
+```json
+{
+  "apiKey": "rk_live_xxx",
+  "baseUrl": "http://localhost:8000",
+  "userName": "YourName",
+  "keyId": "b262d2f1-6232-49f4-820e-3f5e4cf6b956",
+  
+  "similarityThreshold": 0.3,
+  "maxMemories": 5,
+  "maxProjectMemories": 10,
+  "injectionStrategy": "smart"
+}
+```
+
+### 项目隔离（v1.7.9 新增）
+
+插件使用 `keyId` 自动生成项目隔离的 container_tag：
+
+| 类型 | container_tag 格式 | 说明 |
+|------|-------------------|------|
+| 用户画像 | `{keyId}` | 跨项目共享 |
+| 项目记忆 | `{keyId}_project-{项目名}` | 按项目隔离 |
+| 项目文档 | `{keyId}_project-{项目名}` | 按项目隔离 |
+
+**示例**：
+```
+keyId: b262d2f1-6232-49f4-820e-3f5e4cf6b956
+
+memory_recall 项目:
+  container_tag: b262d2f1-..._project-memory_recall
+
+shuihu_card_game 项目:
+  container_tag: b262d2f1-..._project-shuihu_card_game
+```
+
+**向后兼容**：
+如果配置了旧的 `userContainerTag`/`projectContainerTag`，会继续使用旧配置。
 
 ### 语义去重配置
 

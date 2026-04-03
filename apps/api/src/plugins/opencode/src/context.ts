@@ -523,17 +523,8 @@ function formatMemoryLine(m: SearchResult | ExpandedMemory): string {
   return `- [${similarity}%] ${m.content}`;
 }
 
-export function formatContext(options: ContextOptions): string {
-  const { profile, projectMemories, userMemories, projectChunks, locale, maxProfileItems, maxProjectItems, maxUserItems, maxChunksItems, dedupedResult } = options;
-  
-  const isZh = locale === "zh_CN";
-  const lines: string[] = [];
-
-  const sectionTitle = isZh ? "## 用户上下文" : "## User Context";
-  lines.push(sectionTitle);
-  lines.push("");
-
-  const aiGuidance = isZh 
+export function getAiGuidance(isZh: boolean): string[] {
+  return isZh 
     ? [
         "### AI 行为指导",
         "",
@@ -545,7 +536,7 @@ export function formatContext(options: ContextOptions): string {
         "| 场景 | 参数 | 说明 |",
         "|------|------|------|",
         "| 快速检索 | 默认 | `search(query)` 仅向量搜索 |",
-        "| 需要最新信息 | `enableMemoryGraph: true` | 遍历信息演进链（updates/extends/derives） |",
+        "| 需要最新信息 | `enableMemoryGraph: true` | 遍历信息演进链 |",
         "| 需要实体关系 | `enableEntityGraph: true` | 遍历实体关系网络（friend/colleague/works_at等） |",
         "| 复杂查询 | 两者都启用 | 完整三层召回（Vector + Memory Graph + Entity Graph） |",
         "",
@@ -558,10 +549,7 @@ export function formatContext(options: ContextOptions): string {
         "",
         "**工作流程**：",
         "1. 检查已注入的上下文（Session Summary、项目记忆）",
-        "2. 根据问题类型选择召回参数：",
-        "   - 简单查询 → `memory-recall(mode: \"search\", query: \"关键词\")`",
-        "   - 信息演进 → `memory-recall(mode: \"search\", query: \"关键词\", enableMemoryGraph: true)`",
-        "   - 实体关系 → `memory-recall(mode: \"search\", query: \"关键词\", enableEntityGraph: true)`",
+        "2. 根据问题类型选择召回参数",
         "3. 结合召回的记忆与当前问题给出回答",
         "",
       ]
@@ -576,7 +564,7 @@ export function formatContext(options: ContextOptions): string {
         "| Scenario | Parameters | Description |",
         "|----------|------------|-------------|",
         "| Quick retrieval | Default | `search(query)` vector search only |",
-        "| Need latest info | `enableMemoryGraph: true` | Traverse memory evolution chain (updates/extends/derives) |",
+        "| Need latest info | `enableMemoryGraph: true` | Traverse memory evolution chain |",
         "| Need entity relations | `enableEntityGraph: true` | Traverse entity relation network (friend/colleague/works_at etc.) |",
         "| Complex queries | Enable both | Full three-layer recall (Vector + Memory Graph + Entity Graph) |",
         "",
@@ -589,15 +577,23 @@ export function formatContext(options: ContextOptions): string {
         "",
         "**Workflow**:",
         "1. Check injected context (Session Summary, project memories)",
-        "2. Choose recall parameters based on question type:",
-        "   - Simple query → `memory-recall(mode: \"search\", query: \"keywords\")`",
-        "   - Memory evolution → `memory-recall(mode: \"search\", query: \"keywords\", enableMemoryGraph: true)`",
-        "   - Entity relations → `memory-recall(mode: \"search\", query: \"keywords\", enableEntityGraph: true)`",
+        "2. Choose recall parameters based on question type",
         "3. Combine recalled memories with current question to provide an answer",
         "",
       ];
+}
+
+export function formatContext(options: ContextOptions): string {
+  const { profile, projectMemories, userMemories, projectChunks, locale, maxProfileItems, maxProjectItems, maxUserItems, maxChunksItems, dedupedResult } = options;
   
-  lines.push(...aiGuidance);
+  const isZh = locale === "zh_CN";
+  const lines: string[] = [];
+
+  const sectionTitle = isZh ? "## 用户上下文" : "## User Context";
+  lines.push(sectionTitle);
+  lines.push("");
+
+  lines.push(...getAiGuidance(isZh));
 
   let staticFacts: string[];
   let dynamicFacts: string[];
@@ -886,6 +882,8 @@ export async function injectContextFromBackend(
     const lines: string[] = [];
     lines.push(isZh ? "## 用户上下文" : "## User Context");
     lines.push("");
+    
+    lines.push(...getAiGuidance(isZh));
 
     if (userResponse.context) {
       lines.push(userResponse.context);

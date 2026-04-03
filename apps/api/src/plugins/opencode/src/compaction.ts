@@ -626,7 +626,7 @@ export class CompactionHook {
         const messages = (resp.data ?? resp) as Array<{ 
           id?: string;
           info: { role?: string; summary?: boolean }; 
-          parts?: Array<{ type: string; text?: string }> 
+          parts?: Array<{ type: string; text?: string; synthetic?: boolean }> 
         }>;
 
         const summaryMessages = messages.filter(m => 
@@ -637,7 +637,10 @@ export class CompactionHook {
           const latestSummary = summaryMessages[summaryMessages.length - 1];
           
           if (latestSummary?.parts) {
-            const textParts = latestSummary.parts.filter(p => p.type === "text" && p.text);
+            // 过滤掉 synthetic parts（如 nudge 指令），避免系统指令被保存到记忆中
+            const textParts = latestSummary.parts.filter(
+              p => p.type === "text" && p.text && !p.synthetic
+            );
             const summaryContent = textParts.map(p => p.text).join("\n");
 
             if (summaryContent && summaryContent.length >= 100) {

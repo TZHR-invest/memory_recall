@@ -492,14 +492,13 @@ function writeConfig(config: {
   apiKey: string;
   baseUrl: string;
   userName: string;
-  containerTag: string;
+  keyId: string;
 }): void {
   const content = `{
   "apiKey": "${config.apiKey}",
   "baseUrl": "${config.baseUrl}",
   "userName": "${config.userName}",
-  "userContainerTag": "${config.containerTag}",
-  "projectContainerTag": "${config.containerTag}",
+  "keyId": "${config.keyId}",
 
   // 检索配置
   "similarityThreshold": 0.3,
@@ -568,7 +567,7 @@ function writeConfig(config: {
   console.log(`✓ 配置已保存到 ${PLUGIN_CONFIG_FILE}`);
 }
 
-async function validateApiKey(baseUrl: string, apiKey: string): Promise<{ valid: boolean; containerTag?: string; userName?: string; error?: string }> {
+async function validateApiKey(baseUrl: string, apiKey: string): Promise<{ valid: boolean; keyId?: string; userName?: string; error?: string }> {
   try {
     const response = await fetch(`${baseUrl}/auth/verify`, {
       method: "GET",
@@ -579,10 +578,10 @@ async function validateApiKey(baseUrl: string, apiKey: string): Promise<{ valid:
     });
 
     if (response.ok) {
-      const data = await response.json();
+      const data = await response.json() as { key_id: string; user_name?: string };
       return { 
         valid: true, 
-        containerTag: data.container_tag,
+        keyId: data.key_id,
         userName: data.user_name,
       };
     }
@@ -597,7 +596,7 @@ async function validateApiKey(baseUrl: string, apiKey: string): Promise<{ valid:
 async function registerNewUser(
   baseUrl: string,
   userName: string
-): Promise<{ success: boolean; apiKey?: string; containerTag?: string; error?: string }> {
+): Promise<{ success: boolean; apiKey?: string; keyId?: string; error?: string }> {
   try {
     const response = await fetch(`${baseUrl}/auth/initialize`, {
       method: "POST",
@@ -610,11 +609,11 @@ async function registerNewUser(
     });
 
     if (response.ok) {
-      const data = await response.json();
+      const data = await response.json() as { api_key: string; key_id: string };
       return {
         success: true,
         apiKey: data.api_key,
-        containerTag: data.container_tag,
+        keyId: data.key_id,
       };
     } else if (response.status === 403) {
       return { success: false, error: "服务器已有 API Key，请选择'使用已有 API Key'" };
@@ -699,7 +698,7 @@ async function doInstall(): Promise<void> {
 
     let apiKey: string;
     let userName: string;
-    let containerTag: string;
+    let keyId: string;
 
     if (userType === 1) {
       userName = await question(rl, "请输入用户名: ");
@@ -717,13 +716,13 @@ async function doInstall(): Promise<void> {
       }
 
       apiKey = result.apiKey!;
-      containerTag = result.containerTag!;
+      keyId = result.keyId!;
 
       console.log("\n╔════════════════════════════════════════════╗");
       console.log("║              注册成功！                    ║");
       console.log("╚════════════════════════════════════════════╝");
       console.log(`\n  API Key: ${apiKey}`);
-      console.log(`  Container: ${containerTag}`);
+      console.log(`  Key ID: ${keyId}`);
       console.log("\n⚠️  请妥善保存 API Key，此密钥只会显示一次！\n");
     } else {
       apiKey = await question(rl, "请输入 API Key: ");
@@ -742,12 +741,11 @@ async function doInstall(): Promise<void> {
 
       console.log("✓ API Key 验证成功");
       
-      // 使用服务器返回的 containerTag（关键修复：containerTag = key_id）
-      containerTag = validation.containerTag!;
+      keyId = validation.keyId!;
       userName = validation.userName || await questionWithDefault(rl, "请输入用户名", "User");
     }
 
-    writeConfig({ apiKey, baseUrl, userName, containerTag });
+    writeConfig({ apiKey, baseUrl, userName, keyId });
 
     console.log("\n╔════════════════════════════════════════════╗");
     console.log("║              安装完成！                    ║");

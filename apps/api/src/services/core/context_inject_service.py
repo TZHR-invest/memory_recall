@@ -195,6 +195,12 @@ class ContextInjectService:
                 )
 
                 for m in recent_memories:
+                    # 过滤 Session Summary（会话摘要由 compaction hook 单独注入）
+                    if m.content.startswith(
+                        "[Session Summary]"
+                    ) or m.content.startswith("[会话摘要]"):
+                        continue
+
                     if m.id not in seen_ids:
                         seen_ids.add(m.id)
                         all_memories.append(
