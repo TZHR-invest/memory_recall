@@ -59,6 +59,24 @@ def should_skip_entity(name: str, entity_type: str) -> bool:
     if re.match(r"^[\w.]+:\d+", name):
         return True
 
+    if re.match(r"^v?\d+\.\d+(\.\d+)?", name.lower()):
+        return True
+
+    if re.match(r"^\d+端口$", name):
+        return True
+
+    if re.match(r"^(bg_)?[a-f0-9]{6,}$", name.lower()):
+        return True
+
+    if re.match(r"^/\w+", name):
+        return True
+
+    if re.search(r"(表|字段|端点|配置|方法|函数|参数)$", name):
+        return True
+
+    if re.match(r"^[a-zA-Z_]+\(\)$", name):
+        return True
+
     return False
 
 
@@ -215,6 +233,18 @@ MEANINGLESS_ENTITIES = {
     "UI",
     "api",
     "API",
+    # 技术术语（新增）
+    "llm",
+    "LLM",
+    "git",
+    "Git",
+    # 泛指词（新增）
+    "偏好",
+    "标题",
+    "索引",
+    # 模式名称（新增）
+    "add mode",
+    "import-docs mode",
 }
 
 # 不需要的实体类型

@@ -119,6 +119,15 @@ MEANINGLESS_ENTITIES = {
     "AI",
     "UI",
     "API",
+    "llm",
+    "LLM",
+    "git",
+    "Git",
+    "偏好",
+    "标题",
+    "索引",
+    "add mode",
+    "import-docs mode",
 }
 
 SKIP_ENTITY_TYPES = {"time", "number", "activity"}
@@ -136,6 +145,18 @@ def should_skip_entity(name: str) -> bool:
         if "/" in name or name.count(".") > 1:
             return True
     if re.match(r"^[\w.]+:\d+", name):
+        return True
+    if re.match(r"^v?\d+\.\d+(\.\d+)?", name.lower()):
+        return True
+    if re.match(r"^\d+端口$", name):
+        return True
+    if re.match(r"^(bg_)?[a-f0-9]{6,}$", name.lower()):
+        return True
+    if re.match(r"^/\w+", name):
+        return True
+    if re.search(r"(表|字段|端点|配置|方法|函数|参数)$", name):
+        return True
+    if re.match(r"^[a-zA-Z_]+\(\)$", name):
         return True
     return False
 
@@ -186,6 +207,37 @@ async def find_length_invalid_entities() -> List[Dict[str, Any]]:
         FROM entities
         WHERE LENGTH(name) < 2 OR LENGTH(name) > 20
         ORDER BY LENGTH(name) DESC
+    """
+    return await db.fetch(query)
+
+
+async def find_table_field_entities() -> List[Dict[str, Any]]:
+    query = """
+        SELECT id, name, type, container_tag, mention_count
+        FROM entities
+        WHERE name ~ '(表|字段|端点|配置|方法|函数|参数)$'
+        ORDER BY name
+    """
+    return await db.fetch(query)
+
+
+async def find_version_entities() -> List[Dict[str, Any]]:
+    query = """
+        SELECT id, name, type, container_tag, mention_count
+        FROM entities
+        WHERE name ~ '^v?[0-9]+\\.[0-9]+(\\.[0-9]+)?'
+           OR name ~ '[0-9]+\\.[0-9]+版本'
+        ORDER BY name
+    """
+    return await db.fetch(query)
+
+
+async def find_random_id_entities() -> List[Dict[str, Any]]:
+    query = """
+        SELECT id, name, type, container_tag, mention_count
+        FROM entities
+        WHERE name ~ '^(bg_)?[a-f0-9]{6,}$'
+        ORDER BY name
     """
     return await db.fetch(query)
 
@@ -324,6 +376,9 @@ async def main():
     file_path_entities = await find_file_path_entities()
     numeric_entities = await find_numeric_entities()
     length_invalid_entities = await find_length_invalid_entities()
+    table_field_entities = await find_table_field_entities()
+    version_entities = await find_version_entities()
+    random_id_entities = await find_random_id_entities()
 
     all_entity_ids = set()
     for entities in [
@@ -331,6 +386,9 @@ async def main():
         file_path_entities,
         numeric_entities,
         length_invalid_entities,
+        table_field_entities,
+        version_entities,
+        random_id_entities,
     ]:
         for entity in entities:
             all_entity_ids.add(str(entity["id"]))
@@ -343,6 +401,9 @@ async def main():
         print_preview("文件路径实体", file_path_entities)
         print_preview("纯数值实体", numeric_entities)
         print_preview("长度异常实体", length_invalid_entities)
+        print_preview("表名/字段名实体", table_field_entities)
+        print_preview("版本号实体", version_entities)
+        print_preview("随机ID实体", random_id_entities)
 
         print(f"\n提示: 使用 --confirm 执行清理")
 
@@ -367,6 +428,9 @@ async def main():
             "文件路径实体": len(file_path_entities),
             "纯数值实体": len(numeric_entities),
             "长度异常实体": len(length_invalid_entities),
+            "表名/字段名实体": len(table_field_entities),
+            "版本号实体": len(version_entities),
+            "随机ID实体": len(random_id_entities),
         }
 
         print_report(before_stats, after_stats, deleted_counts)
