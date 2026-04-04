@@ -52,6 +52,21 @@ class Settings(BaseSettings):
     ENABLE_ENTITY_RELATION_EXTRACTION: bool = True  # 启用实体关系提取
     ENTITY_EXTRACTION_CONFIDENCE_THRESHOLD: float = 0.7  # 实体提取置信度阈值
 
+    # 实体过滤配置
+    ENTITY_FILTER_MIN_LENGTH: int = 2  # 实体最小长度
+    ENTITY_FILTER_MAX_LENGTH: int = 20  # 实体最大长度
+    ENTITY_FILTER_SKIP_FILE_PATHS: bool = True  # 跳过文件路径格式
+    ENTITY_FILTER_SKIP_NUMERIC: bool = True  # 跳过纯数值
+
+    @property
+    def ENTITY_FILTER_CONFIG(self) -> dict:
+        return {
+            "min_length": self.ENTITY_FILTER_MIN_LENGTH,
+            "max_length": self.ENTITY_FILTER_MAX_LENGTH,
+            "skip_file_paths": self.ENTITY_FILTER_SKIP_FILE_PATHS,
+            "skip_numeric": self.ENTITY_FILTER_SKIP_NUMERIC,
+        }
+
     # 批量关系检测配置
     USE_BATCH_RELATION_DETECTION: bool = True  # 默认使用批量关系检测
     BATCH_DETECTION_MAX_CANDIDATES: int = 10  # 批量检测最大候选数
