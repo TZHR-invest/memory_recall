@@ -16,6 +16,8 @@ from src.services.core.llm_entity_extraction import (
     llm_entity_extractor,
     LLMEntityExtractor,
     get_default_entity_context,
+    should_skip_entity,
+    MEANINGLESS_ENTITIES,
 )
 from src.services.graph_tools import normalize_entity_name
 from src.services.core.chinese_prompts import detect_language
@@ -666,6 +668,12 @@ class MemoryStore:
             confidence = entity.get("confidence", 0.8)
 
             if not name:
+                continue
+
+            if name in MEANINGLESS_ENTITIES or name.lower() in MEANINGLESS_ENTITIES:
+                continue
+
+            if should_skip_entity(name, entity_type):
                 continue
 
             normalized_name = normalize_entity_name(name)

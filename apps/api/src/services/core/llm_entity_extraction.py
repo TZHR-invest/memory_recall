@@ -9,6 +9,7 @@ Supports:
 """
 
 import asyncio
+import re
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 
@@ -22,6 +23,41 @@ from src.services.core.chinese_prompts import (
 )
 from src.services.core.asmr_entity_types import detect_is_static
 from src.services.graph_tools import RELATION_TYPES, ENTITY_TYPES
+
+
+def should_skip_entity(name: str, entity_type: str) -> bool:
+    """
+    检查是否应该跳过该实体（格式过滤）
+
+    Args:
+        name: 实体名称
+        entity_type: 实体类型
+
+    Returns:
+        True 表示跳过，False 表示保留
+    """
+    if not name:
+        return True
+
+    name = name.strip()
+
+    if len(name) < 2:
+        return True
+
+    if len(name) > 20:
+        return True
+
+    if re.match(r"^[\d.]+$", name):
+        return True
+
+    if re.match(r"^[a-zA-Z0-9_\-./]+$", name):
+        if "/" in name or name.count(".") > 1:
+            return True
+
+    if re.match(r"^[\w.]+:\d+", name):
+        return True
+
+    return False
 
 
 @dataclass
@@ -89,6 +125,11 @@ MEANINGLESS_ENTITIES = {
     "他们",
     "自己",
     "大家",
+    # 泛指人（新增）
+    "用户",
+    "说话者",
+    "作者",
+    "读者",
     # 模糊时间
     "目前",
     "平时",
@@ -118,6 +159,47 @@ MEANINGLESS_ENTITIES = {
     "最",
     "很",
     "非常",
+    # 泛指名词（新增）
+    "代码",
+    "技术",
+    "日志",
+    "数据库",
+    "系统",
+    "项目",
+    "功能",
+    "服务",
+    "接口",
+    "模块",
+    "组件",
+    "文件",
+    "配置",
+    "数据",
+    "信息",
+    "内容",
+    "问题",
+    "方案",
+    "方法",
+    "方式",
+    "模式",
+    "架构",
+    "设计",
+    "实现",
+    # 语言名称（新增）
+    "中文",
+    "英文",
+    "英文版",
+    "中文版",
+    "EN",
+    "CN",
+    # 动词/状态（新增）
+    "中断",
+    "新建",
+    "关联",
+    "修正",
+    "延后",
+    "完成",
+    "进行中",
+    "待处理",
     # 常见误识别
     "博客",
     "微信",
@@ -125,6 +207,9 @@ MEANINGLESS_ENTITIES = {
     "网站",
     "app",
     "APP",
+    "AI",
+    "UI",
+    "API",
 }
 
 # 不需要的实体类型
@@ -505,6 +590,22 @@ class LLMEntityExtractor:
 【关系类型】（优先使用预定义类型）
 {relation_types_list}
 
+【不要提取】
+1. 泛指名词：代码、技术、日志、数据库、系统、项目、功能、服务、接口、模块、组件、文件、配置、数据、信息、内容、问题、方案、方法、方式、模式、架构、设计、实现
+2. 语言名称：中文、英文、EN、CN、英文版、中文版
+3. 文件路径：apps/api/、document_store.py:82、src/services/core/
+4. 纯数值：0.85、100%、3.14
+5. 完整句子：偏好应提取关键短语（如"喜欢暗黑模式"），不是整句
+6. 动词/状态：中断、新建、关联、修正、延后、完成、进行中、待处理
+7. 泛指人：用户、说话者、作者、读者
+
+【边界规则】
+- organization：必须是具体公司/组织名（字节跳动、腾讯、阿里巴巴），不是"中文"、"英文"
+- location：必须是具体地点（北京、上海、深圳），不是"中断"、"新建"、"关联"
+- person：必须是具体人名（张三、李四、王五），不是"用户"、"说话者"、"作者"
+- preference：必须是具体偏好短语（喜欢暗黑模式、不吃辣），不是完整句子
+- thing：必须是具体物品/概念/技术/项目（React、PostgreSQL、Alpha项目），不是泛指名词（代码、技术）
+
 【示例】
 文本: "我在字节跳动工作，同事张三也在那"
 输出:
@@ -603,10 +704,12 @@ Output:
             if name in MEANINGLESS_ENTITIES or name.lower() in MEANINGLESS_ENTITIES:
                 continue
 
+            if should_skip_entity(name, entity_type):
+                continue
+
             if entity_type in SKIP_ENTITY_TYPES:
                 continue
 
-            # 验证实体类型，非标准类型映射到 thing
             if entity_type not in ENTITY_TYPES:
                 entity_type = "thing"
 

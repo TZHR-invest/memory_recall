@@ -2,6 +2,25 @@
 
 All notable changes to Memory Recall will be documented in this file.
 
+## [5.1.8] - 2026-04-05
+
+### Added
+- 实体过滤机制：多层过滤（黑名单 + 格式校验 + 长度校验）
+- 扩展黑名单至 80+ 词（泛指名词、语言名称、动词状态等）
+- 格式过滤函数 `should_skip_entity()`（跳过文件路径、纯数值、长度异常）
+- 清理脚本 `scripts/cleanup_entities.py`（dry-run 预览 + 备份 + 清理）
+- 恢复脚本 `scripts/restore_entities_backup.py`（从备份恢复）
+
+### Changed
+- 优化中文实体提取 Prompt：添加"【不要提取】"和"【边界规则】"章节
+- 配置项新增：`ENTITY_FILTER_MIN_LENGTH`, `ENTITY_FILTER_MAX_LENGTH`, `ENTITY_FILTER_SKIP_FILE_PATHS`, `ENTITY_FILTER_SKIP_NUMERIC`
+- 后处理过滤集成：`extract_with_relations()` 返回前调用过滤函数
+
+### Fixed
+- 修复无意义实体入库问题（"用户"、"代码"、"技术"、"中文"等不再入库）
+- 修复格式错误提取问题（文件路径、纯数值不再作为实体）
+- 修复类型判断错误问题（通过 Prompt 边界规则强化）
+
 ## [5.1.7] - 2026-04-04
 
 ### Added
