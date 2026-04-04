@@ -53,6 +53,8 @@ def should_skip_entity(name: str, entity_type: str) -> bool:
     if re.match(r"^[a-zA-Z0-9_\-./]+$", name):
         if "/" in name or name.count(".") > 1:
             return True
+        if re.match(r".*\.(py|js|ts|json|md|sql|txt|html|css|yaml|yml)$", name.lower()):
+            return True
 
     if re.match(r"^[\w.]+:\d+", name):
         return True
@@ -207,8 +209,11 @@ MEANINGLESS_ENTITIES = {
     "网站",
     "app",
     "APP",
+    "ai",
     "AI",
+    "ui",
     "UI",
+    "api",
     "API",
 }
 
