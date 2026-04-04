@@ -172,6 +172,62 @@ MEANINGLESS_ENTITIES = {
     # 模式名称
     "add mode",
     "import-docs mode",
+    # 第四轮清理 - 技术编号
+    "技术1",
+    "技术2",
+    "技术3",
+    # 第四轮清理 - 废弃/冗余
+    "废弃服务",
+    "废弃服务文件",
+    "已删除的废弃服务文件",
+    # 第四轮清理 - 泛指描述
+    "长期项目",
+    "项目文档",
+    "项目记忆",
+    "项目隔离功能",
+    "工作地点",
+    "实体提取",
+    "去重逻辑",
+    "语义去重阈值",
+    # 第四轮清理 - 数值/价格
+    "初始资金",
+    "初始金钱",
+    "单抽价格",
+    "卡包价格",
+    "升级费用",
+    "升级到等级8的费用",
+    # 第四轮清理 - 游戏机制
+    "展示位上限",
+    "展示损坏概率",
+    "展示损坏系统",
+    "满级禁用",
+    "金钱不足禁用",
+    "双升级系统",
+    "双图谱召回",
+    "统一召回系统",
+    "库存等级系统",
+    "玩家等级系统",
+    "后台分析任务",
+    "商店系统",
+    "成就系统",
+    "组合奖励系统",
+    # 第四轮清理 - 卡牌稀有度
+    "传说卡",
+    "史诗卡",
+    "普通卡",
+    "稀有卡",
+    "特典卡",
+    "神话卡",
+    "天罡星",
+    "地煞星",
+    # 第四轮清理 - 其他
+    "主对话agent",
+    "插件记忆召回功能",
+    "Session 开始注入",
+    "记忆提取规则",
+    "游戏核心系统架构",
+    "休闲小游戏",
+    "水浒卡牌收集Web单机游戏",
 }
 
 SKIP_ENTITY_TYPES = {"time", "number", "activity"}
@@ -207,6 +263,39 @@ def should_skip_entity(name: str) -> bool:
     if re.match(r"^[#*\-\|]+\s*", name):
         return True
     if re.search(r"\|\s*\d", name):
+        return True
+    # 第四轮清理 - 新增规则
+    if re.search(r"系统$", name):
+        return True
+    if re.search(r"价格$", name):
+        return True
+    if re.search(r"费用$", name):
+        return True
+    if re.search(r"概率$", name):
+        return True
+    if re.search(r"阈值$", name):
+        return True
+    if re.search(r"机制$", name):
+        return True
+    if re.search(r"规则$", name):
+        return True
+    if re.search(r"服务$", name):
+        return True
+    if re.match(r"^技术\d+$", name):
+        return True
+    if re.match(r"^项目", name):
+        return True
+    if re.match(r"^迁移", name):
+        return True
+    if re.match(r"(?i)^migration", name):
+        return True
+    if re.match(r"^\d+.*抽$", name):
+        return True
+    if re.match(r"^\d+张.*卡牌$", name):
+        return True
+    if re.match(r"^(传说|史诗|普通|稀有|特典|神话)卡$", name):
+        return True
+    if re.match(r"^(天罡|地煞)星$", name):
         return True
     return False
 
@@ -354,6 +443,145 @@ async def find_invalid_person_entities() -> List[Dict[str, Any]]:
     return await db.fetch(query)
 
 
+async def find_system_suffix_entities() -> List[Dict[str, Any]]:
+    query = r"""
+        SELECT id, name, type, container_tag, mention_count
+        FROM entities
+        WHERE name ~ '系统$'
+        ORDER BY name
+    """
+    return await db.fetch(query)
+
+
+async def find_price_cost_entities() -> List[Dict[str, Any]]:
+    query = r"""
+        SELECT id, name, type, container_tag, mention_count
+        FROM entities
+        WHERE name ~ '(价格|费用)$'
+        ORDER BY name
+    """
+    return await db.fetch(query)
+
+
+async def find_probability_threshold_entities() -> List[Dict[str, Any]]:
+    query = r"""
+        SELECT id, name, type, container_tag, mention_count
+        FROM entities
+        WHERE name ~ '(概率|阈值)$'
+        ORDER BY name
+    """
+    return await db.fetch(query)
+
+
+async def find_migration_entities() -> List[Dict[str, Any]]:
+    query = r"""
+        SELECT id, name, type, container_tag, mention_count
+        FROM entities
+        WHERE name ~ '^迁移'
+           OR name ~* '^migration'
+           OR name ~ '迁移.*\d'
+        ORDER BY name
+    """
+    return await db.fetch(query)
+
+
+async def find_technical_number_entities() -> List[Dict[str, Any]]:
+    query = r"""
+        SELECT id, name, type, container_tag, mention_count
+        FROM entities
+        WHERE name ~ '^技术\d+$'
+        ORDER BY name
+    """
+    return await db.fetch(query)
+
+
+async def find_card_rarity_entities() -> List[Dict[str, Any]]:
+    query = r"""
+        SELECT id, name, type, container_tag, mention_count
+        FROM entities
+        WHERE name ~ '^(传说|史诗|普通|稀有|特典|神话)卡$'
+           OR name ~ '^(天罡|地煞)星$'
+        ORDER BY name
+    """
+    return await db.fetch(query)
+
+
+async def find_draw_count_entities() -> List[Dict[str, Any]]:
+    query = r"""
+        SELECT id, name, type, container_tag, mention_count
+        FROM entities
+        WHERE name ~ '^\d+.*抽$'
+           OR name ~ '^\d+张.*卡牌$'
+        ORDER BY name
+    """
+    return await db.fetch(query)
+
+
+async def find_invalid_preference_entities() -> List[Dict[str, Any]]:
+    query = r"""
+        SELECT id, name, type, container_tag, mention_count
+        FROM entities
+        WHERE type = 'preference'
+        AND (
+            name LIKE '%卡牌%'
+            OR name LIKE '%游戏%'
+            OR name LIKE '%开发%'
+            OR name LIKE '%测试%'
+            OR name LIKE '%整洁%'
+        )
+        ORDER BY name
+    """
+    return await db.fetch(query)
+
+
+async def find_invalid_event_entities() -> List[Dict[str, Any]]:
+    query = r"""
+        SELECT id, name, type, container_tag, mention_count
+        FROM entities
+        WHERE type = 'event'
+        AND (
+            name LIKE '%配置项%'
+            OR name LIKE '%机制%'
+            OR name LIKE '%通过率%'
+            OR name LIKE '%清理%'
+            OR name LIKE '%修复%'
+            OR name LIKE '%测试%'
+        )
+        ORDER BY name
+    """
+    return await db.fetch(query)
+
+
+async def find_invalid_organization_entities() -> List[Dict[str, Any]]:
+    query = r"""
+        SELECT id, name, type, container_tag, mention_count
+        FROM entities
+        WHERE type = 'organization'
+        AND (
+            name LIKE '%agent%'
+            OR name LIKE '%仓库%'
+            OR name = 'Kimi'
+        )
+        ORDER BY name
+    """
+    return await db.fetch(query)
+
+
+async def find_invalid_location_entities() -> List[Dict[str, Any]]:
+    query = r"""
+        SELECT id, name, type, container_tag, mention_count
+        FROM entities
+        WHERE type = 'location'
+        AND (
+            name = 'Google'
+            OR name = 'Supermemory'
+            OR name LIKE '%仓库%'
+        )
+        ORDER BY name
+    """
+    return await db.fetch(query)
+
+
 async def delete_entities(entity_ids: List[str]) -> int:
     if not entity_ids:
         return 0
@@ -495,6 +723,18 @@ async def main():
     format_invalid_entities = await find_format_invalid_entities()
     duplicate_entities = await find_duplicate_entities()
     invalid_person_entities = await find_invalid_person_entities()
+    # 第四轮清理 - 新增查询
+    system_suffix_entities = await find_system_suffix_entities()
+    price_cost_entities = await find_price_cost_entities()
+    probability_threshold_entities = await find_probability_threshold_entities()
+    migration_entities = await find_migration_entities()
+    technical_number_entities = await find_technical_number_entities()
+    card_rarity_entities = await find_card_rarity_entities()
+    draw_count_entities = await find_draw_count_entities()
+    invalid_preference_entities = await find_invalid_preference_entities()
+    invalid_event_entities = await find_invalid_event_entities()
+    invalid_organization_entities = await find_invalid_organization_entities()
+    invalid_location_entities = await find_invalid_location_entities()
 
     all_entity_ids = set()
     for entities in [
@@ -509,6 +749,18 @@ async def main():
         format_invalid_entities,
         duplicate_entities,
         invalid_person_entities,
+        # 第四轮清理 - 新增
+        system_suffix_entities,
+        price_cost_entities,
+        probability_threshold_entities,
+        migration_entities,
+        technical_number_entities,
+        card_rarity_entities,
+        draw_count_entities,
+        invalid_preference_entities,
+        invalid_event_entities,
+        invalid_organization_entities,
+        invalid_location_entities,
     ]:
         for entity in entities:
             all_entity_ids.add(str(entity["id"]))
@@ -528,6 +780,18 @@ async def main():
         print_preview("格式错误实体", format_invalid_entities)
         print_preview("重复实体(保留首次)", duplicate_entities)
         print_preview("无效person实体", invalid_person_entities)
+        # 第四轮清理 - 新增预览
+        print_preview("系统后缀实体", system_suffix_entities)
+        print_preview("价格/费用实体", price_cost_entities)
+        print_preview("概率/阈值实体", probability_threshold_entities)
+        print_preview("迁移相关实体", migration_entities)
+        print_preview("技术编号实体", technical_number_entities)
+        print_preview("卡牌稀有度实体", card_rarity_entities)
+        print_preview("抽卡数量实体", draw_count_entities)
+        print_preview("无效preference实体", invalid_preference_entities)
+        print_preview("无效event实体", invalid_event_entities)
+        print_preview("无效organization实体", invalid_organization_entities)
+        print_preview("无效location实体", invalid_location_entities)
 
         print(f"\n提示: 使用 --confirm 执行清理")
 
@@ -559,6 +823,18 @@ async def main():
             "格式错误实体": len(format_invalid_entities),
             "重复实体(保留首次)": len(duplicate_entities),
             "无效person实体": len(invalid_person_entities),
+            # 第四轮清理 - 新增统计
+            "系统后缀实体": len(system_suffix_entities),
+            "价格/费用实体": len(price_cost_entities),
+            "概率/阈值实体": len(probability_threshold_entities),
+            "迁移相关实体": len(migration_entities),
+            "技术编号实体": len(technical_number_entities),
+            "卡牌稀有度实体": len(card_rarity_entities),
+            "抽卡数量实体": len(draw_count_entities),
+            "无效preference实体": len(invalid_preference_entities),
+            "无效event实体": len(invalid_event_entities),
+            "无效organization实体": len(invalid_organization_entities),
+            "无效location实体": len(invalid_location_entities),
         }
 
         print_report(before_stats, after_stats, deleted_counts)
