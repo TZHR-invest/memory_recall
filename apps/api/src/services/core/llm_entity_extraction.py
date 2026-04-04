@@ -60,6 +60,39 @@ def should_skip_entity(name: str, entity_type: str) -> bool:
         return True
     if re.search(r"\|\s*\d", name):
         return True
+    # 第四轮清理 - 新增规则
+    if re.search(r"系统$", name):
+        return True
+    if re.search(r"价格$", name):
+        return True
+    if re.search(r"费用$", name):
+        return True
+    if re.search(r"概率$", name):
+        return True
+    if re.search(r"阈值$", name):
+        return True
+    if re.search(r"机制$", name):
+        return True
+    if re.search(r"规则$", name):
+        return True
+    if re.search(r"服务$", name):
+        return True
+    if re.match(r"^技术\d+$", name):
+        return True
+    if re.match(r"^项目", name):
+        return True
+    if re.match(r"^迁移", name):
+        return True
+    if re.match(r"(?i)^migration", name):
+        return True
+    if re.match(r"^\d+.*抽$", name):
+        return True
+    if re.match(r"^\d+张.*卡牌$", name):
+        return True
+    if re.match(r"^(传说|史诗|普通|稀有|特典|神话)卡$", name):
+        return True
+    if re.match(r"^(天罡|地煞)星$", name):
+        return True
     return False
 
 
@@ -257,6 +290,62 @@ MEANINGLESS_ENTITIES = {
     # 模式名称
     "add mode",
     "import-docs mode",
+    # 第四轮清理 - 技术编号
+    "技术1",
+    "技术2",
+    "技术3",
+    # 第四轮清理 - 废弃/冗余
+    "废弃服务",
+    "废弃服务文件",
+    "已删除的废弃服务文件",
+    # 第四轮清理 - 泛指描述
+    "长期项目",
+    "项目文档",
+    "项目记忆",
+    "项目隔离功能",
+    "工作地点",
+    "实体提取",
+    "去重逻辑",
+    "语义去重阈值",
+    # 第四轮清理 - 数值/价格
+    "初始资金",
+    "初始金钱",
+    "单抽价格",
+    "卡包价格",
+    "升级费用",
+    "升级到等级8的费用",
+    # 第四轮清理 - 游戏机制
+    "展示位上限",
+    "展示损坏概率",
+    "展示损坏系统",
+    "满级禁用",
+    "金钱不足禁用",
+    "双升级系统",
+    "双图谱召回",
+    "统一召回系统",
+    "库存等级系统",
+    "玩家等级系统",
+    "后台分析任务",
+    "商店系统",
+    "成就系统",
+    "组合奖励系统",
+    # 第四轮清理 - 卡牌稀有度
+    "传说卡",
+    "史诗卡",
+    "普通卡",
+    "稀有卡",
+    "特典卡",
+    "神话卡",
+    "天罡星",
+    "地煞星",
+    # 第四轮清理 - 其他
+    "主对话agent",
+    "插件记忆召回功能",
+    "Session 开始注入",
+    "记忆提取规则",
+    "游戏核心系统架构",
+    "休闲小游戏",
+    "水浒卡牌收集Web单机游戏",
 }
 
 # 不需要的实体类型
