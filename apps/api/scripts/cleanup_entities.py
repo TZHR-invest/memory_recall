@@ -32,6 +32,7 @@ from src.database import db
 
 
 MEANINGLESS_ENTITIES = {
+    # 代词
     "我",
     "你",
     "他",
@@ -42,10 +43,13 @@ MEANINGLESS_ENTITIES = {
     "他们",
     "自己",
     "大家",
+    # 身份称谓
     "用户",
     "说话者",
     "作者",
     "读者",
+    "需求方",
+    # 时间词
     "目前",
     "平时",
     "最近",
@@ -54,6 +58,7 @@ MEANINGLESS_ENTITIES = {
     "近期",
     "将来",
     "过去",
+    # 数量词
     "一个",
     "几个",
     "一些",
@@ -62,6 +67,7 @@ MEANINGLESS_ENTITIES = {
     "多个",
     "各种",
     "所有",
+    # 副词
     "就",
     "也",
     "都",
@@ -72,6 +78,7 @@ MEANINGLESS_ENTITIES = {
     "最",
     "很",
     "非常",
+    # 泛指名词 - 第一批
     "代码",
     "技术",
     "日志",
@@ -96,12 +103,28 @@ MEANINGLESS_ENTITIES = {
     "架构",
     "设计",
     "实现",
+    # 泛指名词 - 第二批（新增）
+    "代码库",
+    "前端",
+    "后端",
+    "按钮",
+    "技能",
+    "商店",
+    "成本",
+    "金钱",
+    "利率",
+    "新架构",
+    "旧架构",
+    "测试文件",
+    "测试记忆",
+    # 语言标识
     "中文",
     "英文",
     "英文版",
     "中文版",
     "EN",
     "CN",
+    # 状态词
     "中断",
     "新建",
     "关联",
@@ -110,12 +133,14 @@ MEANINGLESS_ENTITIES = {
     "完成",
     "进行中",
     "待处理",
+    # 平台/应用
     "博客",
     "微信",
     "微博",
     "网站",
     "app",
     "APP",
+    # 技术缩写
     "AI",
     "UI",
     "API",
@@ -123,9 +148,28 @@ MEANINGLESS_ENTITIES = {
     "LLM",
     "git",
     "Git",
+    # 抽象概念（新增）
     "偏好",
     "标题",
     "索引",
+    "永久性个人事实",
+    "明确要求",
+    "临时任务",
+    "一次性请求",
+    "助手行为",
+    "对话填充词",
+    "有价值的上下文",
+    "饮食偏好",
+    # 技术术语（新增）
+    "container_tag",
+    "content_hash",
+    "embedding",
+    "keyId",
+    "title",
+    "url",
+    "vector",
+    "src",
+    # 模式名称
     "add mode",
     "import-docs mode",
 }
@@ -157,6 +201,12 @@ def should_skip_entity(name: str) -> bool:
     if re.search(r"(表|字段|端点|配置|方法|函数|参数)$", name):
         return True
     if re.match(r"^[a-zA-Z_]+\(\)$", name):
+        return True
+    if re.search(r"(bug|错误|问题)$", name):
+        return True
+    if re.match(r"^[#*\-\|]+\s*", name):
+        return True
+    if re.search(r"\|\s*\d", name):
         return True
     return False
 
@@ -237,6 +287,68 @@ async def find_random_id_entities() -> List[Dict[str, Any]]:
         SELECT id, name, type, container_tag, mention_count
         FROM entities
         WHERE name ~ '^(bg_)?[a-f0-9]{6,}$'
+        ORDER BY name
+    """
+    return await db.fetch(query)
+
+
+async def find_bug_problem_entities() -> List[Dict[str, Any]]:
+    query = """
+        SELECT id, name, type, container_tag, mention_count
+        FROM entities
+        WHERE name ~* '(bug|错误|问题)$'
+        ORDER BY name
+    """
+    return await db.fetch(query)
+
+
+async def find_format_invalid_entities() -> List[Dict[str, Any]]:
+    query = r"""
+        SELECT id, name, type, container_tag, mention_count
+        FROM entities
+        WHERE name ~ '^[#*\-\|]+\s*'
+           OR name ~ '\|\s*\d'
+        ORDER BY name
+    """
+    return await db.fetch(query)
+
+
+async def find_duplicate_entities() -> List[Dict[str, Any]]:
+    query = """
+        SELECT id, name, type, container_tag, mention_count
+        FROM entities
+        WHERE id NOT IN (
+            SELECT id FROM (
+                SELECT id, name, ROW_NUMBER() OVER (PARTITION BY name ORDER BY mention_count DESC, id) as rn
+                FROM entities
+            ) ranked
+            WHERE rn = 1
+        )
+        AND name IN (
+            SELECT name FROM entities GROUP BY name HAVING COUNT(*) > 1
+        )
+        ORDER BY name, id
+    """
+    return await db.fetch(query)
+
+
+async def find_invalid_person_entities() -> List[Dict[str, Any]]:
+    query = r"""
+        SELECT id, name, type, container_tag, mention_count
+        FROM entities
+        WHERE type = 'person'
+        AND (
+            name ~ '[#\*\-\|]'
+            OR name ~ '\|\s*\d'
+            OR name ~ '^[#\-\*]+\s*'
+            OR name ~ '^(将\s*\|)'
+            OR name = '史诗'
+            OR name = '天罡'
+            OR name = '地煞'
+            OR name LIKE '%游戏%'
+            OR name LIKE '%用户%'
+            OR name LIKE '%文档%'
+        )
         ORDER BY name
     """
     return await db.fetch(query)
@@ -379,6 +491,10 @@ async def main():
     table_field_entities = await find_table_field_entities()
     version_entities = await find_version_entities()
     random_id_entities = await find_random_id_entities()
+    bug_problem_entities = await find_bug_problem_entities()
+    format_invalid_entities = await find_format_invalid_entities()
+    duplicate_entities = await find_duplicate_entities()
+    invalid_person_entities = await find_invalid_person_entities()
 
     all_entity_ids = set()
     for entities in [
@@ -389,6 +505,10 @@ async def main():
         table_field_entities,
         version_entities,
         random_id_entities,
+        bug_problem_entities,
+        format_invalid_entities,
+        duplicate_entities,
+        invalid_person_entities,
     ]:
         for entity in entities:
             all_entity_ids.add(str(entity["id"]))
@@ -404,6 +524,10 @@ async def main():
         print_preview("表名/字段名实体", table_field_entities)
         print_preview("版本号实体", version_entities)
         print_preview("随机ID实体", random_id_entities)
+        print_preview("Bug/问题实体", bug_problem_entities)
+        print_preview("格式错误实体", format_invalid_entities)
+        print_preview("重复实体(保留首次)", duplicate_entities)
+        print_preview("无效person实体", invalid_person_entities)
 
         print(f"\n提示: 使用 --confirm 执行清理")
 
@@ -431,6 +555,10 @@ async def main():
             "表名/字段名实体": len(table_field_entities),
             "版本号实体": len(version_entities),
             "随机ID实体": len(random_id_entities),
+            "Bug/问题实体": len(bug_problem_entities),
+            "格式错误实体": len(format_invalid_entities),
+            "重复实体(保留首次)": len(duplicate_entities),
+            "无效person实体": len(invalid_person_entities),
         }
 
         print_report(before_stats, after_stats, deleted_counts)
