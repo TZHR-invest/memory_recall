@@ -26,57 +26,40 @@ from src.services.graph_tools import RELATION_TYPES, ENTITY_TYPES
 
 
 def should_skip_entity(name: str, entity_type: str) -> bool:
-    """
-    检查是否应该跳过该实体（格式过滤）
-
-    Args:
-        name: 实体名称
-        entity_type: 实体类型
-
-    Returns:
-        True 表示跳过，False 表示保留
-    """
     if not name:
         return True
-
     name = name.strip()
-
     if len(name) < 2:
         return True
-
     if len(name) > 20:
         return True
-
     if re.match(r"^[\d.]+$", name):
         return True
-
     if re.match(r"^[a-zA-Z0-9_\-./]+$", name):
         if "/" in name or name.count(".") > 1:
             return True
         if re.match(r".*\.(py|js|ts|json|md|sql|txt|html|css|yaml|yml)$", name.lower()):
             return True
-
     if re.match(r"^[\w.]+:\d+", name):
         return True
-
     if re.match(r"^v?\d+\.\d+(\.\d+)?", name.lower()):
         return True
-
     if re.match(r"^\d+端口$", name):
         return True
-
     if re.match(r"^(bg_)?[a-f0-9]{6,}$", name.lower()):
         return True
-
     if re.match(r"^/\w+", name):
         return True
-
     if re.search(r"(表|字段|端点|配置|方法|函数|参数)$", name):
         return True
-
     if re.match(r"^[a-zA-Z_]+\(\)$", name):
         return True
-
+    if re.search(r"(bug|错误|问题)$", name):
+        return True
+    if re.match(r"^[#*\-\|]+\s*", name):
+        return True
+    if re.search(r"\|\s*\d", name):
+        return True
     return False
 
 
@@ -145,12 +128,13 @@ MEANINGLESS_ENTITIES = {
     "他们",
     "自己",
     "大家",
-    # 泛指人（新增）
+    # 身份称谓
     "用户",
     "说话者",
     "作者",
     "读者",
-    # 模糊时间
+    "需求方",
+    # 时间词
     "目前",
     "平时",
     "最近",
@@ -168,7 +152,7 @@ MEANINGLESS_ENTITIES = {
     "多个",
     "各种",
     "所有",
-    # 副词/连词
+    # 副词
     "就",
     "也",
     "都",
@@ -179,7 +163,7 @@ MEANINGLESS_ENTITIES = {
     "最",
     "很",
     "非常",
-    # 泛指名词（新增）
+    # 泛指名词 - 第一批
     "代码",
     "技术",
     "日志",
@@ -204,14 +188,28 @@ MEANINGLESS_ENTITIES = {
     "架构",
     "设计",
     "实现",
-    # 语言名称（新增）
+    # 泛指名词 - 第二批（新增）
+    "代码库",
+    "前端",
+    "后端",
+    "按钮",
+    "技能",
+    "商店",
+    "成本",
+    "金钱",
+    "利率",
+    "新架构",
+    "旧架构",
+    "测试文件",
+    "测试记忆",
+    # 语言标识
     "中文",
     "英文",
     "英文版",
     "中文版",
     "EN",
     "CN",
-    # 动词/状态（新增）
+    # 状态词
     "中断",
     "新建",
     "关联",
@@ -220,29 +218,43 @@ MEANINGLESS_ENTITIES = {
     "完成",
     "进行中",
     "待处理",
-    # 常见误识别
+    # 平台/应用
     "博客",
     "微信",
     "微博",
     "网站",
     "app",
     "APP",
-    "ai",
+    # 技术缩写
     "AI",
-    "ui",
     "UI",
-    "api",
     "API",
-    # 技术术语（新增）
     "llm",
     "LLM",
     "git",
     "Git",
-    # 泛指词（新增）
+    # 抽象概念（新增）
     "偏好",
     "标题",
     "索引",
-    # 模式名称（新增）
+    "永久性个人事实",
+    "明确要求",
+    "临时任务",
+    "一次性请求",
+    "助手行为",
+    "对话填充词",
+    "有价值的上下文",
+    "饮食偏好",
+    # 技术术语（新增）
+    "container_tag",
+    "content_hash",
+    "embedding",
+    "keyId",
+    "title",
+    "url",
+    "vector",
+    "src",
+    # 模式名称
     "add mode",
     "import-docs mode",
 }
