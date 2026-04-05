@@ -5,14 +5,6 @@
 export function extractImportantSections(summary: string): string | null {
   const parts: string[] = [];
 
-  const instructionsMatch = summary.match(/## Instructions\n([\s\S]*?)(?=\n## |$)/);
-  if (instructionsMatch) {
-    const content = instructionsMatch[1].trim();
-    if (content) {
-      parts.push("【偏好/约束】\n" + content);
-    }
-  }
-
   const discoveriesMatch = summary.match(/## Discoveries\n([\s\S]*?)(?=\n## |$)/);
   if (discoveriesMatch) {
     const cleaned = discoveriesMatch[1]
