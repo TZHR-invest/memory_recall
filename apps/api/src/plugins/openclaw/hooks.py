@@ -35,8 +35,10 @@ def format_context(
             lines.append(f"- {content} {pct}".strip())
         sections.append("## Relevant Memories\n" + "\n".join(lines))
 
-    intro = "Background context from long-term memory. Use silently to inform understanding."
-    disclaimer = "Do not proactively bring up memories unless directly relevant."
+    intro = "## 用户上下文（已注入）\n\n**重要**：以下信息已注入上下文，请在回答前优先查阅。"
+    disclaimer = (
+        "**提示**：如果上述上下文包含您需要的信息，请直接引用，无需重新探索代码库。"
+    )
 
     return (
         f"<memory-context>\n{intro}\n\n"

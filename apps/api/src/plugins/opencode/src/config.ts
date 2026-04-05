@@ -63,10 +63,27 @@ export interface AsyncQueueConfig {
 
 /**
  * Default keywords for smart recall trigger
+ * 
+ * 关键词分类：
+ * - 时间相关：触发历史记忆召回
+ * - 项目相关：触发项目信息召回
+ * - 问题相关：触发技术问题召回
+ * - 行为相关：触发偏好/约束召回
  */
 export const DEFAULT_RECALL_KEYWORDS = [
+  // 时间相关（原有）
   "记得", "之前", "上次", "以前", "回忆", "记忆",
-  "recall", "remember", "previous", "earlier"
+  // 项目相关（新增）
+  "项目", "代码", "架构", "设计", "配置", "实现", "功能",
+  "技术", "框架", "模块", "组件", "接口", "服务", "文件",
+  // 问题相关（新增）
+  "怎么", "如何", "在哪", "什么", "为什么", "是否", "有没有",
+  // 行为相关（新增）
+  "偏好", "喜欢", "习惯", "风格", "约束", "决策", "约定", "规范",
+  // 英文（原有 + 新增）
+  "recall", "remember", "previous", "earlier",
+  "project", "code", "config", "architecture", "design",
+  "how", "where", "what", "why", "when"
 ];
 
 export interface Config {
