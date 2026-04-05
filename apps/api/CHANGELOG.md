@@ -2,6 +2,12 @@
 
 All notable changes to Memory Recall will be documented in this file.
 
+## [5.1.9] - 2026-04-05
+
+### Changed
+- Session Summary 提取优化：移除【偏好/约束】部分，仅保留【发现/决策】和【明确约束】
+- 减少上下文存储冗余：避免保存用户偏好重复信息（用户偏好已存储在 Profile 中）
+
 ## [5.1.8] - 2026-04-05
 
 ### Added
