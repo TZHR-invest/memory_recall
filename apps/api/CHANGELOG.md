@@ -2,6 +2,15 @@
 
 All notable changes to Memory Recall will be documented in this file.
 
+## [5.1.10] - 2026-04-06
+
+### Fixed
+- 压缩时保留 AI 行为指导：修复三种注入策略（once/smart/always）下压缩后行为指导丢失的问题
+
+### Changed
+- OpenCode 插件版本：1.8.0 → 1.8.1
+- 修改 `index.ts` 在 `experimental.session.compacting` hook 中注入 AI 行为指导
+
 ## [5.1.9] - 2026-04-05
 
 ### Changed

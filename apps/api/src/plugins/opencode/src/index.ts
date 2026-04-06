@@ -2,8 +2,8 @@ import type { Plugin, PluginInput, Hooks } from "@opencode-ai/plugin";
 import { loadConfig, isConfigured, getUserTag, getProjectTag, type InjectionStrategy } from "./config";
 import { ApiClient } from "./client";
 import { createTool, detectMemoryKeyword } from "./tool";
-import { injectContext, injectContextFromBackend, getMemoryNudge, type ContextResult, type ExpandedMemory } from "./context";
-import { detectLocaleFromText } from "./i18n";
+import { injectContext, injectContextFromBackend, getMemoryNudge, getAiGuidance, type ContextResult, type ExpandedMemory } from "./context";
+import { detectLocaleFromText, getLocale, type Locale } from "./i18n";
 import { initLogging } from "./logging";
 import { CompactionHook } from "./compaction";
 import { EventHandler } from "./events";
@@ -296,12 +296,20 @@ async function server(input: PluginInput, options: Record<string, unknown> = {})
 
     compactionHook.markSummarized(sessionId);
 
+    // 注入 AI 行为指导（确保压缩后 AI 仍然知道如何使用 Memory Recall）
+    const locale = config.language === "auto" 
+      ? (detectLocaleFromText("", config.language) as Locale)
+      : (config.language as Locale);
+    const aiGuidance = getAiGuidance(locale === "zh_CN");
+    if (aiGuidance.length > 0) {
+      outputData.context.push(aiGuidance.join("\n"));
+    }
+
     if (config.enableSummaryCapture) {
       try {
         // Priority: use cached latest summary (just generated) over database
         const cachedSummary = compactionHook.getLatestSummary(sessionId);
         if (cachedSummary) {
-          const locale = config.language === "auto" ? "en_US" : config.language;
           const prefix = locale === "zh_CN" ? "[会话摘要]\n" : "[Session Summary]\n";
           outputData.context.push("[Project Memories]\n" + prefix + cachedSummary);
           logger.debug("Using cached latest summary for compaction restore", {
