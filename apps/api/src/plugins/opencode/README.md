@@ -6,7 +6,7 @@
 
 ```bash
 # 1. 解压
-tar -xzf memory-recall-opencode-1.8.0.tar.gz
+tar -xzf memory-recall-opencode-1.8.1.tar.gz
 
 # 2. 进入目录并运行安装
 cd memory-recall-opencode
