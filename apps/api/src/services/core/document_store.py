@@ -334,6 +334,7 @@ class DocumentStore:
         auto_chunk: bool = True,
         chunk_config: Optional[ChunkConfig] = None,
         generate_embeddings: bool = True,
+        document_summary: Optional[str] = None,
     ) -> Tuple[Optional[Document], bool]:
         document = await self.get_by_id(document_id)
         if not document:
@@ -377,7 +378,34 @@ class DocumentStore:
             document_id,
         )
 
-        return self._row_to_document(row) if row else None, False
+        updated_doc = self._row_to_document(row) if row else None
+
+        if updated_doc and auto_chunk:
+            try:
+                summary = document_summary
+                if not summary:
+                    try:
+                        doc_metadata = await document_processor.process_document(
+                            content
+                        )
+                        summary = doc_metadata.summary
+                    except Exception:
+                        pass
+
+                if summary:
+                    await db.execute(
+                        "DELETE FROM chunk_entities WHERE chunk_id IN (SELECT id FROM chunks WHERE document_id = $1)",
+                        document_id,
+                    )
+                    await self._extract_and_map_entities_to_chunks(
+                        document_id=document_id,
+                        summary=summary,
+                        container_tag=document.container_tag,
+                    )
+            except Exception:
+                pass
+
+        return updated_doc, False
 
     async def update_chunks(
         self,
