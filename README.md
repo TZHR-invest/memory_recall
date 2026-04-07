@@ -114,10 +114,13 @@ memory_recall/
 │  ├─ lives_at: 居住关系                                      │
 │  └─ ... 更多关系类型                                        │
 │           │                                                 │
-│           ↓ 记忆关联                                        │
+│           ↓ 记忆/文档关联                                    │
 │           │                                                 │
 │  memory_entities                                            │
 │  └─ 记忆 ↔ 实体 多对多关联                                  │
+│           │                                                 │
+│  chunk_entities (v5.2.1)                                    │
+│  └─ 文档分块 ↔ 实体 多对多关联                              │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -750,10 +753,42 @@ client.close()
 | memory_id | VARCHAR(24) | 记忆 ID |
 | entity_id | UUID | 实体 ID |
 | entity_type | VARCHAR(50) | 实体类型（冗余，便于查询） |
+| mention_context | TEXT | 提及上下文 |
+| confidence | FLOAT | 置信度（默认 0.8） |
+
+### 分块-实体关联表（chunk_entities）- v5.2.1 新增
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | UUID | 主键 |
+| chunk_id | VARCHAR(24) | 分块 ID（外键 → chunks.id） |
+| entity_id | UUID | 实体 ID（外键 → entities.id） |
+| entity_type | VARCHAR(50) | 实体类型（冗余，便于查询） |
+| mention_context | TEXT | 提及上下文 |
+| confidence | FLOAT | 置信度（默认 0.8） |
 
 ---
 
 ## 关键变更
+
+### v5.2.1 (2026-04-07)
+
+#### 新增功能
+
+- **Chunks 实体召回**: 利用文档摘要提取实体并映射到 chunks，支持基于实体的召回
+- **文档更新自动重建**: chunks 更新后自动重新提取实体并更新 chunk_entities 表
+
+#### 架构改进
+
+- **chunk_entities 表结构优化**: 与 memory_entities 表保持一致
+  - 添加 `chunk_id` 外键约束 `ON DELETE CASCADE`
+  - 添加 `mention_context` 和 `confidence` 字段
+- **Docker 初始化脚本同步**: 修复缺失的表定义
+
+#### 修复
+
+- 修复 schema.sql 中 chunks.id 类型定义（UUID → VARCHAR）
+- 修复 chunk_entities 表缺少外键约束
 
 ### v5.2.0 (2026-04-07)
 
