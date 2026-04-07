@@ -284,6 +284,28 @@ COMMENT ON TABLE memory_entities IS 'Junction table linking memories to their ex
 COMMENT ON COLUMN memory_entities.mention_context IS 'Surrounding text where entity was mentioned';
 
 -- ============================================================================
+-- 9.5. Chunk-Entities Junction Table (v5.2.1)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS chunk_entities (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    chunk_id VARCHAR(24) NOT NULL,
+    entity_id UUID NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+    entity_type VARCHAR(50),
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Chunk-entities indexes
+CREATE INDEX IF NOT EXISTS idx_chunk_entities_chunk ON chunk_entities(chunk_id);
+CREATE INDEX IF NOT EXISTS idx_chunk_entities_entity ON chunk_entities(entity_id);
+CREATE INDEX IF NOT EXISTS idx_chunk_entities_type ON chunk_entities(entity_type);
+
+-- Chunk-entities unique constraint
+ALTER TABLE chunk_entities DROP CONSTRAINT IF EXISTS uq_chunk_entities;
+ALTER TABLE chunk_entities ADD CONSTRAINT uq_chunk_entities UNIQUE (chunk_id, entity_id);
+
+COMMENT ON TABLE chunk_entities IS 'Junction table linking document chunks to entities extracted from document summary';
+
+-- ============================================================================
 -- 10. Helper Functions
 -- ============================================================================
 
