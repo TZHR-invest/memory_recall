@@ -237,6 +237,8 @@ memory-recall(mode: "import-docs", force: true)
 | 类型 | container_tag 格式 | 说明 |
 |------|-------------------|------|
 | 用户画像 | `{keyId}` | 跨项目共享 |
+| 用户记忆 | `{keyId}` | 跨项目共享 |
+| 用户文档 | `{keyId}` | 跨项目共享（v5.2 新增） |
 | 项目记忆 | `{keyId}_project-{项目名}` | 按项目隔离 |
 | 项目文档 | `{keyId}_project-{项目名}` | 按项目隔离 |
 
@@ -245,10 +247,12 @@ memory-recall(mode: "import-docs", force: true)
 keyId: b262d2f1-6232-49f4-820e-3f5e4cf6b956
 
 memory_recall 项目:
-  container_tag: b262d2f1-..._project-memory_recall
+  user_tag: b262d2f1-6232-49f4-820e-3f5e4cf6b956
+  project_tag: b262d2f1-..._project-memory_recall
 
 shuihu_card_game 项目:
-  container_tag: b262d2f1-..._project-shuihu_card_game
+  user_tag: b262d2f1-6232-49f4-820e-3f5e4cf6b956
+  project_tag: b262d2f1-..._project-shuihu_card_game
 ```
 
 **向后兼容**：
@@ -509,9 +513,48 @@ memory-recall(mode: "retry", taskId: "task_abc123")
 v5.1 新增后端语义去重功能，通过 `/context-inject` API 统一处理上下文注入：
 
 **优势**：
-- 减少 API 调用次数：4 次 → 1-2 次
+- 减少 API 调用次数：4 次 → 1 次（v5.2 优化）
 - 复用数据库 embedding，无需前端计算
-- 降低延迟：300-500ms → 150-250ms
+- 降低延迟：300-500ms → 100-200ms
+- 支持用户文档和项目文档
+
+### v5.2 优化：一次 API 调用
+
+v5.2 进一步优化，支持一次 API 调用完成所有召回：
+
+```json
+POST /context-inject
+{
+  "user_tag": "{keyId}",
+  "project_tag": "{keyId}_project-{项目名}",
+  "query": "用户输入",
+  "config": {
+    "inject_profile": true,
+    "max_memories": 5,
+    "max_chunks": 3
+  }
+}
+```
+
+**返回**：
+```json
+{
+  "context": "格式化后的上下文",
+  "sources": {
+    "profile": ["用户画像"],
+    "user_memories": [{"id": "...", "content": "..."}],
+    "memories": [{"id": "...", "content": "..."}],
+    "user_chunks": [{"id": "...", "content": "..."}],
+    "chunks": [{"id": "...", "content": "..."}]
+  },
+  "stats": {
+    "profile_count": 5,
+    "user_memories_count": 3,
+    "project_memories_count": 10,
+    "chunks_count": 3
+  }
+}
+```
 
 ### 配置
 
@@ -533,11 +576,24 @@ v5.1 新增后端语义去重功能，通过 `/context-inject` API 统一处理�
 
 ### 工作流程
 
-1. 前端调用 `/context-inject` API
-2. 后端获取用户画像、记忆、文档片段
-3. 从数据库读取已有 embedding
-4. 基于优先级进行语义去重
-5. 返回格式化的上下文
+1. 前端调用 `/context-inject` API，传入 `user_tag` 和 `project_tag`
+2. 后端从 user_tag 获取：用户画像、用户记忆、用户文档
+3. 后端从 project_tag 获取：项目记忆、项目文档
+4. 从数据库读取已有 embedding
+5. 基于优先级进行语义去重
+6. 返回格式化的上下文
+
+### 向后兼容
+
+旧版调用方式（只提供 `container_tag`）仍然支持：
+
+```json
+POST /context-inject
+{
+  "container_tag": "{keyId}",
+  "query": "用户输入"
+}
+```
 
 ### 回退机制
 

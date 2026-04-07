@@ -44,7 +44,15 @@ class ContextInjectConfig(BaseModel):
 
 
 class ContextInjectRequest(BaseModel):
-    container_tag: Optional[str] = Field(None, description="容器标识")
+    container_tag: Optional[str] = Field(
+        None, description="容器标识（已废弃，请使用 user_tag 和 project_tag）"
+    )
+    user_tag: Optional[str] = Field(
+        None, description="用户容器标识（用户画像、用户记忆、用户文档）"
+    )
+    project_tag: Optional[str] = Field(
+        None, description="项目容器标识（项目记忆、项目文档）"
+    )
     query: Optional[str] = Field(None, description="用户输入，用于语义搜索")
     config: ContextInjectConfig = Field(
         default_factory=ContextInjectConfig, description="注入配置"
@@ -53,9 +61,17 @@ class ContextInjectRequest(BaseModel):
 
 class ContextSource(BaseModel):
     profile: List[str] = Field(default_factory=list, description="画像内容")
-    memories: List[Dict[str, Any]] = Field(default_factory=list, description="记忆列表")
+    memories: List[Dict[str, Any]] = Field(
+        default_factory=list, description="项目记忆列表"
+    )
+    user_memories: List[Dict[str, Any]] = Field(
+        default_factory=list, description="用户记忆列表"
+    )
     chunks: List[Dict[str, Any]] = Field(
-        default_factory=list, description="文档片段列表"
+        default_factory=list, description="项目文档片段列表"
+    )
+    user_chunks: List[Dict[str, Any]] = Field(
+        default_factory=list, description="用户文档片段列表"
     )
 
 
@@ -64,7 +80,9 @@ class ContextStats(BaseModel):
     after_dedup: int = Field(0, description="去重后条目数")
     deduped_count: int = Field(0, description="被去重的条目数")
     profile_count: int = Field(0, description="画像条目数")
-    memories_count: int = Field(0, description="记忆条目数")
+    project_memories_count: int = Field(0, description="项目记忆条目数")
+    user_memories_count: int = Field(0, description="用户记忆条目数")
+    memories_count: int = Field(0, description="记忆条目数（向后兼容）")
     chunks_count: int = Field(0, description="文档片段条目数")
 
 
@@ -87,6 +105,14 @@ class ContextInjectResponse(BaseModel):
     - 减少API调用次数
     - 复用数据库中的embedding，避免重复计算
     - 降低延迟
+    
+    ## 新版调用方式（推荐）
+    提供 user_tag 和 project_tag：
+    - user_tag: 用于用户画像、用户记忆、用户文档
+    - project_tag: 用于项目记忆、项目文档
+    
+    ## 旧版调用方式（向后兼容）
+    只提供 container_tag，将同时用于用户和项目数据
     """,
 )
 async def context_inject(
@@ -95,6 +121,29 @@ async def context_inject(
     _: Dict = Depends(check_rate_limit),
 ):
     from src.services.core.context_inject_service import context_inject_service
+
+    is_new_api_mode = request.user_tag or request.project_tag
+
+    if is_new_api_mode:
+        user_tag = request.user_tag or current_user["container_tag"]
+        project_tag = request.project_tag or current_user["container_tag"]
+
+        verify_container_ownership(user_tag, current_user["key_id"])
+        verify_container_ownership(project_tag, current_user["key_id"])
+
+        try:
+            result = await context_inject_service.inject_with_tags(
+                user_tag=user_tag,
+                project_tag=project_tag,
+                query=request.query,
+                config=request.config.model_dump(),
+            )
+            return result
+        except Exception as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Context injection failed: {str(e)}",
+            )
 
     container_tag = request.container_tag or current_user["container_tag"]
     verify_container_ownership(container_tag, current_user["key_id"])

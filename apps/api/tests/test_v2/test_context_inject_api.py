@@ -617,4 +617,69 @@ class TestContextInjectAPI:
 
                 mock_memory.traverse_memory_relations.assert_not_called()
                 mock_memory.get_entities_for_memories.assert_not_called()
+
+    def test_context_inject_with_user_and_project_tags(
+        self, mock_profile_service, mock_document_store
+    ):
+        with patch(
+            "src.services.core.context_inject_service.memory_store"
+        ) as mock_memory:
+            mock_user_memory = MagicMock()
+            mock_user_memory.id = "mem_user_001"
+            mock_user_memory.content = "用户记忆"
+            mock_user_memory.embedding = [0.1] * 1024
+            mock_user_memory.is_static = False
+
+            mock_project_memory = MagicMock()
+            mock_project_memory.id = "mem_project_001"
+            mock_project_memory.content = "项目记忆"
+            mock_project_memory.embedding = [0.5] * 1024
+            mock_project_memory.is_static = False
+
+            def get_by_container_side_effect(container_tag, limit):
+                if "user" in container_tag:
+                    return [mock_user_memory]
+                else:
+                    return [mock_project_memory]
+
+            mock_memory.get_by_container = AsyncMock(
+                side_effect=get_by_container_side_effect
+            )
+            mock_memory.search = AsyncMock(return_value=[])
+            mock_memory.traverse_memory_relations = AsyncMock(return_value=[])
+            mock_memory.get_entities_for_memories = AsyncMock(return_value=[])
+            mock_memory.traverse_entity_relations = AsyncMock(return_value=[])
+
+            with patch(
+                "src.services.core.context_inject_service.get_embedding_client"
+            ) as mock_embed:
+                client = MagicMock()
+                client.embed = AsyncMock(return_value=[0.5] * 1024)
+                mock_embed.return_value = client
+
+                from src.services.core.context_inject_service import (
+                    context_inject_service,
+                )
+
+                result = asyncio.run(
+                    context_inject_service.inject_with_tags(
+                        user_tag="user_test",
+                        project_tag="project_test",
+                        query="测试",
+                        config={
+                            "inject_profile": True,
+                            "max_memories": 5,
+                            "enable_memory_graph": False,
+                            "enable_entity_graph": False,
+                            "enable_semantic_dedup": False,
+                            "language": "zh_CN",
+                        },
+                    )
+                )
+
+                assert "context" in result
+                assert "用户记忆" in result["context"]
+                assert "项目记忆" in result["context"]
+                assert result["stats"]["user_memories_count"] == 1
+                assert result["stats"]["project_memories_count"] == 1
                 mock_memory.traverse_entity_relations.assert_not_called()

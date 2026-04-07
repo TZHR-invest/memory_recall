@@ -881,12 +881,7 @@ export async function injectContextFromBackend(
   };
 
   try {
-    const userResponse = await client.injectContext(userTag, userMessage, apiConfig);
-    
-    const projectResponse = await client.injectContext(projectTag, userMessage, {
-      ...apiConfig,
-      inject_profile: false,
-    });
+    const response = await client.injectContext(userTag, projectTag, userMessage, apiConfig);
 
     const isZh = config.language === "zh_CN" || 
       (config.language === "auto" && detectLocale(userMessage, "auto") === "zh_CN");
@@ -897,41 +892,26 @@ export async function injectContextFromBackend(
     
     lines.push(...getAiGuidance(isZh));
 
-    if (userResponse.context) {
-      lines.push(userResponse.context);
-    }
-
-    if (projectResponse.sources.memories.length > 0 || projectResponse.sources.chunks.length > 0) {
-      if (projectResponse.sources.memories.length > 0) {
-        lines.push(isZh ? "### 项目记忆" : "### Project Memories");
-        projectResponse.sources.memories.slice(0, config.maxProjectMemories).forEach(m => {
-          lines.push(`- ${m.content}`);
-        });
-        lines.push("");
-      }
-
-      if (projectResponse.sources.chunks.length > 0) {
-        lines.push(isZh ? "### 项目文档" : "### Project Documents");
-        projectResponse.sources.chunks.slice(0, config.maxChunks).forEach(c => {
-          lines.push(`- ${c.content}`);
-        });
-        lines.push("");
-      }
+    if (response.context) {
+      lines.push(response.context);
     }
 
     const context = lines.length > 3 ? lines.join("\n") : "";
 
+    const projectMemoriesCount = response.stats.project_memories_count ?? 
+      (response.stats.memories_count - (response.stats.user_memories_count ?? 0));
+
     return {
       context,
-      profileCount: userResponse.stats.profile_count,
-      projectCount: projectResponse.stats.memories_count,
-      userCount: userResponse.stats.memories_count,
-      chunksCount: userResponse.stats.chunks_count + projectResponse.stats.chunks_count,
+      profileCount: response.stats.profile_count,
+      projectCount: projectMemoriesCount,
+      userCount: response.stats.user_memories_count ?? 0,
+      chunksCount: response.stats.chunks_count,
       graphCount: 0,
       entityCount: 0,
       injectedMemoryIds: [
-        ...userResponse.sources.memories.map(m => m.id),
-        ...projectResponse.sources.memories.map(m => m.id),
+        ...response.sources.memories.map(m => m.id),
+        ...(response.sources.user_memories?.map(m => m.id) || []),
       ].filter((id): id is string => id !== undefined),
     };
   } catch (error) {

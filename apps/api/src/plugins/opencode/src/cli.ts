@@ -660,9 +660,8 @@ async function doInstall(): Promise<void> {
 
     console.log("\n【步骤 2/4】注册插件和依赖\n");
     registerPluginToOpencode();
-    if (!DEV_MODE) {
-      registerPluginToPackageJson();
-    }
+    // 开发模式也需要声明依赖，确保 OpenCode 启动时自动安装
+    registerPluginToPackageJson();
 
     console.log("\n【步骤 3/4】创建命令\n");
     createCommands();
