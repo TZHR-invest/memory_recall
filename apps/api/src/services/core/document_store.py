@@ -199,6 +199,18 @@ class DocumentStore:
                 document.chunk_count = len(text_chunks)
                 document.token_count = sum(c.token_count for c in text_chunks)
 
+        if extracted_summary and auto_chunk:
+            try:
+                await self._extract_and_map_entities_to_chunks(
+                    document_id=document.id,
+                    summary=extracted_summary,
+                    container_tag=container_tag,
+                )
+            except Exception as e:
+                import logging
+
+                logging.warning(f"Failed to extract entities from summary: {e}")
+
         return document, False
 
     async def create_chunk(
@@ -513,6 +525,80 @@ class DocumentStore:
                 "title": row["title"],
                 "source": row["source"],
                 "similarity": float(row["similarity"]) if row["similarity"] else 0.0,
+            }
+            for row in rows
+        ]
+
+    async def _extract_and_map_entities_to_chunks(
+        self,
+        document_id: str,
+        summary: str,
+        container_tag: str,
+    ) -> None:
+        from src.services.core.entity_extraction import entity_extraction
+
+        entities = await entity_extraction.extract(summary, container_tag)
+
+        if not entities:
+            return
+
+        chunks = await self.get_chunks(document_id)
+
+        if not chunks:
+            return
+
+        for chunk in chunks:
+            for entity in entities:
+                if entity.name in chunk.content:
+                    try:
+                        await db.execute(
+                            """
+                            INSERT INTO chunk_entities (chunk_id, entity_id, entity_type)
+                            VALUES ($1, $2, $3)
+                            ON CONFLICT (chunk_id, entity_id) DO NOTHING
+                            """,
+                            chunk.id,
+                            entity.id,
+                            entity.type,
+                        )
+                    except Exception:
+                        pass
+
+    async def find_chunks_by_entities(
+        self,
+        entity_ids: List[str],
+        container_tag: str,
+        limit: int = 5,
+    ) -> List[Dict[str, Any]]:
+        if not entity_ids:
+            return []
+
+        rows = await db.fetch(
+            """
+            SELECT DISTINCT c.id, c.content, c.document_id, d.title, d.source,
+                   c.embedding
+            FROM chunks c
+            JOIN chunk_entities ce ON c.id = ce.chunk_id
+            JOIN documents d ON c.document_id = d.id
+            WHERE ce.entity_id = ANY($1)
+            AND d.container_tag = $2
+            LIMIT $3
+            """,
+            entity_ids,
+            container_tag,
+            limit,
+        )
+
+        return [
+            {
+                "id": row["id"],
+                "content": row["content"],
+                "document_id": row["document_id"],
+                "title": row["title"],
+                "source": row["source"],
+                "embedding": json.loads(row["embedding"])
+                if row.get("embedding")
+                else None,
             }
             for row in rows
         ]
