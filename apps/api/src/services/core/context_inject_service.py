@@ -292,22 +292,60 @@ class ContextInjectService:
                 threshold=config.get("chunks_similarity_threshold", 0.3),
             )
 
-            results = []
+            all_chunks = []
+            seen_ids = set()
+
             for c in chunks:
                 chunk = c.get("chunk")
-                if chunk:
-                    results.append(
+                if chunk and chunk.id not in seen_ids:
+                    seen_ids.add(chunk.id)
+                    all_chunks.append(
                         {
-                            "id": getattr(chunk, "id", None),
-                            "content": getattr(chunk, "content", ""),
-                            "embedding": getattr(chunk, "embedding", None),
+                            "id": chunk.id,
+                            "content": chunk.content,
+                            "embedding": chunk.embedding,
                             "document_id": c.get("document_id"),
                             "title": c.get("title"),
                             "source": c.get("source"),
                             "similarity": c.get("similarity", 0.0),
                         }
                     )
-            return results
+
+            if config.get("enable_entity_graph", True) and query:
+                try:
+                    from src.services.core.entity_extraction import entity_extraction
+
+                    query_entities = await entity_extraction.extract(
+                        query, container_tag
+                    )
+
+                    if query_entities:
+                        entity_ids = [e.id for e in query_entities[:5]]
+
+                        entity_chunks = await document_store.find_chunks_by_entities(
+                            entity_ids=entity_ids,
+                            container_tag=container_tag,
+                            limit=config.get("max_chunks", 2),
+                        )
+
+                        for c in entity_chunks:
+                            if c["id"] not in seen_ids:
+                                seen_ids.add(c["id"])
+                                all_chunks.append(
+                                    {
+                                        "id": c["id"],
+                                        "content": c["content"],
+                                        "embedding": c.get("embedding"),
+                                        "document_id": c.get("document_id"),
+                                        "title": c.get("title"),
+                                        "source": c.get("source"),
+                                        "similarity": 0.0,
+                                    }
+                                )
+                except Exception:
+                    pass
+
+            return all_chunks
         except Exception:
             return []
 
