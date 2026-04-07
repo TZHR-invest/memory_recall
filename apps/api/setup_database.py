@@ -115,6 +115,7 @@ async def setup_database():
         print("  - entities (实体/知识图谱)")
         print("  - entity_relations (实体关系)")
         print("  - memory_entities (记忆-实体关联)")
+        print("  - chunk_entities (分块-实体关联)")
         print()
 
     except Exception as e:
