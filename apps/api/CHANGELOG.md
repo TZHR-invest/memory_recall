@@ -7,14 +7,24 @@ All notable changes to Memory Recall will be documented in this file.
 ### Added
 - Chunks 实体召回：利用文档摘要提取实体并映射到 chunks，支持基于实体的召回
 - 实体映射到 chunks：文档创建时自动从摘要提取实体，并将实体映射到包含该实体的 chunks
+- 文档更新时自动重新提取实体：chunks 更新后自动更新 chunk_entities 表
 
 ### Changed
 - 新增 `chunk_entities` 表：存储 chunk 与实体的关联关系
 - 优化召回流程：chunks 召回时支持实体图谱扩展，提升召回精度
 
+### Fixed
+- 修复 `chunk_entities` 表结构：与 `memory_entities` 表保持一致
+  - 添加 `chunk_id` 外键约束 `REFERENCES chunks(id) ON DELETE CASCADE`
+  - 添加 `mention_context` 字段（提及上下文）
+  - 添加 `confidence` 字段（置信度）
+- 修复 `schema.sql` 中 `chunks.id` 类型定义（UUID → VARCHAR(24)）
+- 同步 `docker-entrypoint-initdb.d/schema.sql` 缺失的表定义
+
 ### Architecture
 - `document_store.py`: 新增 `_extract_and_map_entities_to_chunks` 方法
 - `document_store.py`: 新增 `find_chunks_by_entities` 查询方法
+- `document_store.py`: `update` 方法支持重新提取实体
 - `context_inject_service.py`: `_get_chunks` 方法支持实体召回
 
 ## [5.2.0] - 2026-04-07
