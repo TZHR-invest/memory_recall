@@ -2,6 +2,37 @@
 
 All notable changes to Memory Recall will be documented in this file.
 
+## [5.2.0] - 2026-04-07
+
+### Added
+- 一次 API 调用完成所有召回：首次注入和智能召回都只需调用一次 `/context-inject` API
+- 用户文档支持：新增用户级别文档存储和召回
+- 文档来源信息：chunks 召回时显示 title 和 source（文件路径）
+- 统一注入 API：同时支持 `user_tag` + `project_tag` 参数
+
+### Changed
+- API 调用优化：从 2 次调用减少到 1 次（50% 减少）
+- 延迟优化：从 ~150-250ms 减少到 ~100-200ms（~30% 减少）
+- OpenCode 插件版本：1.8.1 → 1.9.0
+- 修改 `client.ts` 的 `injectContext` 方法签名（接受 userTag + projectTag）
+- 修改 `context.ts` 的 `injectContextFromBackend` 从调用两次改为一次
+
+### API Changes
+- `POST /context-inject` 新增参数：
+  - `user_tag`: 用户容器标识（用户画像、用户记忆、用户文档）
+  - `project_tag`: 项目容器标识（项目记忆、项目文档）
+- `POST /context-inject` 返回值新增：
+  - `sources.user_memories`: 用户记忆列表
+  - `sources.user_chunks`: 用户文档片段列表
+  - `stats.project_memories_count`: 项目记忆条目数
+  - `stats.user_memories_count`: 用户记忆条目数
+
+### Performance
+| 指标 | v5.1 | v5.2 | 提升 |
+|------|------|------|------|
+| API 调用次数 | 2 次 | 1 次 | 50% |
+| 网络延迟 | ~150-250ms | ~100-200ms | ~30% |
+
 ## [5.1.10] - 2026-04-06
 
 ### Fixed

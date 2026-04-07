@@ -22,6 +22,7 @@ export interface ChunkSearchResult {
   content: string;
   document_id: string;
   document_title?: string;
+  document_source?: string;
   document_type?: string;
   position?: number;
   similarity: number;
@@ -102,7 +103,9 @@ export interface ContextInjectConfig {
 export interface ContextInjectSource {
   profile: string[];
   memories: Array<{ id: string; content: string }>;
+  user_memories?: Array<{ id: string; content: string }>;
   chunks: Array<{ id: string; content: string }>;
+  user_chunks?: Array<{ id: string; content: string }>;
 }
 
 export interface ContextInjectStats {
@@ -110,6 +113,8 @@ export interface ContextInjectStats {
   after_dedup: number;
   deduped_count: number;
   profile_count: number;
+  project_memories_count?: number;
+  user_memories_count?: number;
   memories_count: number;
   chunks_count: number;
 }
@@ -520,12 +525,14 @@ export class ApiClient {
   }
 
   async injectContext(
-    containerTag: string,
+    userTag: string,
+    projectTag: string,
     query?: string,
     config?: ContextInjectConfig
   ): Promise<ContextInjectResponse> {
     return this.request<ContextInjectResponse>("/context-inject", "POST", {
-      container_tag: containerTag,
+      user_tag: userTag,
+      project_tag: projectTag,
       query,
       config: config || {},
     });

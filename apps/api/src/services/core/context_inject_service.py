@@ -49,6 +49,51 @@ class ContextInjectService:
             "stats": stats,
         }
 
+    async def inject_with_tags(
+        self,
+        user_tag: str,
+        project_tag: str,
+        query: Optional[str],
+        config: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        profile = await self._get_profile(user_tag, config)
+        user_memories = await self._get_memories(user_tag, query, config)
+        project_memories = await self._get_memories(project_tag, query, config)
+        user_chunks = await self._get_chunks(user_tag, query, config)
+        project_chunks = await self._get_chunks(project_tag, query, config)
+
+        all_items = self._collect_items_with_tags(
+            profile, user_memories, project_memories, user_chunks, project_chunks
+        )
+
+        if config.get("enable_semantic_dedup", True):
+            deduped_items = await semantic_dedup_service.deduplicate(
+                all_items,
+                threshold=config.get("dedup_threshold", 0.85),
+            )
+        else:
+            deduped_items = all_items
+
+        context = self._format_context_with_tags(
+            deduped_items, config.get("language", "auto")
+        )
+
+        sources = self._build_sources_with_tags(
+            profile,
+            user_memories,
+            project_memories,
+            user_chunks,
+            project_chunks,
+            deduped_items,
+        )
+        stats = self._build_stats_with_tags(all_items, deduped_items)
+
+        return {
+            "context": context,
+            "sources": sources,
+            "stats": stats,
+        }
+
     async def _get_profile(
         self,
         container_tag: str,
@@ -257,6 +302,8 @@ class ContextInjectService:
                             "content": getattr(chunk, "content", ""),
                             "embedding": getattr(chunk, "embedding", None),
                             "document_id": c.get("document_id"),
+                            "title": c.get("title"),
+                            "source": c.get("source"),
                             "similarity": c.get("similarity", 0.0),
                         }
                     )
@@ -302,9 +349,116 @@ class ContextInjectService:
             )
 
         for c in chunks:
+            content = c.get("content", "")
+            title = c.get("title")
+            source = c.get("source")
+
+            if title or source:
+                source_info = f" [{title or '未知'}"
+                if source:
+                    source_info += f" | {source}"
+                source_info += "]"
+                content = f"{content}{source_info}"
+
             items.append(
                 DedupItem(
-                    content=c.get("content", ""),
+                    content=content,
+                    source="chunk",
+                    priority=SOURCE_PRIORITY["chunk"],
+                    embedding=c.get("embedding"),
+                    id=c.get("id"),
+                )
+            )
+
+        return items
+
+    def _collect_items_with_tags(
+        self,
+        profile: Dict[str, List[str]],
+        user_memories: List[Dict[str, Any]],
+        project_memories: List[Dict[str, Any]],
+        user_chunks: List[Dict[str, Any]],
+        project_chunks: List[Dict[str, Any]],
+    ) -> List[DedupItem]:
+        items = []
+
+        for fact in profile.get("static", []):
+            items.append(
+                DedupItem(
+                    content=fact,
+                    source="profile",
+                    priority=SOURCE_PRIORITY["profile"],
+                )
+            )
+
+        for fact in profile.get("dynamic", []):
+            items.append(
+                DedupItem(
+                    content=fact,
+                    source="profile",
+                    priority=SOURCE_PRIORITY["profile"],
+                )
+            )
+
+        for m in project_memories:
+            items.append(
+                DedupItem(
+                    content=m.get("content", ""),
+                    source="projectMemory",
+                    priority=SOURCE_PRIORITY["projectMemory"],
+                    embedding=m.get("embedding"),
+                    id=m.get("id"),
+                )
+            )
+
+        for m in user_memories:
+            items.append(
+                DedupItem(
+                    content=m.get("content", ""),
+                    source="userMemory",
+                    priority=SOURCE_PRIORITY["userMemory"],
+                    embedding=m.get("embedding"),
+                    id=m.get("id"),
+                )
+            )
+
+        for c in project_chunks:
+            content = c.get("content", "")
+            title = c.get("title")
+            source = c.get("source")
+
+            if title or source:
+                source_info = f" [{title or '未知'}"
+                if source:
+                    source_info += f" | {source}"
+                source_info += "]"
+                content = f"{content}{source_info}"
+
+            items.append(
+                DedupItem(
+                    content=content,
+                    source="chunk",
+                    priority=SOURCE_PRIORITY["chunk"],
+                    embedding=c.get("embedding"),
+                    id=c.get("id"),
+                )
+            )
+
+        for c in user_chunks:
+            content = c.get("content", "")
+            title = c.get("title")
+            source = c.get("source")
+
+            if title or source:
+                source_info = f" [{title or '未知'}"
+                if source:
+                    source_info += f" | {source}"
+                source_info += "]"
+                content = f"{content}{source_info}"
+
+            items.append(
+                DedupItem(
+                    content=content,
                     source="chunk",
                     priority=SOURCE_PRIORITY["chunk"],
                     embedding=c.get("embedding"),
@@ -354,6 +508,53 @@ class ContextInjectService:
 
         return "\n".join(lines)
 
+    def _format_context_with_tags(
+        self,
+        items: List[DedupItem],
+        language: str,
+    ) -> str:
+        is_zh = language == "zh_CN" or (
+            language == "auto" and self._detect_chinese(items)
+        )
+
+        lines = []
+        lines.append("## 用户上下文" if is_zh else "## User Context")
+        lines.append("")
+
+        profile_items = [i for i in items if i.source == "profile"]
+        project_memory_items = [i for i in items if i.source == "projectMemory"]
+        user_memory_items = [i for i in items if i.source == "userMemory"]
+        chunk_items = [i for i in items if i.source == "chunk"]
+
+        if profile_items:
+            lines.append("### 永久特征" if is_zh else "### Static Facts")
+            for item in profile_items:
+                lines.append(f"- {item.content}")
+            lines.append("")
+
+        if project_memory_items:
+            lines.append("### 项目记忆" if is_zh else "### Project Memories")
+            for item in project_memory_items:
+                lines.append(f"- {item.content}")
+            lines.append("")
+
+        if user_memory_items:
+            lines.append("### 用户记忆" if is_zh else "### User Memories")
+            for item in user_memory_items:
+                lines.append(f"- {item.content}")
+            lines.append("")
+
+        if chunk_items:
+            lines.append("### 项目文档" if is_zh else "### Project Documents")
+            for item in chunk_items:
+                lines.append(f"- {item.content}")
+            lines.append("")
+
+        if len(lines) <= 3:
+            return ""
+
+        return "\n".join(lines)
+
     def _detect_chinese(self, items: List[DedupItem]) -> bool:
         for item in items:
             chinese_chars = sum(1 for c in item.content if "\u4e00" <= c <= "\u9fff")
@@ -378,7 +579,56 @@ class ContextInjectService:
             ],
         }
 
+    def _build_sources_with_tags(
+        self,
+        profile: Dict[str, List[str]],
+        user_memories: List[Dict[str, Any]],
+        project_memories: List[Dict[str, Any]],
+        user_chunks: List[Dict[str, Any]],
+        project_chunks: List[Dict[str, Any]],
+        deduped_items: List[DedupItem],
+    ) -> Dict[str, Any]:
+        return {
+            "profile": profile.get("static", []) + profile.get("dynamic", []),
+            "memories": [
+                {"id": m.get("id"), "content": m.get("content")}
+                for m in project_memories
+            ],
+            "user_memories": [
+                {"id": m.get("id"), "content": m.get("content")} for m in user_memories
+            ],
+            "chunks": [
+                {"id": c.get("id"), "content": c.get("content")} for c in project_chunks
+            ],
+            "user_chunks": [
+                {"id": c.get("id"), "content": c.get("content")} for c in user_chunks
+            ],
+        }
+
     def _build_stats(
+        self,
+        all_items: List[DedupItem],
+        deduped_items: List[DedupItem],
+    ) -> Dict[str, int]:
+        memories_count = len(
+            [i for i in deduped_items if i.source in ("userMemory", "projectMemory")]
+        )
+        return {
+            "total_items": len(all_items),
+            "after_dedup": len(deduped_items),
+            "deduped_count": len(all_items) - len(deduped_items),
+            "profile_count": len([i for i in deduped_items if i.source == "profile"]),
+            "memories_count": memories_count,
+            "project_memories_count": len(
+                [i for i in deduped_items if i.source == "projectMemory"]
+            ),
+            "user_memories_count": len(
+                [i for i in deduped_items if i.source == "userMemory"]
+            ),
+            "chunks_count": len([i for i in deduped_items if i.source == "chunk"]),
+        }
+
+    def _build_stats_with_tags(
         self,
         all_items: List[DedupItem],
         deduped_items: List[DedupItem],
@@ -388,12 +638,11 @@ class ContextInjectService:
             "after_dedup": len(deduped_items),
             "deduped_count": len(all_items) - len(deduped_items),
             "profile_count": len([i for i in deduped_items if i.source == "profile"]),
-            "memories_count": len(
-                [
-                    i
-                    for i in deduped_items
-                    if i.source in ("userMemory", "projectMemory")
-                ]
+            "project_memories_count": len(
+                [i for i in deduped_items if i.source == "projectMemory"]
+            ),
+            "user_memories_count": len(
+                [i for i in deduped_items if i.source == "userMemory"]
             ),
             "chunks_count": len([i for i in deduped_items if i.source == "chunk"]),
         }

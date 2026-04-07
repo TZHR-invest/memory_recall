@@ -491,7 +491,7 @@ class DocumentStore:
 
         rows = await db.fetch(
             """
-            SELECT c.*, d.container_tag, d.title,
+            SELECT c.*, d.container_tag, d.title, d.source,
                    1 - (c.embedding <=> $1::vector) as similarity
             FROM chunks c
             JOIN documents d ON c.document_id = d.id
@@ -511,6 +511,7 @@ class DocumentStore:
                 "chunk": self._row_to_chunk(row),
                 "document_id": row["document_id"],
                 "title": row["title"],
+                "source": row["source"],
                 "similarity": float(row["similarity"]) if row["similarity"] else 0.0,
             }
             for row in rows
