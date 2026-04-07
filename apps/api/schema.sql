@@ -173,7 +173,7 @@ COMMENT ON COLUMN documents.chunk_count IS 'Number of chunks';
 -- 6. Chunks Table (Document Content Chunks)
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS chunks (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id VARCHAR(24) PRIMARY KEY DEFAULT 'chk_' || replace(gen_random_uuid()::text, '-', ''),
     document_id VARCHAR(24) NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
     content TEXT NOT NULL,
     embedded_content TEXT,
@@ -288,9 +288,11 @@ COMMENT ON COLUMN memory_entities.mention_context IS 'Surrounding text where ent
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS chunk_entities (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    chunk_id VARCHAR(24) NOT NULL,
+    chunk_id VARCHAR(24) NOT NULL REFERENCES chunks(id) ON DELETE CASCADE,
     entity_id UUID NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
     entity_type VARCHAR(50),
+    mention_context TEXT,
+    confidence FLOAT DEFAULT 0.8,
     created_at TIMESTAMP DEFAULT NOW()
 );
 
@@ -304,6 +306,8 @@ ALTER TABLE chunk_entities DROP CONSTRAINT IF EXISTS uq_chunk_entities;
 ALTER TABLE chunk_entities ADD CONSTRAINT uq_chunk_entities UNIQUE (chunk_id, entity_id);
 
 COMMENT ON TABLE chunk_entities IS 'Junction table linking document chunks to entities extracted from document summary';
+COMMENT ON COLUMN chunk_entities.mention_context IS 'Surrounding text where entity was mentioned in the chunk';
+COMMENT ON COLUMN chunk_entities.confidence IS 'Confidence score for this entity association';
 
 -- ============================================================================
 -- 10. Helper Functions
