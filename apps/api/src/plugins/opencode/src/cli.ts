@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, cpSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, cpSync, symlinkSync, lstatSync, readlinkSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 import { homedir } from "node:os";
 import * as readline from "node:readline";
@@ -22,6 +22,8 @@ const CONFIG_PACKAGE_JSON = join(CONFIG_DIR, "package.json");
 
 const CONFIG_NODE_MODULES = join(CONFIG_DIR, "node_modules");
 const CACHE_NODE_MODULES = join(CACHE_DIR, "node_modules");
+const CACHE_PACKAGES_DIR = join(CACHE_DIR, "packages");
+const CACHE_PACKAGE_DIR = join(CACHE_PACKAGES_DIR, `${PLUGIN_NAME}@latest`);
 const CONFIG_PLUGIN_SYMLINK = join(CONFIG_NODE_MODULES, PLUGIN_NAME);
 const CACHE_PLUGIN_SYMLINK = join(CACHE_NODE_MODULES, PLUGIN_NAME);
 
@@ -160,6 +162,106 @@ function installPluginFiles(): { success: boolean; error?: string } {
   }
 }
 
+function createDevModeSymlink(): { success: boolean; error?: string } {
+  const sourcePath = getPluginSourcePath();
+  
+  // 1. 创建 ~/.config/opencode/node_modules/memory-recall-opencode 符号链接
+  if (!existsSync(CONFIG_NODE_MODULES)) {
+    try {
+      mkdirSync(CONFIG_NODE_MODULES, { recursive: true });
+      console.log(`✓ 创建 node_modules 目录: ${CONFIG_NODE_MODULES}`);
+    } catch (error) {
+      return { success: false, error: `创建 node_modules 目录失败: ${error}` };
+    }
+  }
+  
+  if (existsSync(CONFIG_PLUGIN_SYMLINK)) {
+    try {
+      const stats = lstatSync(CONFIG_PLUGIN_SYMLINK);
+      if (stats.isSymbolicLink()) {
+        const existingTarget = readlinkSync(CONFIG_PLUGIN_SYMLINK);
+        if (existingTarget === sourcePath || existingTarget === resolve(sourcePath)) {
+          console.log(`✓ 符号链接已存在且正确: ${CONFIG_PLUGIN_SYMLINK}`);
+          console.log(`  指向: ${sourcePath}`);
+        } else {
+          rmSync(CONFIG_PLUGIN_SYMLINK, { recursive: true, force: true });
+          console.log(`✓ 已删除旧的符号链接`);
+          symlinkSync(sourcePath, CONFIG_PLUGIN_SYMLINK, "junction");
+          console.log(`✓ 已创建符号链接: ${CONFIG_PLUGIN_SYMLINK}`);
+          console.log(`  指向: ${sourcePath}`);
+        }
+      } else {
+        rmSync(CONFIG_PLUGIN_SYMLINK, { recursive: true, force: true });
+        symlinkSync(sourcePath, CONFIG_PLUGIN_SYMLINK, "junction");
+        console.log(`✓ 已创建符号链接: ${CONFIG_PLUGIN_SYMLINK}`);
+        console.log(`  指向: ${sourcePath}`);
+      }
+    } catch (error) {
+      return { success: false, error: `检查符号链接失败: ${error}` };
+    }
+  } else {
+    try {
+      symlinkSync(sourcePath, CONFIG_PLUGIN_SYMLINK, "junction");
+      console.log(`✓ 已创建符号链接: ${CONFIG_PLUGIN_SYMLINK}`);
+      console.log(`  指向: ${sourcePath}`);
+    } catch {
+      try {
+        symlinkSync(sourcePath, CONFIG_PLUGIN_SYMLINK, "dir");
+        console.log(`✓ 已创建符号链接: ${CONFIG_PLUGIN_SYMLINK}`);
+        console.log(`  指向: ${sourcePath}`);
+      } catch (error2) {
+        return { success: false, error: `创建符号链接失败: ${error2}` };
+      }
+    }
+  }
+  
+  // 2. 创建 ~/.cache/opencode/packages/memory-recall-opencode@latest/ 入口
+  const cacheNodeModules = join(CACHE_PACKAGE_DIR, "node_modules");
+  const cachePluginLink = join(cacheNodeModules, PLUGIN_NAME);
+  const cacheDepsLink = join(cacheNodeModules, "@opencode-ai");
+  
+  try {
+    mkdirSync(cacheNodeModules, { recursive: true });
+    
+    const packageJsonPath = join(CACHE_PACKAGE_DIR, "package.json");
+    writeFileSync(packageJsonPath, JSON.stringify({
+      name: PLUGIN_NAME,
+      version: "1.8.1"
+    }, null, 2));
+    console.log(`✓ 创建 packages 入口: ${CACHE_PACKAGE_DIR}`);
+    
+    // 创建插件符号链接
+    if (existsSync(cachePluginLink)) {
+      rmSync(cachePluginLink, { recursive: true, force: true });
+    }
+    symlinkSync(sourcePath, cachePluginLink, "junction");
+    console.log(`  插件链接: ${cachePluginLink}`);
+    
+    // 创建依赖符号链接
+    if (existsSync(CONFIG_NODE_MODULES) && existsSync(join(CONFIG_NODE_MODULES, "@opencode-ai"))) {
+      if (existsSync(cacheDepsLink)) {
+        rmSync(cacheDepsLink, { recursive: true, force: true });
+      }
+      symlinkSync(join(CONFIG_NODE_MODULES, "@opencode-ai"), cacheDepsLink, "junction");
+      console.log(`  依赖链接: ${cacheDepsLink}`);
+    }
+    
+    // zod 依赖
+    const zodLink = join(cacheNodeModules, "zod");
+    if (existsSync(CONFIG_NODE_MODULES) && existsSync(join(CONFIG_NODE_MODULES, "zod"))) {
+      if (existsSync(zodLink)) {
+        rmSync(zodLink, { recursive: true, force: true });
+      }
+      symlinkSync(join(CONFIG_NODE_MODULES, "zod"), zodLink, "junction");
+    }
+    
+  } catch (error) {
+    return { success: false, error: `创建 packages 入口失败: ${error}` };
+  }
+  
+  return { success: true };
+}
+
 function uninstallPluginFiles(): boolean {
   let success = true;
   
@@ -192,6 +294,16 @@ function uninstallPluginFiles(): boolean {
       console.log(`✓ 已删除 cache/node_modules 中的插件: ${CACHE_PLUGIN_SYMLINK}`);
     } catch (error) {
       console.log(`✗ 删除 cache/node_modules 插件失败: ${error}`);
+      success = false;
+    }
+  }
+  
+  if (existsSync(CACHE_PACKAGE_DIR)) {
+    try {
+      rmSync(CACHE_PACKAGE_DIR, { recursive: true, force: true });
+      console.log(`✓ 已删除 cache/packages 中的插件: ${CACHE_PACKAGE_DIR}`);
+    } catch (error) {
+      console.log(`✗ 删除 cache/packages 插件失败: ${error}`);
       success = false;
     }
   }
@@ -650,6 +762,12 @@ async function doInstall(): Promise<void> {
       }
       console.log(`✓ 开发模式: 直接加载源码目录`);
       console.log(`  路径: ${sourcePath}`);
+      
+      const symlinkResult = createDevModeSymlink();
+      if (!symlinkResult.success) {
+        console.log(`✗ ${symlinkResult.error}`);
+        return;
+      }
     } else {
       const installResult = installPluginFiles();
       if (!installResult.success) {
@@ -874,7 +992,6 @@ async function showStatus(): Promise<void> {
 
   const sourcePath = getPluginSourcePath();
 
-  // 检查插件文件
   const hasInstalled = existsSync(PLUGIN_INSTALL_DIR);
   const hasConfigSymlink = existsSync(CONFIG_PLUGIN_SYMLINK);
   const hasCacheSymlink = existsSync(CACHE_PLUGIN_SYMLINK);
@@ -886,15 +1003,49 @@ async function showStatus(): Promise<void> {
   }
   
   if (hasConfigSymlink) {
-    console.log(`✓ config/node_modules: ${CONFIG_PLUGIN_SYMLINK}`);
+    try {
+      const stats = lstatSync(CONFIG_PLUGIN_SYMLINK);
+      if (stats.isSymbolicLink()) {
+        const target = readlinkSync(CONFIG_PLUGIN_SYMLINK);
+        console.log(`✓ config/node_modules (符号链接): ${CONFIG_PLUGIN_SYMLINK}`);
+        console.log(`  → 指向: ${target}`);
+        if (target === sourcePath || target === resolve(sourcePath)) {
+          console.log(`  [开发模式]`);
+        }
+      } else {
+        console.log(`✓ config/node_modules (目录): ${CONFIG_PLUGIN_SYMLINK}`);
+      }
+    } catch {
+      console.log(`✓ config/node_modules: ${CONFIG_PLUGIN_SYMLINK}`);
+    }
   }
   
   if (hasCacheSymlink) {
     console.log(`✓ cache/node_modules: ${CACHE_PLUGIN_SYMLINK}`);
   }
+  
+  if (existsSync(CACHE_PACKAGE_DIR)) {
+    const cachePluginLink = join(CACHE_PACKAGE_DIR, "node_modules", PLUGIN_NAME);
+    if (existsSync(cachePluginLink)) {
+      try {
+        const stats = lstatSync(cachePluginLink);
+        if (stats.isSymbolicLink()) {
+          const target = readlinkSync(cachePluginLink);
+          console.log(`✓ cache/packages (符号链接): ${cachePluginLink}`);
+          console.log(`  → 指向: ${target}`);
+        } else {
+          console.log(`✓ cache/packages: ${cachePluginLink}`);
+        }
+      } catch {
+        console.log(`✓ cache/packages: ${CACHE_PACKAGE_DIR}`);
+      }
+    }
+  }
 
-  if (DEV_MODE && existsSync(join(sourcePath, "dist"))) {
-    console.log(`\n✓ 开发版本可用: ${sourcePath}`);
+  if (existsSync(join(sourcePath, "dist"))) {
+    console.log(`\n✓ 源码可构建: ${sourcePath}`);
+  } else {
+    console.log(`\n✗ 源码未构建: ${sourcePath}/dist 不存在`);
   }
 
   // 检查 opencode.json 注册
