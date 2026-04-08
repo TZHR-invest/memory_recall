@@ -399,7 +399,7 @@ v5.2 新增异步写入队列功能，将写入操作（添加记忆、导入文
 
 | 配置项 | 默认值 | 说明 |
 |--------|--------|------|
-| `asyncQueue.enabled` | `false` | 启用异步队列 |
+| `asyncQueue.enabled` | `true` | 启用异步队列（v5.2.2 默认启用） |
 | `asyncQueue.maxConcurrency` | `3` | 最大并发任务数 |
 | `asyncQueue.maxSize` | `100` | 队列最大大小 |
 | `asyncQueue.taskTimeoutMs` | `120000` | 任务执行超时（毫秒），适合 LLM 调用场景 |

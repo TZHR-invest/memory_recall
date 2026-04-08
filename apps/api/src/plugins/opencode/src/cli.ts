@@ -605,7 +605,32 @@ function writeConfig(config: {
   baseUrl: string;
   userName: string;
   keyId: string;
-}): void {
+}, preserveExisting: boolean = false): void {
+  // 如果保留现有配置，尝试合并
+  if (preserveExisting && existsSync(PLUGIN_CONFIG_FILE)) {
+    try {
+      const existing = readConfig();
+      if (existing) {
+        // 合并配置：只更新基本配置，保留用户自定义配置
+        const merged = {
+          ...existing,  // 保留所有现有配置
+          apiKey: config.apiKey,  // 更新基本配置
+          baseUrl: config.baseUrl,
+          userName: config.userName,
+          keyId: config.keyId,
+        };
+        
+        const mergedContent = JSON.stringify(merged, null, 2);
+        writeFileSync(PLUGIN_CONFIG_FILE, mergedContent);
+        console.log(`✓ 配置已更新并保留自定义设置`);
+        return;
+      }
+    } catch (e) {
+      console.log("⚠️  无法读取现有配置，将创建新配置");
+    }
+  }
+  
+  // 创建新配置（默认值）
   const content = `{
   "apiKey": "${config.apiKey}",
   "baseUrl": "${config.baseUrl}",
@@ -658,7 +683,7 @@ function writeConfig(config: {
 
   // 异步写入队列（v5.2 新增）
   "asyncQueue": {
-    "enabled": false,
+    "enabled": true,
     "maxConcurrency": 3,
     "maxSize": 100,
     "taskTimeoutMs": 120000,
@@ -862,7 +887,8 @@ async function doInstall(): Promise<void> {
       userName = validation.userName || await questionWithDefault(rl, "请输入用户名", "User");
     }
 
-    writeConfig({ apiKey, baseUrl, userName, keyId });
+    // 保留用户的自定义配置（如 asyncQueue、semanticDedup 等）
+    writeConfig({ apiKey, baseUrl, userName, keyId }, true);
 
     console.log("\n╔════════════════════════════════════════════╗");
     console.log("║              安装完成！                    ║");
