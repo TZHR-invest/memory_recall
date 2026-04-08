@@ -261,7 +261,7 @@ async def get_memory(
     current_user: Dict = Depends(require_permission("read")),
     _: Dict = Depends(check_rate_limit),
 ):
-    memory = await memory_store.get_by_id(memory_id)
+    memory = await memory_store.get_by_id(memory_id, include_forgotten=True)
     if not memory:
         raise HTTPException(status_code=404, detail="Memory not found")
 
@@ -293,7 +293,7 @@ async def forget_memory(
     current_user: Dict = Depends(require_permission("write")),
     _: Dict = Depends(check_rate_limit),
 ):
-    memory = await memory_store.get_by_id(memory_id)
+    memory = await memory_store.get_by_id(memory_id, include_forgotten=True)
     if not memory:
         raise HTTPException(status_code=404, detail="Memory not found")
 
@@ -320,7 +320,7 @@ async def restore_memory(
     current_user: Dict = Depends(require_permission("write")),
     _: Dict = Depends(check_rate_limit),
 ):
-    memory = await memory_store.get_by_id(memory_id)
+    memory = await memory_store.get_by_id(memory_id, include_forgotten=True)
     if not memory:
         raise HTTPException(status_code=404, detail="Memory not found")
 
@@ -384,7 +384,7 @@ async def get_memory_history(
     current_user: Dict = Depends(require_permission("read")),
     _: Dict = Depends(check_rate_limit),
 ):
-    memory = await memory_store.get_by_id(memory_id)
+    memory = await memory_store.get_by_id(memory_id, include_forgotten=True)
     if not memory:
         raise HTTPException(status_code=404, detail="Memory not found")
 
