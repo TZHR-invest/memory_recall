@@ -296,7 +296,9 @@ async function server(input: PluginInput, options: Record<string, unknown> = {})
 
     compactionHook.markSummarized(sessionId);
 
-    // 注入 AI 行为指导（确保压缩后 AI 仍然知道如何使用 Memory Recall）
+    await compactionHook.captureAgentConfig(sessionId);
+    await compactionHook.captureTodos(sessionId);
+
     const locale = config.language === "auto" 
       ? (detectLocaleFromText("", config.language) as Locale)
       : (config.language as Locale);
@@ -307,7 +309,6 @@ async function server(input: PluginInput, options: Record<string, unknown> = {})
 
     if (config.enableSummaryCapture) {
       try {
-        // Priority: use cached latest summary (just generated) over database
         const cachedSummary = compactionHook.getLatestSummary(sessionId);
         if (cachedSummary) {
           const prefix = locale === "zh_CN" ? "[会话摘要]\n" : "[Session Summary]\n";

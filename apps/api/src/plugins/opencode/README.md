@@ -20,6 +20,18 @@ node dist/cli.js install
 2. 获取 `keyId` 并写入配置
 3. 自动生成项目隔离的 container_tag
 
+## 与 Oh-My-OpenCode 共存
+
+如果你同时安装了 Oh-My-OpenCode，需要在 `~/.config/opencode/oh-my-openagent.json` 中禁用其恢复功能，避免重复恢复：
+
+```json
+{
+  "disabled_hooks": ["anthropic-context-window-limit-recovery"]
+}
+```
+
+**原因**：Memory Recall 和 Oh-My-OpenCode 都会在压缩后尝试恢复 agent 配置，同时启用会导致重复消息。
+
 ## 目录结构
 
 ```

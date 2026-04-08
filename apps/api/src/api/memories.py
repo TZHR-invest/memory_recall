@@ -943,3 +943,132 @@ async def hybrid_search(
     combined = combined[: request.limit]
 
     return {"query": request.query, "results": combined, "count": len(combined)}
+
+
+class ExtractMemoryRequest(BaseModel):
+    summary: str = Field(..., description="Session summary to extract memories from")
+    language: str = Field("zh_CN", description="Language for extraction (zh_CN or en_US)")
+
+
+class ExtractedMemory(BaseModel):
+    content: str = Field(..., description="Extracted memory content")
+    type: str = Field(..., description="Memory type (preference, constraint, learned-pattern)")
+    reason: str = Field(..., description="Why this is worth saving")
+
+
+class ExtractMemoryResponse(BaseModel):
+    memories: List[ExtractedMemory] = Field(..., description="Extracted memories")
+    has_worthwhile: bool = Field(..., description="Whether any worthwhile memories found")
+
+
+@router.post(
+    "/extract-memory",
+    summary="Extract worthwhile memories from session summary",
+    description="Use LLM to extract memories worth saving from a session summary",
+)
+async def extract_memory_from_summary(
+    request: ExtractMemoryRequest,
+    container_tag: str = Depends(require_permission("read")),
+) -> ExtractMemoryResponse:
+    """使用 LLM 从会话摘要中提取值得保存的记忆"""
+    from src.llm.client import get_llm_client
+    import json
+
+    if request.language == "zh_CN":
+        system_prompt = """你是一个记忆提取专家。你的任务是从会话摘要中提取值得长期保存的记忆。
+
+**保存标准**（必须同时满足）：
+1. 跨会话有效：这个信息在未来的对话中仍然有用
+2. 非临时状态：不是"正在做什么"，而是"应该怎么做"
+3. 非代码细节：代码实现在代码库中，不需要记忆
+
+**值得保存的例子**：
+- 用户偏好："用户偏好使用中文回复"
+- 项目约束："测试不能跳过"
+- 学到的模式："语义去重阈值 0.85 最合适"
+- 技术决策："使用 PostgreSQL 而不是 MySQL"
+
+**不值得保存的例子**：
+- 临时任务："实现登录功能"（完成后就没意义）
+- 当前状态："正在编辑 auth.ts"（下次不同）
+- 代码细节："函数签名是..."（在代码中）
+- 已完成工作："已创建 3 个文件"（历史记录）
+
+请分析摘要，返回 JSON 格式：
+```json
+{
+  "memories": [
+    {
+      "content": "提取的记忆内容（简洁，一句话）",
+      "type": "preference|constraint|learned-pattern",
+      "reason": "为什么值得保存（一句话）"
+    }
+  ]
+}
+```
+
+如果没有值得保存的内容，返回：`{"memories": []}`"""
+
+    else:
+        system_prompt = """You are a memory extraction expert. Your task is to extract memories worth long-term preservation from a session summary.
+
+**Save Criteria** (must meet all):
+1. Cross-session validity: This information will still be useful in future conversations
+2. Non-temporary state: Not "what is being done", but "how things should be done"
+3. Non-code details: Code implementation is in the codebase, no need to memorize
+
+**Worth saving examples**:
+- User preference: "User prefers Chinese responses"
+- Project constraint: "Tests cannot be skipped"
+- Learned pattern: "Semantic dedup threshold 0.85 works best"
+- Technical decision: "Use PostgreSQL instead of MySQL"
+
+**Not worth saving examples**:
+- Temporary task: "Implement login function" (meaningless after completion)
+- Current state: "Editing auth.ts" (different next time)
+- Code details: "Function signature is..." (in code)
+- Completed work: "Created 3 files" (history)
+
+Analyze the summary and return JSON format:
+```json
+{
+  "memories": [
+    {
+      "content": "Extracted memory content (concise, one sentence)",
+      "type": "preference|constraint|learned-pattern",
+      "reason": "Why worth saving (one sentence)"
+    }
+  ]
+}
+```
+
+If nothing worth saving, return: `{"memories": []}`"""
+
+    try:
+        llm = get_llm_client()
+        result = llm.extract_json(
+            prompt=f"{system_prompt}\n\n会话摘要：\n{request.summary}",
+            temperature=0.3,
+            max_tokens=1000
+        )
+
+        if not result or "memories" not in result:
+            return ExtractMemoryResponse(memories=[], has_worthwhile=False)
+
+        memories = [
+            ExtractedMemory(
+                content=m.get("content", ""),
+                type=m.get("type", "learned-pattern"),
+                reason=m.get("reason", "")
+            )
+            for m in result.get("memories", [])
+            if m.get("content")
+        ]
+
+        return ExtractMemoryResponse(
+            memories=memories,
+            has_worthwhile=len(memories) > 0
+        )
+
+    except Exception as e:
+        return ExtractMemoryResponse(memories=[], has_worthwhile=False)

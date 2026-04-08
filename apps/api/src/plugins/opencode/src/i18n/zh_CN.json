@@ -29,7 +29,9 @@
     "final_goal": "## 2. 最终目标",
     "work_completed": "## 3. 已完成工作",
     "remaining_tasks": "## 4. 剩余任务",
-    "must_not_do": "## 5. 禁止事项（关键约束）"
+    "active_working_context": "## 5. 当前工作上下文（用于无缝继续）",
+    "must_not_do": "## 6. 禁止事项（关键约束）",
+    "next_action": "## 7. 下一步行动"
   },
   "tool_messages": {
     "help_title": "记忆系统使用指南",

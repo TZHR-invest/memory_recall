@@ -537,4 +537,14 @@ export class ApiClient {
       config: config || {},
     });
   }
+
+  async extractMemoryFromSummary(
+    summary: string,
+    language: string = "zh_CN"
+  ): Promise<{ memories: Array<{ content: string; type: string; reason: string }>; has_worthwhile: boolean }> {
+    return this.request("/extract-memory", "POST", {
+      summary,
+      language,
+    });
+  }
 }
