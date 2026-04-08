@@ -21,7 +21,9 @@ export interface LocaleData {
     final_goal: string;
     work_completed: string;
     remaining_tasks: string;
+    active_working_context: string;
     must_not_do: string;
+    next_action: string;
   };
   tool_messages: {
     help_title: string;
@@ -72,7 +74,9 @@ function getDefaultLocale(): LocaleData {
       final_goal: "## 2. Final Goal",
       work_completed: "## 3. Work Completed",
       remaining_tasks: "## 4. Remaining Tasks",
-      must_not_do: "## 5. MUST NOT Do (Critical Constraints)",
+      active_working_context: "## 5. Active Working Context (For Seamless Continuation)",
+      must_not_do: "## 6. MUST NOT Do (Critical Constraints)",
+      next_action: "## 7. Next Action",
     },
     tool_messages: {
       help_title: "Memory Recall Usage Guide",

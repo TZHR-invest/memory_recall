@@ -61,6 +61,25 @@ export class EventHandler {
       { type: "session.deleted", properties: { info: { id: sessionId } } },
       null
     );
+
+    if (sessionId) {
+      this.compactionHook.clearSessionState(sessionId);
+    }
+  }
+
+  async handleSessionCompacted(event: Event): Promise<void> {
+    const props = event.properties || {};
+    const sessionId = props.sessionID as string | undefined || 
+                      (props.info as Record<string, unknown>)?.id as string | undefined;
+
+    if (this.logger) {
+      this.logger.eventReceived({ eventType: "session.compacted", sessionId });
+    }
+
+    if (sessionId) {
+      await this.compactionHook.recoverAgentConfig(sessionId);
+      await this.compactionHook.restoreTodos(sessionId);
+    }
   }
 
   getHandlers(): Record<string, (event: Event, ctxClient: unknown) => Promise<void>> {
@@ -68,6 +87,7 @@ export class EventHandler {
       "message.updated": (e, c) => this.handleMessageUpdated(e, c),
       "session.idle": (e, c) => this.handleSessionIdle(e, c),
       "session.deleted": (e) => this.handleSessionDeleted(e),
+      "session.compacted": (e) => this.handleSessionCompacted(e),
     };
   }
 }

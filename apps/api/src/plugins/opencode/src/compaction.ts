@@ -6,7 +6,7 @@ import type { ApiClient } from "./client";
 import type { Config } from "./config";
 import type { Logger } from "./logging";
 import { detectLocaleFromText, getLocale, type Locale } from "./i18n";
-import { extractImportantSections, shouldSave } from "./summary-extractor";
+import { shouldSave } from "./summary-extractor";
 
 const MESSAGE_STORAGE = path.join(os.homedir(), ".opencode", "messages");
 const PART_STORAGE = path.join(os.homedir(), ".opencode", "parts");
@@ -20,8 +20,25 @@ interface CompactionState {
   lastCompactionTime: Map<string, number>;
   compactionInProgress: Set<string>;
   summarizedSessions: Set<string>;
-  savedSummarySessions: Set<string>; // Prevent duplicate saves
-  latestSummaries: Map<string, { content: string; timestamp: number }>; // Cache latest summaries by session
+  savedSummarySessions: Set<string>;
+  latestSummaries: Map<string, { content: string; timestamp: number }>;
+  agentConfigCheckpoints: Map<string, AgentConfig>;
+  todoSnapshots: Map<string, TodoItem[]>;
+}
+
+interface AgentConfig {
+  agent?: string;
+  model?: {
+    providerID: string;
+    modelID: string;
+  };
+  tools?: Record<string, boolean>;
+}
+
+interface TodoItem {
+  content: string;
+  status: string;
+  priority: string;
 }
 
 interface MessageInfo {
@@ -72,9 +89,27 @@ ${memoriesList}
     }
   }
 
+  const activeContextHint = locale === "zh_CN"
+    ? `- **文件**: 当前正在编辑或频繁引用的文件路径
+- **进行中的代码**: 正在开发的关键代码片段、函数签名或数据结构
+- **状态与变量**: 与当前工作相关的重要变量名、配置值或运行时状态`
+    : `- **Files**: Paths of files currently being edited or frequently referenced
+- **Code in Progress**: Key code snippets, function signatures, or data structures under active development
+- **State & Variables**: Important variable names, configuration values, or runtime state relevant to ongoing work`;
+
+  const nextActionHint = locale === "zh_CN"
+    ? `- 一句话描述压缩后应立即执行的任务
+- 例如："继续实现 XXX 函数" 或 "运行测试并修复失败用例"
+- 避免模糊描述，要具体到文件路径或函数名`
+    : `- One sentence describing the task to execute immediately after compaction
+- Example: "Continue implementing XXX function" or "Run tests and fix failing cases"
+- Avoid vague descriptions; be specific about file paths or function names`;
+
   return `[COMPACTION CONTEXT INJECTION]
 
-When summarizing this session, you MUST include the following sections in your summary:
+CRITICAL: Use ONLY the section headers below. Do NOT use any other headers like "## Goal" or "## Summary".
+
+Your summary MUST have EXACTLY these 7 sections in this order:
 
 ${sections.user_requests}
 - List all original user requests exactly as they were stated
@@ -95,11 +130,17 @@ ${sections.remaining_tasks}
 - Pending items from the original request
 - Follow-up tasks identified during the work
 
+${sections.active_working_context}
+${activeContextHint}
+
 ${sections.must_not_do}
 - Things that were explicitly forbidden
 - Approaches that failed and should not be retried
 - User's explicit restrictions or preferences
 - Anti-patterns identified during the session
+
+${sections.next_action}
+${nextActionHint}
 ${memoriesSection}
 This context is critical for maintaining continuity after compaction.
 `;
@@ -291,6 +332,8 @@ export class CompactionHook {
     summarizedSessions: new Set(),
     savedSummarySessions: new Set(),
     latestSummaries: new Map(),
+    agentConfigCheckpoints: new Map(),
+    todoSnapshots: new Map(),
   };
 
   constructor(
@@ -397,28 +440,26 @@ export class CompactionHook {
     }
 
     try {
-      const importantContent = extractImportantSections(summaryContent);
-      
-      if (!importantContent || importantContent.length < 100) {
-        if (this.logger) {
-          this.logger.debug("No important content extracted from summary", { sessionID: sessionId });
-        }
-        return null;
-      }
+      const locale = this.config.language === "auto" ? "en_US" : this.config.language;
+      const prefix = locale === "zh_CN" ? "[会话摘要]\n" : "[Session Summary]\n";
+      const contentToSave = prefix + summaryContent;
 
       const existingMemories = await this.client.listMemories(this.tags.project, 50);
-      if (!shouldSave(importantContent, existingMemories)) {
+      if (!shouldSave(contentToSave, existingMemories)) {
         if (this.logger) {
-          this.logger.debug("Extracted content is duplicate, skipping", { sessionID: sessionId });
+          this.logger.debug("Summary is duplicate, skipping", {
+            sessionID: sessionId,
+            contentLength: summaryContent.length,
+          });
         }
         return null;
       }
 
       const result = await this.client.addMemory(
-        importantContent,
+        contentToSave,
         this.tags.project,
         false,
-        "learned-pattern"
+        "conversation"
       );
 
       if (result?.id) {
@@ -428,14 +469,16 @@ export class CompactionHook {
           timestamp: Date.now(),
         });
         if (this.logger) {
-          this.logger.summaryCaptured({
-            sessionId,
+          this.logger.info("Summary saved as memory", {
+            sessionID: sessionId,
             memoryId: result.id,
-            contentLength: importantContent.length,
+            contentLength: summaryContent.length,
           });
         }
         return result.id;
       }
+
+      return null;
     } catch (e) {
       if (this.logger) {
         this.logger.error("Failed to save summary", { error: String(e) });
@@ -448,15 +491,10 @@ export class CompactionHook {
     this.state.summarizedSessions.add(sessionId);
   }
 
-  /**
-   * Get the latest cached summary for a session.
-   * Returns null if no cached summary exists or it's too old.
-   */
   getLatestSummary(sessionId: string): string | null {
     const cached = this.state.latestSummaries.get(sessionId);
     if (!cached) return null;
 
-    // Cache expires after 5 minutes
     const MAX_CACHE_AGE = 5 * 60 * 1000;
     if (Date.now() - cached.timestamp > MAX_CACHE_AGE) {
       this.state.latestSummaries.delete(sessionId);
@@ -464,6 +502,189 @@ export class CompactionHook {
     }
 
     return cached.content;
+  }
+
+  async captureAgentConfig(sessionId: string): Promise<void> {
+    if (!this.opencodeClient || !sessionId) return;
+
+    try {
+      const response = await this.opencodeClient.session.messages({
+        path: { id: sessionId },
+        query: { directory: this.directory },
+      });
+
+      const messages = (response as { data?: Array<{ info?: MessageInfo }> }).data || [];
+      const lastUserMessage = [...messages].reverse().find((m) => m.info?.role === "user");
+
+      if (lastUserMessage?.info) {
+        const info = lastUserMessage.info;
+        const model = info.model?.providerID && info.model?.modelID
+          ? { providerID: info.model.providerID, modelID: info.model.modelID }
+          : undefined;
+
+        const config: AgentConfig = {
+          agent: info.agent,
+          model,
+          tools: (info as MessageInfo & { tools?: Record<string, boolean> }).tools,
+        };
+
+        this.state.agentConfigCheckpoints.set(sessionId, config);
+
+        if (this.logger) {
+          this.logger.debug("Captured agent config checkpoint", {
+            sessionID: sessionId,
+            agent: config.agent,
+            hasModel: !!config.model,
+            hasTools: !!config.tools,
+          });
+        }
+      }
+    } catch (e) {
+      if (this.logger) {
+        this.logger.error("Failed to capture agent config", { error: String(e) });
+      }
+    }
+  }
+
+  async recoverAgentConfig(sessionId: string): Promise<boolean> {
+    if (!this.opencodeClient) return false;
+
+    const checkpoint = this.state.agentConfigCheckpoints.get(sessionId);
+    if (!checkpoint?.agent) return false;
+
+    try {
+      // 注意：不使用 noReply: true，让 agent 能继续工作
+      await this.opencodeClient.session.promptAsync({
+        path: { id: sessionId },
+        body: {
+          agent: checkpoint.agent,
+          ...(checkpoint.model ? { model: checkpoint.model } : {}),
+          ...(checkpoint.tools ? { tools: checkpoint.tools } : {}),
+          parts: [{ type: "text", text: "[System: Resuming previous task context]" }],
+        },
+        query: { directory: this.directory },
+      });
+
+      if (this.logger) {
+        this.logger.info("Recovered agent config after compaction", {
+          sessionID: sessionId,
+          agent: checkpoint.agent,
+          hasModel: !!checkpoint.model,
+        });
+      }
+
+      this.state.agentConfigCheckpoints.delete(sessionId);
+      return true;
+    } catch (e) {
+      if (this.logger) {
+        this.logger.error("Failed to recover agent config", { error: String(e) });
+      }
+      return false;
+    }
+  }
+
+  async captureTodos(sessionId: string): Promise<void> {
+    if (!this.opencodeClient || !sessionId) return;
+
+    try {
+      const response = await this.opencodeClient.session.todo({
+        path: { id: sessionId },
+      });
+
+      const todos = (response as { data?: TodoItem[] })?.data || [];
+      if (todos.length > 0) {
+        this.state.todoSnapshots.set(sessionId, todos);
+
+        if (this.logger) {
+          this.logger.debug("Captured todo snapshot", {
+            sessionID: sessionId,
+            count: todos.length,
+          });
+        }
+      }
+    } catch (e) {
+      if (this.logger) {
+        this.logger.debug("Failed to capture todos (API may not be available)", { error: String(e) });
+      }
+    }
+  }
+
+  async restoreTodos(sessionId: string): Promise<void> {
+    const snapshot = this.state.todoSnapshots.get(sessionId);
+    if (!snapshot || snapshot.length === 0) return;
+
+    try {
+      const currentResponse = await this.opencodeClient?.session.todo({
+        path: { id: sessionId },
+      });
+
+      const currentTodos = (currentResponse as { data?: TodoItem[] })?.data || [];
+      if (currentTodos.length > 0) {
+        this.state.todoSnapshots.delete(sessionId);
+        if (this.logger) {
+          this.logger.debug("Skipped todo restore (todos already present)", {
+            sessionID: sessionId,
+            count: currentTodos.length,
+          });
+        }
+        return;
+      }
+
+      const writer = await this.resolveTodoWriter();
+      if (!writer) {
+        if (this.logger) {
+          this.logger.debug("Skipped todo restore (Todo.update unavailable)", {
+            sessionID: sessionId,
+          });
+        }
+        return;
+      }
+
+      try {
+        await writer({ sessionID: sessionId, todos: snapshot });
+        if (this.logger) {
+          this.logger.info("Restored todos after compaction", {
+            sessionID: sessionId,
+            count: snapshot.length,
+          });
+        }
+      } catch (e) {
+        if (this.logger) {
+          this.logger.error("Failed to restore todos", {
+            sessionID: sessionId,
+            error: String(e),
+          });
+        }
+      }
+    } catch (e) {
+      if (this.logger) {
+        this.logger.debug("Failed to restore todos", { error: String(e) });
+      }
+    } finally {
+      this.state.todoSnapshots.delete(sessionId);
+    }
+  }
+
+  private async resolveTodoWriter(): Promise<((params: { sessionID: string; todos: TodoItem[] }) => Promise<void>) | null> {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const mod = await import(/* webpackIgnore: true */ "opencode/session/todo");
+      const update = (mod as { Todo?: { update?: unknown } }).Todo?.update;
+      if (typeof update === "function") {
+        return update as (params: { sessionID: string; todos: TodoItem[] }) => Promise<void>;
+      }
+    } catch {
+      return null;
+    }
+    return null;
+  }
+
+  clearSessionState(sessionId: string): void {
+    this.state.agentConfigCheckpoints.delete(sessionId);
+    this.state.todoSnapshots.delete(sessionId);
+    this.state.latestSummaries.delete(sessionId);
+    this.state.summarizedSessions.delete(sessionId);
+    this.state.savedSummarySessions.delete(sessionId);
   }
 
   async checkAndTriggerCompaction(
@@ -586,25 +807,11 @@ export class CompactionHook {
         await this.opencodeClient.tui.showToast({
           body: {
             title: "Compaction Complete",
-            message: "Session compacted with Memory Recall context. Resuming...",
+            message: "Session compacted with Memory Recall context.",
             variant: "success",
             duration: 2000,
           },
         }).catch(() => {});
-
-        setTimeout(async () => {
-          try {
-            const storedMsg = messageDir ? findNearestMessageWithFields(messageDir) : null;
-            await this.opencodeClient?.session.promptAsync({
-              path: { id: sessionId },
-              body: {
-                agent: storedMsg?.agent,
-                parts: [{ type: "text", text: "Continue" }],
-              },
-              query: { directory: this.directory },
-            });
-          } catch {}
-        }, 500);
       }
 
       this.state.compactionInProgress.delete(sessionId);
