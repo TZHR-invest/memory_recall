@@ -128,6 +128,66 @@ async def cache_cleanup_task() -> None:
     print(f"Cache cleanup: {result}")
 
 
+async def forgotten_memories_cleanup_task() -> None:
+    """Permanently delete soft-deleted memories older than 7 days."""
+    from src.database import db
+
+    retention_days = 7
+    threshold = datetime.utcnow() - timedelta(days=retention_days)
+
+    forgotten_memories = await db.fetch(
+        """
+        SELECT id FROM memories 
+        WHERE is_forgotten = TRUE AND updated_at < $1
+        """,
+        threshold,
+    )
+
+    if not forgotten_memories:
+        print(f"Forgotten memories cleanup: no memories to delete (threshold: {retention_days} days)")
+        return
+
+    memory_ids = [row["id"] for row in forgotten_memories]
+
+    await db.execute(
+        """
+        DELETE FROM memory_entities 
+        WHERE memory_id = ANY($1)
+        """,
+        memory_ids,
+    )
+
+    result = await db.execute(
+        """
+        DELETE FROM memories 
+        WHERE is_forgotten = TRUE AND updated_at < $1
+        """,
+        threshold,
+    )
+
+    orphaned_entities = await db.execute(
+        """
+        DELETE FROM entities 
+        WHERE id NOT IN (SELECT entity_id FROM memory_entities)
+          AND id NOT IN (SELECT entity_id FROM chunk_entities)
+        """
+    )
+
+    orphaned_relations = await db.execute(
+        """
+        DELETE FROM entity_relations 
+        WHERE source_memory_id = ANY($1)
+        """,
+        memory_ids,
+    )
+
+    print(
+        f"Forgotten memories cleanup: deleted {result} memories, "
+        f"{orphaned_entities} orphaned entities, {orphaned_relations} orphaned relations "
+        f"(threshold: {retention_days} days)"
+    )
+
+
 def setup_background_tasks() -> None:
     scheduler.register_task(
         name="profile_rebuild",
@@ -139,4 +199,10 @@ def setup_background_tasks() -> None:
         name="cache_cleanup",
         interval_seconds=600,
         task_func=cache_cleanup_task,
+    )
+
+    scheduler.register_task(
+        name="forgotten_memories_cleanup",
+        interval_seconds=86400,
+        task_func=forgotten_memories_cleanup_task,
     )
