@@ -724,6 +724,105 @@ class TestTraverseMemoryRelations:
 
             assert len(results) == 2
 
+    @pytest.mark.asyncio
+    async def test_traverse_excludes_forgotten_memories(self):
+        """测试 Memory Graph 召回时排除 forgotten 的记忆"""
+        with patch("src.services.core.memory_store.db") as mock_db:
+            mock_db.fetchrow = AsyncMock(
+                side_effect=[
+                    {
+                        "id": "mem_1",
+                        "container_tag": "user_001",
+                        "content": "旧记忆",
+                        "metadata": {"relations": {"updates": ["mem_2"]}},
+                        "is_static": True,
+                        "created_at": None,
+                        "embedding": None,
+                        "is_latest": True,
+                        "valid_from": None,
+                        "valid_until": None,
+                        "confidence": 0.8,
+                        "is_forgotten": False,
+                        "version": 1,
+                        "root_memory_id": None,
+                        "source_count": 1,
+                        "is_inference": False,
+                    },
+                    None,  # mem_2 是 forgotten，get_by_id 返回 None
+                ]
+            )
+
+            results = await self.store.traverse_memory_relations("mem_1", max_depth=1)
+
+            assert len(results) == 1
+            assert results[0].id == "mem_1"
+
+    @pytest.mark.asyncio
+    async def test_get_by_id_excludes_forgotten_by_default(self):
+        """测试 get_by_id 默认排除 forgotten 记忆"""
+        with patch("src.services.core.memory_store.db") as mock_db:
+            mock_db.fetchrow = AsyncMock(
+                return_value={
+                    "id": "mem_1",
+                    "container_tag": "user_001",
+                    "content": "正常记忆",
+                    "metadata": {},
+                    "is_static": True,
+                    "created_at": None,
+                    "embedding": None,
+                    "is_latest": True,
+                    "valid_from": None,
+                    "valid_until": None,
+                    "confidence": 0.8,
+                    "is_forgotten": False,
+                    "version": 1,
+                    "root_memory_id": None,
+                    "source_count": 1,
+                    "is_inference": False,
+                }
+            )
+
+            result = await self.store.get_by_id("mem_1")
+            assert result is not None
+            assert result.id == "mem_1"
+
+            call_args = mock_db.fetchrow.call_args
+            query = call_args[0][0]
+            assert "is_forgotten = FALSE" in query
+
+    @pytest.mark.asyncio
+    async def test_get_by_id_includes_forgotten_when_requested(self):
+        """测试 get_by_id 在 include_forgotten=True 时包含 forgotten 记忆"""
+        with patch("src.services.core.memory_store.db") as mock_db:
+            mock_db.fetchrow = AsyncMock(
+                return_value={
+                    "id": "mem_1",
+                    "container_tag": "user_001",
+                    "content": "已遗忘的记忆",
+                    "metadata": {},
+                    "is_static": True,
+                    "created_at": None,
+                    "embedding": None,
+                    "is_latest": True,
+                    "valid_from": None,
+                    "valid_until": None,
+                    "confidence": 0.8,
+                    "is_forgotten": True,
+                    "version": 1,
+                    "root_memory_id": None,
+                    "source_count": 1,
+                    "is_inference": False,
+                }
+            )
+
+            result = await self.store.get_by_id("mem_1", include_forgotten=True)
+            assert result is not None
+            assert result.id == "mem_1"
+
+            call_args = mock_db.fetchrow.call_args
+            query = call_args[0][0]
+            assert "is_forgotten" not in query
+
 
 class TestTraverseEntityRelations:
     """测试 traverse_entity_relations() 方法"""

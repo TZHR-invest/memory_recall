@@ -332,11 +332,24 @@ class MemoryStore:
         metadata["relations"] = relations_dict
         return await self.update_metadata(memory_id, metadata)
 
-    async def get_by_id(self, memory_id: str) -> Optional[Memory]:
-        row = await db.fetchrow(
-            "SELECT * FROM memories WHERE id = $1",
-            memory_id,
-        )
+    async def get_by_id(
+        self, memory_id: str, include_forgotten: bool = False
+    ) -> Optional[Memory]:
+        """
+        根据 ID 获取记忆
+
+        Args:
+            memory_id: 记忆 ID
+            include_forgotten: 是否包含已遗忘的记忆（默认 False）
+
+        Returns:
+            记忆对象或 None
+        """
+        query = "SELECT * FROM memories WHERE id = $1"
+        if not include_forgotten:
+            query += " AND is_forgotten = FALSE"
+
+        row = await db.fetchrow(query, memory_id)
         return self._row_to_memory(row) if row else None
 
     async def get_by_container(
