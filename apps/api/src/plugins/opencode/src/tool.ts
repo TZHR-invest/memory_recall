@@ -6,6 +6,7 @@ import type { Config } from "./config";
 import { stripPrivateTags, isFullyPrivate } from "./context";
 import type { DocumentTracker } from "./document-tracker";
 import { TaskQueue, type Task, type TaskExecutor } from "./queue";
+import { getAllKeywords } from "./i18n";
 
 const MEMORY_TYPES = [
   "project-config",
@@ -436,16 +437,7 @@ export function createTool(client: ApiClient, config: Config, documentTracker: D
 }
 
 export function detectMemoryKeyword(text: string): boolean {
-  const keywords = [
-    "remember", "save this", "don't forget", "note that", "keep in mind",
-    "important", "for future reference", "crucial", "essential", "vital",
-    "remember", "memorize", "save this", "note this", "learn this",
-    "remember that", "never forget", "always remember",
-    "remember", "remember this", "don't forget", "don't forget this", "note down", "note down this",
-    "save this", "very important", "attention", "record this", "memo",
-    "future reference", "this is key", "key information",
-    "important", "must remember",
-  ];
+  const keywords = getAllKeywords();
   const pattern = new RegExp(keywords.join("|"), "i");
   const textWithoutCode = text.replace(/```[\s\S]*?```/g, "").replace(/`[^`]+`/g, "");
   return pattern.test(textWithoutCode);
