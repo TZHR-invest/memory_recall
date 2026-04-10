@@ -153,21 +153,23 @@ export function createTool(client: ApiClient, config: Config, documentTracker: D
         const scope = args.scope;
         const limit = args.limit || config.maxMemories;
         
-        // 检查是否启用图谱召回
-        const enableMemoryGraph = args.enableMemoryGraph ?? false;
+        // 默认启用 Memory Graph 召回，获取关联记忆
+        // 用户可显式设置 enableMemoryGraph=false 禁用
+        const enableMemoryGraph = args.enableMemoryGraph ?? true;
         const enableEntityGraph = args.enableEntityGraph ?? false;
-        const useGraphRecall = enableMemoryGraph || enableEntityGraph;
         
-        // 如果启用图谱召回，使用 injectContext API
-        if (useGraphRecall) {
-          const containerTag = scope === "user" ? userTag : 
-                               scope === "project" ? projectTag : projectTag;
+        const graphDepth = Math.min(args.graphDepth ?? config.graphMaxDepth, 5);
+        const graphNodes = Math.min(args.graphNodes ?? config.graphMaxNodes, 20);
+        
+        try {
+          const effectiveUserTag = scope === "project" ? projectTag : userTag;
+          const effectiveProjectTag = scope === "user" ? userTag : projectTag;
           
-          const graphDepth = Math.min(args.graphDepth ?? config.graphMaxDepth, 5);
-          const graphNodes = Math.min(args.graphNodes ?? config.graphMaxNodes, 20);
-          
-          try {
-            const response = await client.injectContext(containerTag, query, {
+          const response = await client.injectContext(
+            effectiveUserTag,
+            effectiveProjectTag,
+            query,
+            {
               enable_memory_graph: enableMemoryGraph,
               enable_entity_graph: enableEntityGraph,
               memory_graph_depth: graphDepth,
@@ -175,72 +177,55 @@ export function createTool(client: ApiClient, config: Config, documentTracker: D
               entity_graph_depth: graphDepth,
               entity_graph_nodes: graphNodes,
               max_memories: limit,
+              max_chunks: limit,
               inject_profile: false,
               enable_semantic_dedup: true,
               dedup_threshold: 0.85,
-            });
-            
-            // 适配返回格式
-            const formatted = response.sources.memories.slice(0, limit).map((m) => ({
-              id: m.id,
-              content: m.content,
-              scope: scope,
-            }));
-            
-            return {
-              success: true,
-              query,
-              count: formatted.length,
-              results: formatted,
-              graphRecall: {
-                enabled: true,
-                memoryGraph: enableMemoryGraph,
-                entityGraph: enableEntityGraph,
-                depth: graphDepth,
-                nodes: graphNodes,
-              },
-              stats: {
-                totalItems: response.stats.total_items,
-                afterDedup: response.stats.after_dedup,
-                dedupedCount: response.stats.deduped_count,
-              },
-            };
-          } catch (e) {
-            const error = e instanceof Error ? e.message : String(e);
-            return { success: false, error: "Graph recall failed: " + error };
-          }
+            }
+          );
+          
+          const memoryResults = response.sources.memories.slice(0, limit).map((m) => ({
+            id: m.id,
+            content: m.content,
+            type: "memory",
+            scope: scope,
+          }));
+          
+          const chunkResults = (response.sources.chunks || []).slice(0, limit).map((c) => ({
+            id: c.id,
+            content: c.content,
+            type: "document",
+            scope: scope,
+          }));
+          
+          const allResults = [...memoryResults, ...chunkResults];
+          
+          return {
+            success: true,
+            query,
+            count: allResults.length,
+            results: allResults,
+            breakdown: {
+              memories: memoryResults.length,
+              documents: chunkResults.length,
+            },
+            graphRecall: {
+              enabled: enableMemoryGraph || enableEntityGraph,
+              memoryGraph: enableMemoryGraph,
+              entityGraph: enableEntityGraph,
+              depth: graphDepth,
+              nodes: graphNodes,
+            },
+            stats: {
+              totalItems: response.stats.total_items,
+              afterDedup: response.stats.after_dedup,
+              dedupedCount: response.stats.deduped_count,
+            },
+          };
+        } catch (e) {
+          const error = e instanceof Error ? e.message : String(e);
+          return { success: false, error: "Search failed: " + error };
         }
-        
-        // 默认：仅向量搜索
-        let results: SearchWithScope[];
-        if (scope === "user") {
-          results = await client.search(query, userTag, limit);
-        } else if (scope === "project") {
-          results = await client.search(query, projectTag, limit);
-        } else {
-          const [userResults, projectResults] = await Promise.all([
-            client.search(query, userTag, limit),
-            client.search(query, projectTag, limit),
-          ]);
-          results = [
-            ...userResults.map((r): SearchWithScope => ({ ...r, scope: "user" })),
-            ...projectResults.map((r): SearchWithScope => ({ ...r, scope: "project" })),
-          ].sort((a, b) => b.similarity - a.similarity);
-        }
-
-        const formatted = results.slice(0, limit).map((r) => ({
-          id: r.id,
-          content: r.content,
-          similarity: Math.round(r.similarity * 100),
-          scope: r.scope,
-        }));
-
-        return {
-          success: true,
-          query,
-          count: formatted.length,
-          results: formatted,
-        };
       }
 
       case "profile": {

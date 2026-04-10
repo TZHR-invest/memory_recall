@@ -81,7 +81,7 @@ node dist/cli.js status            # 查看状态
 | 模式 | 说明 |
 |------|------|
 | `add` | 添加记忆 |
-| `search` | 搜索记忆（支持图谱召回） |
+| `search` | 搜索记忆和文档（默认启用 Memory Graph） |
 | `profile` | 获取用户画像 |
 | `list` | 列出记忆 |
 | `forget` | 删除记忆 |
@@ -122,24 +122,24 @@ node dist/cli.js status            # 查看状态
 
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
-| `enableMemoryGraph` | `false` | 启用 Memory Graph 召回（信息演进链） |
+| `enableMemoryGraph` | `true` | 启用 Memory Graph 召回（信息演进链） |
 | `enableEntityGraph` | `false` | 启用 Entity Graph 召回（实体关系网络） |
 | `graphDepth` | `2` | 图遍历深度（最大 5） |
 | `graphNodes` | `5` | 每层最大节点数（最大 20） |
 
 ### 使用示例
 
-**简单搜索（仅向量搜索）**：
+**默认搜索（向量 + Memory Graph + 文档）**：
 ```json
 memory-recall(mode: "search", query: "项目架构")
 ```
 
-**启用 Memory Graph（信息演进）**：
+**禁用图谱（仅向量搜索）**：
 ```json
 memory-recall(
   mode: "search", 
-  query: "我在哪里工作",
-  enableMemoryGraph: true
+  query: "用户偏好",
+  enableMemoryGraph: false
 )
 ```
 
@@ -156,36 +156,31 @@ memory-recall(
 
 ### 返回结果
 
-**简单搜索返回**：
+**默认返回（记忆 + 文档）**：
 ```json
 {
   "success": true,
   "query": "项目架构",
-  "count": 5,
+  "count": 9,
   "results": [
-    { "id": "mem_abc123", "content": "...", "similarity": 85 }
-  ]
-}
-```
-
-**图谱召回返回**：
-```json
-{
-  "success": true,
-  "query": "我在哪里工作",
-  "count": 5,
-  "results": [...],
+    { "id": "mem_abc123", "content": "...", "type": "memory", "scope": "project" },
+    { "id": "chk_xyz789", "content": "...", "type": "document", "scope": "project" }
+  ],
+  "breakdown": {
+    "memories": 4,
+    "documents": 5
+  },
   "graphRecall": {
     "enabled": true,
     "memoryGraph": true,
-    "entityGraph": true,
+    "entityGraph": false,
     "depth": 2,
     "nodes": 5
   },
   "stats": {
-    "totalItems": 12,
-    "afterDedup": 8,
-    "dedupedCount": 4
+    "totalItems": 14,
+    "afterDedup": 12,
+    "dedupedCount": 2
   }
 }
 ```
@@ -194,8 +189,8 @@ memory-recall(
 
 | 模式 | 延迟 | 召回层 | 适用场景 |
 |------|------|--------|---------|
-| 默认 | ~50ms | 向量搜索 | 快速检索 |
-| Memory Graph | ~150ms | 向量 + 记忆演进 | 需要最新信息 |
+| 默认（Memory Graph） | ~150ms | 向量 + 记忆演进 + 文档 | 通用搜索 |
+| 禁用图谱 | ~50ms | 仅向量搜索 | 精确匹配 |
 | Entity Graph | ~200ms | 向量 + 实体关联 | 需要关系推理 |
 | 完整召回 | ~250ms | 三层召回 | 复杂查询 |
 
