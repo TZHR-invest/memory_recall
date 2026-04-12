@@ -421,69 +421,23 @@ export class CompactionHook {
   }
 
   async saveSummaryAsMemory(sessionId: string, summaryContent: string): Promise<string | null> {
-    if (this.state.savedSummarySessions.has(sessionId)) {
-      if (this.logger) {
-        this.logger.debug("Summary already saved for this session", { sessionID: sessionId });
-      }
-      return null;
+    // Session Summary 不再保存到记忆数据库
+    // 原因：Session Summary 是会话状态，不是知识，保存到记忆会引入噪音
+    // 仅保留内存缓存用于压缩恢复
+    if (this.logger) {
+      this.logger.debug("Session Summary not saved to memory (disabled)", {
+        sessionID: sessionId,
+        contentLength: summaryContent.length,
+      });
     }
-
-    const minSummaryLength = 100;
-    if (!summaryContent || summaryContent.length < minSummaryLength) {
-      if (this.logger) {
-        this.logger.warn("Summary too short to save", {
-          sessionID: sessionId,
-          length: summaryContent.length,
-        });
-      }
-      return null;
-    }
-
-    try {
-      const locale = this.config.language === "auto" ? "en_US" : this.config.language;
-      const prefix = locale === "zh_CN" ? "[会话摘要]\n" : "[Session Summary]\n";
-      const contentToSave = prefix + summaryContent;
-
-      const existingMemories = await this.client.listMemories(this.tags.project, 50);
-      if (!shouldSave(contentToSave, existingMemories)) {
-        if (this.logger) {
-          this.logger.debug("Summary is duplicate, skipping", {
-            sessionID: sessionId,
-            contentLength: summaryContent.length,
-          });
-        }
-        return null;
-      }
-
-      const result = await this.client.addMemory(
-        contentToSave,
-        this.tags.project,
-        false,
-        "conversation"
-      );
-
-      if (result?.id) {
-        this.state.savedSummarySessions.add(sessionId);
-        this.state.latestSummaries.set(sessionId, {
-          content: summaryContent,
-          timestamp: Date.now(),
-        });
-        if (this.logger) {
-          this.logger.info("Summary saved as memory", {
-            sessionID: sessionId,
-            memoryId: result.id,
-            contentLength: summaryContent.length,
-          });
-        }
-        return result.id;
-      }
-
-      return null;
-    } catch (e) {
-      if (this.logger) {
-        this.logger.error("Failed to save summary", { error: String(e) });
-      }
-    }
+    
+    // 仍然更新内存缓存，供压缩恢复使用
+    this.state.savedSummarySessions.add(sessionId);
+    this.state.latestSummaries.set(sessionId, {
+      content: summaryContent,
+      timestamp: Date.now(),
+    });
+    
     return null;
   }
 
