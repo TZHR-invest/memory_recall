@@ -15,6 +15,7 @@ class DedupItem:
     priority: int
     embedding: Optional[List[float]] = None
     id: Optional[str] = None
+    relation_type: Optional[str] = None  # updates/extends/derives 语义关系类型
 
 
 SOURCE_PRIORITY = {

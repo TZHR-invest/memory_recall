@@ -3,6 +3,7 @@ Memory Recall API - Unified v5.0
 个人记忆管理与召回系统的 RESTful API
 """
 
+import json
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -15,8 +16,18 @@ from src.database import db
 from src.background.scheduler import scheduler, setup_background_tasks
 from src.routes import health
 
-# Unified API routes
 from src.api import memories, graph, auth_endpoints, embed, context_inject
+
+
+class UnicodeJSONResponse(JSONResponse):
+    def render(self, content) -> bytes:
+        return json.dumps(
+            content,
+            ensure_ascii=False,
+            allow_nan=False,
+            indent=None,
+            separators=(",", ":"),
+        ).encode("utf-8")
 
 
 @asynccontextmanager
@@ -92,6 +103,7 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url="/openapi.json",
+    default_response_class=UnicodeJSONResponse,
 )
 
 app.add_middleware(
@@ -114,7 +126,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
                 "type": error.get("type", ""),
             }
         )
-    return JSONResponse(
+    return UnicodeJSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content={
             "code": 422,
@@ -128,7 +140,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 async def global_exception_handler(request: Request, exc: Exception):
     print(f"❌ 未处理的异常: {exc}")
     print(traceback.format_exc())
-    return JSONResponse(
+    return UnicodeJSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={
             "code": 500,

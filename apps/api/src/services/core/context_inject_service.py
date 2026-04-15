@@ -162,23 +162,53 @@ class ContextInjectService:
 
                         for mem in all_memories[:3]:
                             try:
-                                related = await memory_store.traverse_memory_relations(
-                                    memory_id=mem["id"],
-                                    max_depth=memory_graph_depth,
-                                    max_nodes=memory_graph_nodes,
-                                )
-                                for m in related:
-                                    if m.id not in seen_ids:
-                                        seen_ids.add(m.id)
+                                memory = await memory_store.get_by_id(mem["id"])
+                                if not memory:
+                                    continue
+
+                                relations = memory.metadata.get("relations", {})
+                                for rel_type, target_ids in relations.items():
+                                    if not isinstance(target_ids, list):
+                                        continue
+
+                                    for target_id in target_ids:
+                                        if len(all_memories) >= max_memories * 2:
+                                            break
+
+                                        target_memory = await memory_store.get_by_id(
+                                            target_id
+                                        )
+                                        if (
+                                            not target_memory
+                                            or target_memory.is_forgotten
+                                        ):
+                                            continue
+
+                                        if target_id in seen_ids:
+                                            for existing_mem in all_memories:
+                                                if existing_mem.get("id") == target_id:
+                                                    if not existing_mem.get(
+                                                        "relation_type"
+                                                    ):
+                                                        existing_mem[
+                                                            "relation_type"
+                                                        ] = rel_type
+                                                    break
+                                            continue
+
+                                        seen_ids.add(target_id)
                                         all_memories.append(
                                             {
-                                                "id": m.id,
-                                                "content": m.content,
-                                                "embedding": m.embedding,
-                                                "is_static": m.is_static,
-                                                "source": "memory_graph",
+                                                "id": target_memory.id,
+                                                "content": target_memory.content,
+                                                "embedding": target_memory.embedding,
+                                                "is_static": target_memory.is_static,
+                                                "relation_type": rel_type,
                                             }
                                         )
+
+                                    if len(all_memories) >= max_memories * 2:
+                                        break
                             except Exception:
                                 pass
 
@@ -383,6 +413,7 @@ class ContextInjectService:
                     priority=SOURCE_PRIORITY["userMemory"],
                     embedding=m.get("embedding"),
                     id=m.get("id"),
+                    relation_type=m.get("relation_type"),
                 )
             )
 
@@ -446,6 +477,7 @@ class ContextInjectService:
                     priority=SOURCE_PRIORITY["projectMemory"],
                     embedding=m.get("embedding"),
                     id=m.get("id"),
+                    relation_type=m.get("relation_type"),
                 )
             )
 
@@ -457,6 +489,7 @@ class ContextInjectService:
                     priority=SOURCE_PRIORITY["userMemory"],
                     embedding=m.get("embedding"),
                     id=m.get("id"),
+                    relation_type=m.get("relation_type"),
                 )
             )
 
@@ -532,7 +565,8 @@ class ContextInjectService:
         if memory_items:
             lines.append("### 相关记忆" if is_zh else "### Related Memories")
             for item in memory_items:
-                lines.append(f"- {item.content}")
+                content = self._format_memory_with_relation(item, is_zh)
+                lines.append(f"- {content}")
             lines.append("")
 
         if chunk_items:
@@ -545,6 +579,18 @@ class ContextInjectService:
             return ""
 
         return "\n".join(lines)
+
+    def _format_memory_with_relation(self, item: DedupItem, is_zh: bool) -> str:
+        if not item.relation_type:
+            return item.content
+
+        relation_labels = {
+            "updates": "更新" if is_zh else "updated",
+            "extends": "补充" if is_zh else "extended",
+            "derives": "推断" if is_zh else "derived",
+        }
+        label = relation_labels.get(item.relation_type, item.relation_type)
+        return f"{item.content} [{label}]"
 
     def _format_context_with_tags(
         self,
@@ -573,13 +619,15 @@ class ContextInjectService:
         if project_memory_items:
             lines.append("### 项目记忆" if is_zh else "### Project Memories")
             for item in project_memory_items:
-                lines.append(f"- {item.content}")
+                content = self._format_memory_with_relation(item, is_zh)
+                lines.append(f"- {content}")
             lines.append("")
 
         if user_memory_items:
             lines.append("### 用户记忆" if is_zh else "### User Memories")
             for item in user_memory_items:
-                lines.append(f"- {item.content}")
+                content = self._format_memory_with_relation(item, is_zh)
+                lines.append(f"- {content}")
             lines.append("")
 
         if chunk_items:
