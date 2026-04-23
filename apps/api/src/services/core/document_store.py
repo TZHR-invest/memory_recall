@@ -78,6 +78,7 @@ class DocumentStore:
         document_summary: Optional[str] = None,
         auto_extract: bool = True,
         generate_embeddings: bool = True,
+        async_process: bool = False,
     ) -> Tuple[Document, bool]:
         word_count = len(content.split())
         content_hash = compute_content_hash(content)
@@ -118,7 +119,8 @@ class DocumentStore:
         extracted_title = title
         extracted_summary = document_summary
 
-        if auto_extract and (not title or not document_summary):
+        # 异步模式：跳过 LLM 提取，后续在 process_document_async 中完成
+        if not async_process and auto_extract and (not title or not document_summary):
             try:
                 doc_metadata = await document_processor.process_document(content)
                 if not title:
@@ -128,13 +130,15 @@ class DocumentStore:
             except Exception:
                 pass
 
+        initial_status = "queued" if async_process else "done"
+
         row = await db.fetchrow(
             """
             INSERT INTO documents (
                 container_tag, title, url, source, doc_type,
-                token_count, word_count, chunk_count, metadata, content_hash
+                token_count, word_count, chunk_count, metadata, content_hash, status
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
             RETURNING *
             """,
             container_tag,
@@ -147,20 +151,62 @@ class DocumentStore:
             0,
             json.dumps(metadata or {}),
             content_hash,
+            initial_status,
         )
 
         document = self._row_to_document(row)
 
+        # 异步模式：只创建记录，后续处理交给 process_document_async
+        if async_process:
+            # 存储 content 供后续处理（documents 表不存原文，临时放在 metadata）
+            meta = metadata or {}
+            meta["_pending_content"] = content
+            meta["_pending_auto_chunk"] = auto_chunk
+            meta["_pending_auto_extract"] = auto_extract
+            meta["_pending_generate_embeddings"] = generate_embeddings
+            meta["_pending_document_summary"] = document_summary
+            if chunk_config:
+                meta["_pending_chunk_config"] = {
+                    "max_chunk_tokens": chunk_config.max_chunk_tokens,
+                    "overlap_tokens": chunk_config.overlap_tokens,
+                    "min_chunk_tokens": chunk_config.min_chunk_tokens,
+                }
+            await db.execute(
+                "UPDATE documents SET metadata = $1 WHERE id = $2",
+                json.dumps(meta),
+                document.id,
+            )
+            return document, False
+
+        # ── 同步模式：原有的完整处理流程 ──
+
         if chunks:
+            # 批量生成 embedding（一次 API 调用替代 N 次串行调用）
+            chunk_embeddings = [None] * len(chunks)
+            if generate_embeddings and self.embedding_client:
+                texts_to_embed = [
+                    chunk_data.get("embedded_content") or chunk_data.get("content", "")
+                    for chunk_data in chunks
+                    if not chunk_data.get("embedding")  # 跳过已有 embedding 的
+                ]
+                if texts_to_embed:
+                    batch_result = await self.embedding_client.embed_batch(texts_to_embed)
+                    if batch_result:
+                        ei = 0
+                        for i, chunk_data in enumerate(chunks):
+                            if not chunk_data.get("embedding"):
+                                chunk_embeddings[i] = batch_result[ei] if ei < len(batch_result) else None
+                                ei += 1
+
             for i, chunk_data in enumerate(chunks):
                 await self.create_chunk(
                     document_id=document.id,
                     content=chunk_data.get("content", ""),
                     position=i,
                     chunk_type=chunk_data.get("type", "text"),
-                    embedding=chunk_data.get("embedding"),
-                    embedding_model=chunk_data.get("embedding_model"),
-                    generate_embedding=generate_embeddings,
+                    embedding=chunk_data.get("embedding") or chunk_embeddings[i],
+                    embedding_model=chunk_data.get("embedding_model") or (settings.VOLC_EMBEDDING_MODEL if chunk_embeddings[i] else None),
+                    generate_embedding=False,  # 已批量生成，跳过
                 )
 
             await db.execute(
@@ -178,7 +224,22 @@ class DocumentStore:
                 document_summary=extracted_summary,
             )
 
-            for chunk in text_chunks:
+            # 批量生成 embedding（一次 API 调用替代 N 次串行调用）
+            chunk_embeddings = [None] * len(text_chunks)
+            if generate_embeddings and self.embedding_client:
+                texts_to_embed = [
+                    chunk.embedded_content or chunk.content
+                    for chunk in text_chunks
+                ]
+                if texts_to_embed:
+                    batch_result = await self.embedding_client.embed_batch(texts_to_embed)
+                    if batch_result:
+                        chunk_embeddings = [
+                            batch_result[i] if i < len(batch_result) else None
+                            for i in range(len(text_chunks))
+                        ]
+
+            for i, chunk in enumerate(text_chunks):
                 await self.create_chunk(
                     document_id=document.id,
                     content=chunk.content,
@@ -186,7 +247,9 @@ class DocumentStore:
                     position=chunk.position,
                     chunk_type="text",
                     metadata=chunk.metadata,
-                    generate_embedding=generate_embeddings,
+                    embedding=chunk_embeddings[i],
+                    embedding_model=settings.VOLC_EMBEDDING_MODEL if chunk_embeddings[i] else None,
+                    generate_embedding=False,  # 已批量生成，跳过
                 )
 
             if text_chunks:
@@ -416,6 +479,28 @@ class DocumentStore:
         existing_chunks = await self.get_chunks(document_id)
         existing_by_position = {c.position: c for c in existing_chunks}
 
+        # 批量生成需要更新的 embedding
+        chunks_need_embed = []  # (index, chunk_or_existing_id)
+        for i, chunk in enumerate(new_chunks):
+            if i in existing_by_position:
+                existing = existing_by_position[i]
+                new_hash = compute_content_hash(chunk.content)
+                if existing.content_hash != new_hash and generate_embeddings and self.embedding_client:
+                    chunks_need_embed.append((i, "update", chunk.embedded_content or chunk.content))
+            else:
+                if generate_embeddings and self.embedding_client:
+                    chunks_need_embed.append((i, "create", chunk.embedded_content or chunk.content))
+
+        # 批量 embed
+        batch_embeddings = {}
+        if chunks_need_embed:
+            texts = [text for _, _, text in chunks_need_embed]
+            batch_result = await self.embedding_client.embed_batch(texts)
+            if batch_result:
+                for j, (idx, action, _) in enumerate(chunks_need_embed):
+                    if j < len(batch_result):
+                        batch_embeddings[idx] = batch_result[j]
+
         for i, chunk in enumerate(new_chunks):
             new_hash = compute_content_hash(chunk.content)
 
@@ -438,10 +523,9 @@ class DocumentStore:
                         existing.id,
                     )
 
-                    if generate_embeddings and self.embedding_client:
+                    if i in batch_embeddings:
                         try:
-                            text_to_embed = chunk.embedded_content or chunk.content
-                            embedding = await self.embedding_client.embed(text_to_embed)
+                            embedding = batch_embeddings[i]
                             embedding_str = "[" + ",".join(map(str, embedding)) + "]"
                             await db.execute(
                                 "UPDATE chunks SET embedding = $1 WHERE id = $2",
@@ -458,7 +542,9 @@ class DocumentStore:
                     position=i,
                     chunk_type="text",
                     metadata=chunk.metadata if hasattr(chunk, "metadata") else None,
-                    generate_embedding=generate_embeddings,
+                    embedding=batch_embeddings.get(i),
+                    embedding_model=settings.VOLC_EMBEDDING_MODEL if i in batch_embeddings else None,
+                    generate_embedding=False,  # 已批量生成
                 )
 
         if len(existing_chunks) > len(new_chunks):
@@ -514,6 +600,142 @@ class DocumentStore:
         )
         return result == "UPDATE 1"
 
+    async def process_document_async(self, document_id: str) -> None:
+        """异步处理文档：标题/摘要提取 → chunking → embedding → 实体提取。
+        由 FastAPI BackgroundTasks 调用，处理完成后 status=done。"""
+        import logging as _logging
+        _logger = _logging.getLogger("document_store.async")
+
+        try:
+            # 读取 pending 信息
+            row = await db.fetchrow(
+                "SELECT metadata, container_tag FROM documents WHERE id = $1",
+                document_id,
+            )
+            if not row:
+                _logger.error(f"Document {document_id} not found for async processing")
+                return
+
+            meta = row["metadata"] if isinstance(row["metadata"], dict) else json.loads(row["metadata"] or "{}")
+            container_tag = row["container_tag"]
+            content = meta.pop("_pending_content", None)
+            auto_chunk = meta.pop("_pending_auto_chunk", True)
+            auto_extract = meta.pop("_pending_auto_extract", True)
+            generate_embeddings = meta.pop("_pending_generate_embeddings", True)
+            document_summary = meta.pop("_pending_document_summary", None)
+            chunk_config_dict = meta.pop("_pending_chunk_config", None)
+
+            if not content:
+                await self.update_status(document_id, "failed")
+                _logger.error(f"Document {document_id}: no pending content found")
+                return
+
+            # Step 1: LLM 提取标题/摘要
+            await self.update_status(document_id, "extracting")
+            extracted_title = None
+            extracted_summary = document_summary
+            if auto_extract:
+                try:
+                    doc_metadata = await document_processor.process_document(content)
+                    extracted_title = doc_metadata.title
+                    if not document_summary:
+                        extracted_summary = doc_metadata.summary
+                except Exception as e:
+                    _logger.warning(f"Document {document_id}: extract failed: {e}")
+
+            # 更新标题
+            if extracted_title:
+                await db.execute(
+                    "UPDATE documents SET title = $1 WHERE id = $2",
+                    extracted_title,
+                    document_id,
+                )
+
+            # Step 2: Chunking
+            await self.update_status(document_id, "chunking")
+            if chunk_config_dict:
+                chunk_config = ChunkConfig(
+                    max_chunk_tokens=chunk_config_dict.get("max_chunk_tokens", 800),
+                    overlap_tokens=chunk_config_dict.get("overlap_tokens", 50),
+                    min_chunk_tokens=chunk_config_dict.get("min_chunk_tokens", 50),
+                )
+                chunker = document_chunker.__class__(config=chunk_config)
+            else:
+                chunker = document_chunker
+
+            if auto_chunk:
+                text_chunks = chunker.chunk(
+                    content,
+                    metadata=meta,
+                    document_title=extracted_title,
+                    document_summary=extracted_summary,
+                )
+
+                # Step 3: 批量 Embedding
+                await self.update_status(document_id, "embedding")
+                chunk_embeddings = [None] * len(text_chunks)
+                if generate_embeddings and self.embedding_client:
+                    texts_to_embed = [
+                        chunk.embedded_content or chunk.content
+                        for chunk in text_chunks
+                    ]
+                    if texts_to_embed:
+                        batch_result = await self.embedding_client.embed_batch(texts_to_embed)
+                        if batch_result:
+                            chunk_embeddings = [
+                                batch_result[i] if i < len(batch_result) else None
+                                for i in range(len(text_chunks))
+                            ]
+
+                # Step 4: 写入 chunks
+                await self.update_status(document_id, "indexing")
+                for i, chunk in enumerate(text_chunks):
+                    await self.create_chunk(
+                        document_id=document_id,
+                        content=chunk.content,
+                        embedded_content=chunk.embedded_content,
+                        position=chunk.position,
+                        chunk_type="text",
+                        metadata=chunk.metadata,
+                        embedding=chunk_embeddings[i],
+                        embedding_model=settings.VOLC_EMBEDDING_MODEL if chunk_embeddings[i] else None,
+                        generate_embedding=False,
+                    )
+
+                await db.execute(
+                    "UPDATE documents SET chunk_count = $1, token_count = $2 WHERE id = $3",
+                    len(text_chunks),
+                    sum(c.token_count for c in text_chunks),
+                    document_id,
+                )
+
+            # Step 5: 实体提取
+            if extracted_summary and auto_chunk:
+                try:
+                    await self._extract_and_map_entities_to_chunks(
+                        document_id=document_id,
+                        summary=extracted_summary,
+                        container_tag=container_tag,
+                    )
+                except Exception as e:
+                    _logger.warning(f"Document {document_id}: entity extraction failed: {e}")
+
+            # 清理 metadata 中的 pending 字段，更新最终状态
+            await db.execute(
+                "UPDATE documents SET metadata = $1, status = $2 WHERE id = $3",
+                json.dumps(meta),
+                "done",
+                document_id,
+            )
+            _logger.info(f"Document {document_id}: async processing complete")
+
+        except Exception as e:
+            try:
+                await self.update_status(document_id, "failed")
+            except Exception:
+                pass
+            _logger.error(f"Document {document_id}: async processing failed: {e}")
+
     async def count(self, container_tag: str) -> int:
         return await db.fetchval(
             "SELECT COUNT(*) FROM documents WHERE container_tag = $1",
@@ -536,6 +758,7 @@ class DocumentStore:
             FROM chunks c
             JOIN documents d ON c.document_id = d.id
             WHERE d.container_tag = $2
+            AND d.status = 'done'
             AND 1 - (c.embedding <=> $1::vector) > $3
             ORDER BY similarity DESC
             LIMIT $4
@@ -563,11 +786,11 @@ class DocumentStore:
         summary: str,
         container_tag: str,
     ) -> None:
-        from src.services.core.entity_extraction import entity_extraction
+        from src.services.core.entity_extraction import entity_extractor
 
-        entities = await entity_extraction.extract(summary, container_tag)
+        ner_entities = entity_extractor.extract(summary)
 
-        if not entities:
+        if not ner_entities:
             return
 
         chunks = await self.get_chunks(document_id)
@@ -575,9 +798,28 @@ class DocumentStore:
         if not chunks:
             return
 
-        for chunk in chunks:
-            for entity in entities:
-                if entity.name in chunk.content:
+        for ner_ent in ner_entities:
+            # NER Entity(text, type, ...) → 写入 entities 表拿到 id
+            try:
+                row = await db.fetchrow(
+                    """
+                    INSERT INTO entities (name, type, container_tag, confidence)
+                    VALUES ($1, $2, $3, $4)
+                    ON CONFLICT (name, container_tag) DO UPDATE SET mention_count = entities.mention_count + 1
+                    RETURNING id
+                    """,
+                    ner_ent.text,
+                    ner_ent.type,
+                    container_tag,
+                    ner_ent.confidence,
+                )
+                entity_id = row["id"]
+            except Exception:
+                continue
+
+            # 关联到包含该实体的 chunk
+            for chunk in chunks:
+                if ner_ent.text in chunk.content:
                     try:
                         await db.execute(
                             """
@@ -586,8 +828,8 @@ class DocumentStore:
                             ON CONFLICT (chunk_id, entity_id) DO NOTHING
                             """,
                             chunk.id,
-                            entity.id,
-                            entity.type,
+                            entity_id,
+                            ner_ent.type,
                         )
                     except Exception:
                         pass
@@ -610,6 +852,7 @@ class DocumentStore:
             JOIN documents d ON c.document_id = d.id
             WHERE ce.entity_id = ANY($1)
             AND d.container_tag = $2
+            AND d.status = 'done'
             LIMIT $3
             """,
             entity_ids,

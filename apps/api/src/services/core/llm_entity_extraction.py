@@ -491,8 +491,7 @@ class LLMEntityExtractor:
             prompt = self._get_prompt(text, language, entity_context)
 
             result = await asyncio.wait_for(
-                asyncio.to_thread(
-                    self.llm_client.extract_json,
+                self.llm_client.aextract_json(
                     prompt,
                     0.3,
                 ),
@@ -648,8 +647,7 @@ class LLMEntityExtractor:
             prompt = self._get_prompt_with_relations(text, language, entity_context)
 
             result = await asyncio.wait_for(
-                asyncio.to_thread(
-                    self.llm_client.extract_json,
+                self.llm_client.aextract_json(
                     prompt,
                     0.3,
                 ),
@@ -960,8 +958,7 @@ Return JSON:
 }}"""
 
             result = await asyncio.wait_for(
-                asyncio.to_thread(
-                    self.llm_client.extract_json,
+                self.llm_client.aextract_json(
                     prompt,
                     0.3,
                 ),
@@ -1007,8 +1004,7 @@ Return JSON:
 }}"""
 
             result = await asyncio.wait_for(
-                asyncio.to_thread(
-                    self.llm_client.extract_json,
+                self.llm_client.aextract_json(
                     prompt,
                     0.3,
                 ),
@@ -1061,8 +1057,7 @@ Return JSON:
 }}"""
 
             result = await asyncio.wait_for(
-                asyncio.to_thread(
-                    self.llm_client.extract_json,
+                self.llm_client.aextract_json(
                     prompt,
                     0.3,
                 ),
@@ -1110,8 +1105,7 @@ Return JSON:
             prompt = get_batch_relation_prompt(new_content, candidates, language)
 
             result = await asyncio.wait_for(
-                asyncio.to_thread(
-                    self.llm_client.extract_json,
+                self.llm_client.aextract_json(
                     prompt,
                     0.3,
                 ),

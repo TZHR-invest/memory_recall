@@ -5,7 +5,7 @@
 import json
 import logging
 from typing import Dict, Any, Optional, List
-from openai import OpenAI
+from openai import OpenAI, AsyncOpenAI
 
 # 修改导入方式
 try:
@@ -21,13 +21,17 @@ logger = logging.getLogger(__name__)
 
 class LLMClient:
     """火山引擎 LLM 客户端"""
-    
+
     def __init__(self):
         """初始化客户端"""
         if not settings.VOLC_API_KEY:
             raise ValueError("VOLC_API_KEY 未配置")
-        
+
         self.client = OpenAI(
+            api_key=settings.VOLC_API_KEY,
+            base_url=settings.VOLC_API_BASE
+        )
+        self.async_client = AsyncOpenAI(
             api_key=settings.VOLC_API_KEY,
             base_url=settings.VOLC_API_BASE
         )
@@ -81,7 +85,41 @@ class LLMClient:
             cache_manager.cache_llm_result(cache_key, result)
         
         return result
-    
+
+    async def achat(
+        self,
+        messages: List[Dict[str, str]],
+        temperature: float = 0.7,
+        max_tokens: int = 2000,
+        use_cache: bool = False,
+        **kwargs
+    ) -> str:
+        """异步发送聊天请求"""
+        if use_cache:
+            cache_key = json.dumps({
+                "messages": messages,
+                "temperature": temperature,
+                "model": self.model
+            }, sort_keys=True)
+            cached = cache_manager.get_llm_result(cache_key)
+            if cached is not None:
+                return cached
+
+        response = await self.async_client.chat.completions.create(
+            model=self.model,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            **kwargs
+        )
+
+        result = response.choices[0].message.content
+
+        if use_cache:
+            cache_manager.cache_llm_result(cache_key, result)
+
+        return result
+
     def chat_with_system(
         self,
         system_prompt: str,
@@ -109,7 +147,22 @@ class LLMClient:
         ]
         
         return self.chat(messages, temperature, max_tokens, **kwargs)
-    
+
+    async def achat_with_system(
+        self,
+        system_prompt: str,
+        user_message: str,
+        temperature: float = 0.7,
+        max_tokens: int = 2000,
+        **kwargs
+    ) -> str:
+        """异步发送带系统提示的聊天请求"""
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_message}
+        ]
+        return await self.achat(messages, temperature, max_tokens, **kwargs)
+
     def extract_json(
         self,
         prompt: str,
@@ -163,7 +216,45 @@ class LLMClient:
                     pass
         
         return None
-    
+
+    async def aextract_json(
+        self,
+        prompt: str,
+        temperature: float = 0.3,
+        max_tokens: int = 2000
+    ) -> Optional[Dict[str, Any]]:
+        """异步从响应中提取 JSON"""
+        full_prompt = f"{prompt}\n\n请以 JSON 格式返回结果，不要包含其他说明文字。"
+
+        response = await self.achat_with_system(
+            "你是一个专业的信息提取助手，擅长从文本中提取结构化信息并以 JSON 格式返回。",
+            full_prompt,
+            temperature=temperature,
+            max_tokens=max_tokens
+        )
+
+        try:
+            return json.loads(response)
+        except json.JSONDecodeError:
+            if "```json" in response:
+                start = response.find("```json") + 7
+                end = response.find("```", start)
+                json_str = response[start:end].strip()
+                try:
+                    return json.loads(json_str)
+                except json.JSONDecodeError:
+                    pass
+            if "{" in response and "}" in response:
+                start = response.find("{")
+                end = response.rfind("}") + 1
+                json_str = response[start:end]
+                try:
+                    return json.loads(json_str)
+                except json.JSONDecodeError:
+                    pass
+
+        return None
+
     def call_with_tools(
         self,
         messages: List[Dict[str, str]],

@@ -343,11 +343,9 @@ class ContextInjectService:
 
             if config.get("enable_entity_graph", True) and query:
                 try:
-                    from src.services.core.entity_extraction import entity_extraction
+                    from src.services.core.entity_extraction import entity_extractor
 
-                    query_entities = await entity_extraction.extract(
-                        query, container_tag
-                    )
+                    query_entities = entity_extractor.extract(query)
 
                     if query_entities:
                         entity_ids = [e.id for e in query_entities[:5]]

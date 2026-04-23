@@ -218,8 +218,7 @@ class DocumentProcessor:
 
         try:
             result = await asyncio.wait_for(
-                asyncio.to_thread(
-                    self.llm_client.extract_json,
+                self.llm_client.aextract_json(
                     prompt,
                     0.3,
                 ),
@@ -256,8 +255,7 @@ class DocumentProcessor:
 
             try:
                 result = await asyncio.wait_for(
-                    asyncio.to_thread(
-                        self.llm_client.chat,
+                    self.llm_client.achat(
                         [{"role": "user", "content": prompt}],
                         0.3,
                         300,
@@ -284,8 +282,7 @@ class DocumentProcessor:
 
         try:
             result = await asyncio.wait_for(
-                asyncio.to_thread(
-                    self.llm_client.chat,
+                self.llm_client.achat(
                     [{"role": "user", "content": prompt}],
                     0.3,
                     100,
@@ -377,8 +374,7 @@ class DocumentProcessor:
                     )
 
                 result = await asyncio.wait_for(
-                    asyncio.to_thread(
-                        self.llm_client.chat,
+                    self.llm_client.achat(
                         [{"role": "user", "content": prompt}],
                         0.3,
                         200,
@@ -413,8 +409,7 @@ class DocumentProcessor:
 
         try:
             result = await asyncio.wait_for(
-                asyncio.to_thread(
-                    self.llm_client.chat,
+                self.llm_client.achat(
                     [{"role": "user", "content": prompt}],
                     0.3,
                     400,
