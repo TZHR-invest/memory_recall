@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Query, Depends
+from fastapi import APIRouter, HTTPException, Query, Depends, BackgroundTasks
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 
@@ -569,6 +569,7 @@ async def search_memories(
 )
 async def create_document(
     request: CreateDocumentRequest,
+    background_tasks: BackgroundTasks,
     current_user: Dict = Depends(require_permission("write")),
     _: Dict = Depends(check_rate_limit),
 ):
@@ -582,7 +583,11 @@ async def create_document(
         source=request.source,
         doc_type=request.doc_type,
         metadata=request.metadata,
+        async_process=True,
     )
+
+    # 后台异步处理：chunking → embedding → entity extraction
+    background_tasks.add_task(document_store.process_document_async, document.id)
 
     return {
         "id": document.id,
@@ -1046,7 +1051,7 @@ If nothing worth saving, return: `{"memories": []}`"""
 
     try:
         llm = get_llm_client()
-        result = llm.extract_json(
+        result = await llm.aextract_json(
             prompt=f"{system_prompt}\n\n会话摘要：\n{request.summary}",
             temperature=0.3,
             max_tokens=1000

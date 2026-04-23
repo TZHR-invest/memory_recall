@@ -4,7 +4,11 @@
 """
 
 from typing import List, Optional, Dict, Any
+import asyncio
+import logging
 import httpx
+
+logger = logging.getLogger(__name__)
 
 try:
     from ..config import settings
@@ -75,41 +79,29 @@ class EmbeddingClient:
 
             return None
         except Exception as e:
-            print(f"Embedding 生成失败: {e}")
+            logger.error(f"Embedding 生成失败: {e}")
             return None
 
     async def embed_batch(self, texts: List[str]) -> Optional[List[List[float]]]:
+        """批量生成 embedding。火山引擎多模态端点不支持多输入批量返回，
+        改用 asyncio.gather 并行调用单条 embed，利用缓存+并发实现加速。"""
         try:
-            client = await self._get_client()
-            url = f"{self.base_url}/embeddings/multimodal"
-            headers = {
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json",
-            }
-
-            inputs = [{"type": "text", "text": text} for text in texts]
-            payload = {
-                "model": self.model,
-                "input": inputs,
-                "encoding_format": "float",
-                "dimensions": self.dimension,
-            }
-
-            response = await client.post(
-                url, json=payload, headers=headers, timeout=60.0
+            results = await asyncio.gather(
+                *[self.embed(text, use_cache=True) for text in texts],
+                return_exceptions=True,
             )
-            response.raise_for_status()
-
-            data = response.json()
-            if "data" in data:
-                if isinstance(data["data"], list):
-                    return [item["embedding"] for item in data["data"]]
+            embeddings = []
+            for i, r in enumerate(results):
+                if isinstance(r, Exception):
+                    logger.warning(f"embed_batch 第{i}条失败: {r}")
+                    embeddings.append(None)
+                elif r is None:
+                    embeddings.append(None)
                 else:
-                    return [data["data"]["embedding"]]
-
-            return None
+                    embeddings.append(r)
+            return embeddings
         except Exception as e:
-            print(f"批量 Embedding 生成失败: {e}")
+            logger.error(f"批量 Embedding 生成失败: {e}")
             return None
 
     async def embed_image(
@@ -146,7 +138,7 @@ class EmbeddingClient:
 
             return None
         except Exception as e:
-            print(f"图片 Embedding 生成失败: {e}")
+            logger.error(f"图片 Embedding 生成失败: {e}")
             return None
 
 
