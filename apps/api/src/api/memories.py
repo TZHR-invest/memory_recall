@@ -37,6 +37,10 @@ class CreateMemoryRequest(BaseModel):
         False,
         description="Skip LLM entity extraction (faster for large documents)",
     )
+    async_process: bool = Field(
+        False,
+        description="Process entity extraction and relation creation in background (faster response, returns status='processing')",
+    )
 
 
 class MemoryResponse(BaseModel):
@@ -157,6 +161,7 @@ class HybridSearchResult(BaseModel):
 )
 async def create_memory(
     request: CreateMemoryRequest,
+    background_tasks: BackgroundTasks,
     current_user: Dict = Depends(require_permission("write")),
     _: Dict = Depends(check_rate_limit),
 ):
@@ -181,9 +186,19 @@ async def create_memory(
         metadata=request.metadata,
         entity_context=entity_context,
         extract_entities=not request.skip_extraction,
+        async_process=request.async_process,
     )
 
-    await profile_service.invalidate_cache(container_tag)
+    # 异步模式：后台处理实体提取和关系创建
+    if request.async_process:
+        background_tasks.add_task(memory_store.process_memory_async, memory.id)
+    else:
+        await profile_service.invalidate_cache(container_tag)
+
+    # 确定 status
+    status = "done"
+    if request.async_process:
+        status = memory.metadata.get("_status", "processing")
 
     return {
         "id": memory.id,
@@ -191,6 +206,7 @@ async def create_memory(
         "container_tag": memory.container_tag,
         "is_static": memory.is_static,
         "created_at": memory.created_at.isoformat() if memory.created_at else None,
+        "status": status,
     }
 
 

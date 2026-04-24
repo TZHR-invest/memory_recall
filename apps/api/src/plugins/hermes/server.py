@@ -57,7 +57,7 @@ async def _get_client() -> httpx.AsyncClient:
                 "Content-Type": "application/json",
                 "X-API-Key": API_KEY,
             },
-            timeout=30.0,
+timeout=120.0,
         )
     return _http_client
 
@@ -74,9 +74,9 @@ async def api_request(
     client = await _get_client()
     logger.debug(f"{method} {path} body={bool(body)} params={params}")
     if method == "GET":
-        resp = await client.get(path, params=params, timeout=timeout or 30.0)
+        resp = await client.get(path, params=params, timeout=timeout or 120.0)
     else:
-        resp = await client.request(method, path, json=body, params=params, timeout=timeout or 30.0)
+        resp = await client.request(method, path, json=body, params=params, timeout=timeout or 120.0)
     resp.raise_for_status()
     return resp.json()
 
@@ -124,6 +124,10 @@ async def list_tools() -> list[Tool]:
                     "skipExtraction": {
                         "type": "boolean",
                         "description": "跳过 LLM 实体提取（大批量导入时可加速，默认 false）",
+                    },
+                    "asyncProcess": {
+                        "type": "boolean",
+                        "description": "异步处理实体提取和关系创建（默认 true，响应更快）",
                     },
                 },
                 "required": ["content"],
@@ -481,11 +485,13 @@ async def _handle_add(args: dict) -> list[TextContent]:
     memory_type = args.get("type")
     entity_context = args.get("entityContext")
     skip_extraction = args.get("skipExtraction", False)
+    async_process = args.get("asyncProcess", True)  # 默认异步，避免超时
 
     body = {
         "content": content,
         "container_tag": _tag(scope),
         "is_static": is_static,
+        "async_process": async_process,
     }
     if memory_type:
         body["metadata"] = {"type": memory_type}
@@ -494,11 +500,13 @@ async def _handle_add(args: dict) -> list[TextContent]:
     if skip_extraction:
         body["skip_extraction"] = True
 
-    result = await api_request("POST", "/memories", body, timeout=60.0)
+    result = await api_request("POST", "/memories", body, timeout=30.0)
     preview = content[:80] + "..." if len(content) > 80 else content
+    status = result.get("status", "done")
+    status_hint = "（后台处理实体提取中）" if status == "processing" else ""
     return [TextContent(
         type="text",
-        text=f'✅ 已存储到 {scope} 范围\nID: {result.get("id", "N/A")}\n内容: "{preview}"',
+        text=f'✅ 已存储到 {scope} 范围{status_hint}\nID: {result.get("id", "N/A")}\n内容: "{preview}"',
     )]
 
 

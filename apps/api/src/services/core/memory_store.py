@@ -114,6 +114,7 @@ class MemoryStore:
         parent_memory_id: Optional[str] = None,
         is_inference: bool = False,
         check_merge: bool = True,
+        async_process: bool = False,
     ) -> Memory:
         if extract_entities is None:
             extract_entities = settings.ENABLE_ENTITY_EXTRACTION
@@ -153,46 +154,59 @@ class MemoryStore:
             except Exception:
                 final_metadata = {}
 
-        if extract_entities:
-            if use_llm_extraction:
-                try:
-                    extractor = self._get_llm_extractor()
+        # 异步模式：跳过 LLM 实体提取和自动关系创建，后续在 process_memory_async 中完成
+        if not async_process:
+            if extract_entities:
+                if use_llm_extraction:
+                    try:
+                        extractor = self._get_llm_extractor()
 
-                    if extract_relations:
-                        extraction = await extractor.extract_with_relations(
-                            content, entity_context
-                        )
-                        entities_to_store = extraction.get("entities", [])
-                        relations_to_store = extraction.get("relations", [])
+                        if extract_relations:
+                            extraction = await extractor.extract_with_relations(
+                                content, entity_context
+                            )
+                            entities_to_store = extraction.get("entities", [])
+                            relations_to_store = extraction.get("relations", [])
 
-                        if entities_to_store:
-                            entities_dict = {}
-                            for entity in entities_to_store:
-                                etype = entity.get("type", "unknown")
-                                if etype not in entities_dict:
-                                    entities_dict[etype] = []
-                                entities_dict[etype].append(entity.get("name"))
-                            final_metadata["entities"] = entities_dict
-                            final_metadata["_entities_to_store"] = entities_to_store
-                            final_metadata["_relations_to_store"] = relations_to_store
-                    else:
-                        llm_fact = await extractor.extract(content, entity_context)
-                        if llm_fact.entities:
-                            final_metadata["entities"] = llm_fact.entities
-                        is_static = llm_fact.is_static
-                except Exception:
-                    entities = entity_extractor.extract_to_metadata(content)
-                    if entities:
-                        final_metadata["entities"] = entities
-            else:
-                try:
-                    entities = entity_extractor.extract_to_metadata(content)
-                    if entities:
-                        final_metadata["entities"] = entities
-                except Exception:
-                    pass
+                            if entities_to_store:
+                                entities_dict = {}
+                                for entity in entities_to_store:
+                                    etype = entity.get("type", "unknown")
+                                    if etype not in entities_dict:
+                                        entities_dict[etype] = []
+                                    entities_dict[etype].append(entity.get("name"))
+                                final_metadata["entities"] = entities_dict
+                                final_metadata["_entities_to_store"] = entities_to_store
+                                final_metadata["_relations_to_store"] = relations_to_store
+                        else:
+                            llm_fact = await extractor.extract(content, entity_context)
+                            if llm_fact.entities:
+                                final_metadata["entities"] = llm_fact.entities
+                            is_static = llm_fact.is_static
+                    except Exception:
+                        entities = entity_extractor.extract_to_metadata(content)
+                        if entities:
+                            final_metadata["entities"] = entities
+                else:
+                    try:
+                        entities = entity_extractor.extract_to_metadata(content)
+                        if entities:
+                            final_metadata["entities"] = entities
+                    except Exception:
+                        pass
+        else:
+            # 异步模式：将提取参数保存到 metadata 供后续处理
+            final_metadata["_pending_extract_entities"] = extract_entities
+            final_metadata["_pending_extract_relations"] = extract_relations
+            final_metadata["_pending_use_llm_extraction"] = use_llm_extraction
+            final_metadata["_pending_entity_context"] = entity_context
+            final_metadata["_pending_auto_relations"] = auto_relations
 
         final_metadata["relations"] = {"updates": [], "extends": [], "derives": []}
+
+        # 异步模式标记 status
+        if async_process:
+            final_metadata["_status"] = "processing"
 
         version = 1
         root_memory_id = None
@@ -224,34 +238,147 @@ class MemoryStore:
 
         memory = self._row_to_memory(row)
 
-        if (
-            "_entities_to_store" in final_metadata
-            or "_relations_to_store" in final_metadata
-        ):
-            entities_to_store = final_metadata.pop("_entities_to_store", [])
-            relations_to_store = final_metadata.pop("_relations_to_store", [])
+        # 同步模式：立即处理实体图和自动关系
+        if not async_process:
+            if (
+                "_entities_to_store" in final_metadata
+                or "_relations_to_store" in final_metadata
+            ):
+                entities_to_store = final_metadata.pop("_entities_to_store", [])
+                relations_to_store = final_metadata.pop("_relations_to_store", [])
 
-            if entities_to_store or relations_to_store:
+                if entities_to_store or relations_to_store:
+                    try:
+                        await self._store_entity_graph(
+                            memory.id, entities_to_store, relations_to_store, container_tag
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to store entity graph: {e}")
+
+            if auto_relations:
                 try:
-                    await self._store_entity_graph(
-                        memory.id, entities_to_store, relations_to_store, container_tag
+                    relations = await relation_service.auto_create_relations(
+                        new_memory_id=memory.id,
+                        new_content=content,
+                        container_tag=container_tag,
+                        is_static=is_static,
                     )
-                except Exception as e:
-                    logger.warning(f"Failed to store entity graph: {e}")
-
-        if auto_relations:
-            try:
-                relations = await relation_service.auto_create_relations(
-                    new_memory_id=memory.id,
-                    new_content=content,
-                    container_tag=container_tag,
-                    is_static=is_static,
-                )
-                await self._update_embedded_relations(memory.id, relations)
-            except Exception:
-                pass
+                    await self._update_embedded_relations(memory.id, relations)
+                except Exception:
+                    pass
 
         return memory
+
+    async def process_memory_async(self, memory_id: str) -> None:
+        """异步处理记忆：LLM 实体提取 + 关系创建。
+        由 FastAPI BackgroundTasks 调用，处理完成后 _status=done。"""
+        import logging as _logging
+        _logger = _logging.getLogger("memory_store.async")
+
+        try:
+            memory = await self.get_by_id(memory_id, include_forgotten=True)
+            if not memory:
+                _logger.error(f"Memory {memory_id} not found for async processing")
+                return
+
+            meta = memory.metadata.copy()
+            content = memory.content
+            container_tag = memory.container_tag
+            is_static = memory.is_static
+
+            # 读取 pending 参数
+            extract_entities = meta.pop("_pending_extract_entities", False)
+            extract_relations = meta.pop("_pending_extract_relations", False)
+            use_llm_extraction = meta.pop("_pending_use_llm_extraction", False)
+            entity_context = meta.pop("_pending_entity_context", None)
+            auto_relations = meta.pop("_pending_auto_relations", True)
+
+            # Step 1: LLM 实体提取
+            if extract_entities:
+                if use_llm_extraction:
+                    try:
+                        extractor = self._get_llm_extractor()
+
+                        if extract_relations:
+                            extraction = await extractor.extract_with_relations(
+                                content, entity_context
+                            )
+                            entities_to_store = extraction.get("entities", [])
+                            relations_to_store = extraction.get("relations", [])
+
+                            if entities_to_store:
+                                entities_dict = {}
+                                for entity in entities_to_store:
+                                    etype = entity.get("type", "unknown")
+                                    if etype not in entities_dict:
+                                        entities_dict[etype] = []
+                                    entities_dict[etype].append(entity.get("name"))
+                                meta["entities"] = entities_dict
+
+                                # 存储 Entity Graph
+                                if entities_to_store or relations_to_store:
+                                    try:
+                                        await self._store_entity_graph(
+                                            memory_id, entities_to_store, relations_to_store, container_tag
+                                        )
+                                    except Exception as e:
+                                        _logger.warning(f"Memory {memory_id}: entity graph store failed: {e}")
+                        else:
+                            llm_fact = await extractor.extract(content, entity_context)
+                            if llm_fact.entities:
+                                meta["entities"] = llm_fact.entities
+                            # 更新 is_static（仅当 LLM 判断更准确时）
+                    except Exception as e:
+                        _logger.warning(f"Memory {memory_id}: LLM extraction failed: {e}")
+                        # fallback to rule-based extraction
+                        try:
+                            entities = entity_extractor.extract_to_metadata(content)
+                            if entities:
+                                meta["entities"] = entities
+                        except Exception:
+                            pass
+                else:
+                    try:
+                        entities = entity_extractor.extract_to_metadata(content)
+                        if entities:
+                            meta["entities"] = entities
+                    except Exception:
+                        pass
+
+            # Step 2: 自动关系创建
+            if auto_relations:
+                try:
+                    relations = await relation_service.auto_create_relations(
+                        new_memory_id=memory_id,
+                        new_content=content,
+                        container_tag=container_tag,
+                        is_static=is_static,
+                    )
+                    await self._update_embedded_relations(memory_id, relations)
+                except Exception as e:
+                    _logger.warning(f"Memory {memory_id}: auto relations failed: {e}")
+
+            # 更新 metadata：移除 pending 标记，设置 status=done
+            meta.pop("_status", None)
+            await self.update_metadata(memory_id, meta)
+
+            # 刷新 profile cache
+            from src.services.core.profile_service import profile_service
+            await profile_service.invalidate_cache(container_tag)
+
+            _logger.info(f"Memory {memory_id}: async processing completed")
+
+        except Exception as e:
+            _logger.error(f"Memory {memory_id}: async processing failed: {e}", exc_info=True)
+            # 标记失败
+            try:
+                memory = await self.get_by_id(memory_id, include_forgotten=True)
+                if memory:
+                    meta = memory.metadata.copy()
+                    meta["_status"] = "failed"
+                    await self.update_metadata(memory_id, meta)
+            except Exception:
+                pass
 
     async def _update_embedded_relations(
         self,
