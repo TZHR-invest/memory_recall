@@ -334,6 +334,10 @@ async def list_tools() -> list[Tool]:
                         "type": "string",
                         "description": "用户输入，用于语义搜索相关记忆和文档",
                     },
+                    "injectProfile": {
+                        "type": "boolean",
+                        "description": "是否注入用户画像（默认 false，仅新Session首次注入时设为 true）",
+                    },
                     "maxMemories": {
                         "type": "number",
                         "description": "最大记忆数（默认 5，设为 0 可跳过记忆搜索）",
@@ -353,6 +357,30 @@ async def list_tools() -> list[Tool]:
                     "enableChunksSearch": {
                         "type": "boolean",
                         "description": "启用文档片段搜索（默认 true）",
+                    },
+                    "memorySimilarityThreshold": {
+                        "type": "number",
+                        "description": "记忆相似度阈值（默认 0.3，越高越严格，0.3-0.8推荐）",
+                    },
+                    "chunksSimilarityThreshold": {
+                        "type": "number",
+                        "description": "文档片段相似度阈值（默认 0.3，越高越严格，0.3-0.8推荐）",
+                    },
+                    "memoryGraphDepth": {
+                        "type": "number",
+                        "description": "记忆图谱遍历深度（默认 2，1-5）",
+                    },
+                    "memoryGraphNodes": {
+                        "type": "number",
+                        "description": "记忆图谱最大节点数（默认 5，1-20）",
+                    },
+                    "entityGraphDepth": {
+                        "type": "number",
+                        "description": "实体图谱遍历深度（默认 2，1-5）",
+                    },
+                    "entityGraphNodes": {
+                        "type": "number",
+                        "description": "实体图谱最大节点数（默认 3，1-20）",
                     },
                 },
                 "required": ["query"],
@@ -740,6 +768,13 @@ async def _handle_context_inject(args: dict) -> list[TextContent]:
     enable_memory_graph = args.get("enableMemoryGraph", True)
     enable_entity_graph = args.get("enableEntityGraph", True)
     enable_chunks_search = args.get("enableChunksSearch", True)
+    memory_similarity_threshold = args.get("memorySimilarityThreshold")
+    chunks_similarity_threshold = args.get("chunksSimilarityThreshold")
+    memory_graph_depth = args.get("memoryGraphDepth")
+    memory_graph_nodes = args.get("memoryGraphNodes")
+    entity_graph_depth = args.get("entityGraphDepth")
+    entity_graph_nodes = args.get("entityGraphNodes")
+    inject_profile = args.get("injectProfile", False)
 
     body = {
         "user_tag": USER_TAG,
@@ -748,12 +783,27 @@ async def _handle_context_inject(args: dict) -> list[TextContent]:
         "config": {
             "max_memories": max_memories,
             "max_chunks": max_chunks,
+            "inject_profile": inject_profile,
             "enable_semantic_dedup": True,
             "enable_memory_graph": enable_memory_graph,
             "enable_entity_graph": enable_entity_graph,
             "enable_chunks_search": enable_chunks_search,
         },
     }
+
+    # 可选参数：只有明确传入时才覆盖后端默认值
+    if memory_similarity_threshold is not None:
+        body["config"]["memory_similarity_threshold"] = memory_similarity_threshold
+    if chunks_similarity_threshold is not None:
+        body["config"]["chunks_similarity_threshold"] = chunks_similarity_threshold
+    if memory_graph_depth is not None:
+        body["config"]["memory_graph_depth"] = memory_graph_depth
+    if memory_graph_nodes is not None:
+        body["config"]["memory_graph_nodes"] = memory_graph_nodes
+    if entity_graph_depth is not None:
+        body["config"]["entity_graph_depth"] = entity_graph_depth
+    if entity_graph_nodes is not None:
+        body["config"]["entity_graph_nodes"] = entity_graph_nodes
 
     result = await api_request("POST", "/context-inject", body, timeout=60.0)
 
