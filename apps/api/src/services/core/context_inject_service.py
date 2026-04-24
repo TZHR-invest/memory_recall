@@ -263,32 +263,10 @@ class ContextInjectService:
                         except Exception:
                             pass
 
-            if len(all_memories) < max_memories:
-                recent_memories = await memory_store.get_by_container(
-                    container_tag=container_tag,
-                    limit=max_memories * 2,
-                )
-
-                for m in recent_memories:
-                    # 过滤 Session Summary（会话摘要由 compaction hook 单独注入）
-                    if m.content.startswith(
-                        "[Session Summary]"
-                    ) or m.content.startswith("[会话摘要]"):
-                        continue
-
-                    if m.id not in seen_ids:
-                        seen_ids.add(m.id)
-                        all_memories.append(
-                            {
-                                "id": m.id,
-                                "content": m.content,
-                                "embedding": m.embedding,
-                                "is_static": m.is_static,
-                            }
-                        )
-
-                    if len(all_memories) >= max_memories * 2:
-                        break
+            # 2026-04-24: 移除 recent_memories 填充逻辑
+            # 原逻辑在语义搜索结果不足时用"最近记忆"补位，
+            # 但这些记忆与query完全无关，造成噪音召回
+            # 现改为：只返回语义搜索+图谱扩展的结果，不够就不够
 
             return all_memories[: max_memories * 2]
         except Exception:
