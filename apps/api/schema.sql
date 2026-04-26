@@ -42,7 +42,7 @@ COMMENT ON COLUMN api_keys.user_name IS 'Display name for the user';
 -- 2. Memories Table (Core Memory Storage)
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS memories (
-    id VARCHAR(24) PRIMARY KEY DEFAULT 'mem_' || replace(gen_random_uuid()::text, '-', ''),
+    id VARCHAR(40) PRIMARY KEY DEFAULT 'mem_' || replace(gen_random_uuid()::text, '-', ''),
     container_tag VARCHAR(100) NOT NULL,
     content TEXT NOT NULL,
     embedding vector(1024),
@@ -56,7 +56,7 @@ CREATE TABLE IF NOT EXISTS memories (
     
     -- Version control
     version INTEGER DEFAULT 1,
-    root_memory_id VARCHAR(24),
+    root_memory_id VARCHAR(40),
     source_count INTEGER DEFAULT 1,
     is_inference BOOLEAN DEFAULT FALSE,
     
@@ -110,8 +110,8 @@ COMMENT ON COLUMN memories.metadata IS 'JSONB containing: entities (extracted en
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS memory_relations (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    from_memory_id VARCHAR(24) NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
-    to_memory_id VARCHAR(24) NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+    from_memory_id VARCHAR(40) NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+    to_memory_id VARCHAR(40) NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
     relation_type VARCHAR(20) NOT NULL CHECK (relation_type IN ('updates', 'extends', 'derives')),
     confidence FLOAT DEFAULT 0.8,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -143,7 +143,7 @@ COMMENT ON COLUMN memory_profiles.entity_context IS 'Per-container context to gu
 -- 5. Documents Table (Document Metadata)
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS documents (
-    id VARCHAR(24) PRIMARY KEY DEFAULT 'doc_' || replace(gen_random_uuid()::text, '-', ''),
+    id VARCHAR(40) PRIMARY KEY DEFAULT 'doc_' || replace(gen_random_uuid()::text, '-', ''),
     container_tag VARCHAR(100) NOT NULL,
     title VARCHAR(500),
     url TEXT,
@@ -173,8 +173,8 @@ COMMENT ON COLUMN documents.chunk_count IS 'Number of chunks';
 -- 6. Chunks Table (Document Content Chunks)
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS chunks (
-    id VARCHAR(24) PRIMARY KEY DEFAULT 'chk_' || replace(gen_random_uuid()::text, '-', ''),
-    document_id VARCHAR(24) NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    id VARCHAR(40) PRIMARY KEY DEFAULT 'chk_' || replace(gen_random_uuid()::text, '-', ''),
+    document_id VARCHAR(40) NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
     content TEXT NOT NULL,
     embedded_content TEXT,
     position INTEGER NOT NULL,
@@ -241,7 +241,7 @@ CREATE TABLE IF NOT EXISTS entity_relations (
     weight FLOAT DEFAULT 0.5,
     confidence FLOAT DEFAULT 0.8,
     container_tag VARCHAR(100) NOT NULL,
-    source_memory_id VARCHAR(24),
+    source_memory_id VARCHAR(40),
     created_at TIMESTAMP DEFAULT NOW()
 );
 
@@ -264,7 +264,7 @@ COMMENT ON COLUMN entity_relations.source_memory_id IS 'Memory ID where this rel
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS memory_entities (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    memory_id VARCHAR(24) NOT NULL,
+    memory_id VARCHAR(40) NOT NULL,
     entity_id UUID NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
     entity_type VARCHAR(50),
     mention_context TEXT,
@@ -288,7 +288,7 @@ COMMENT ON COLUMN memory_entities.mention_context IS 'Surrounding text where ent
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS chunk_entities (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    chunk_id VARCHAR(24) NOT NULL REFERENCES chunks(id) ON DELETE CASCADE,
+    chunk_id VARCHAR(40) NOT NULL REFERENCES chunks(id) ON DELETE CASCADE,
     entity_id UUID NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
     entity_type VARCHAR(50),
     mention_context TEXT,
@@ -314,14 +314,14 @@ COMMENT ON COLUMN chunk_entities.confidence IS 'Confidence score for this entity
 -- ============================================================================
 
 -- Generate memory ID
-CREATE OR REPLACE FUNCTION generate_memory_id() RETURNS VARCHAR(24) AS $$
+CREATE OR REPLACE FUNCTION generate_memory_id() RETURNS VARCHAR(40) AS $$
 BEGIN
     RETURN 'mem_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 20);
 END;
 $$ LANGUAGE plpgsql;
 
 -- Generate document ID
-CREATE OR REPLACE FUNCTION generate_document_id() RETURNS VARCHAR(24) AS $$
+CREATE OR REPLACE FUNCTION generate_document_id() RETURNS VARCHAR(40) AS $$
 BEGIN
     RETURN 'doc_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 20);
 END;
