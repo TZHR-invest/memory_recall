@@ -83,9 +83,10 @@ class DocumentStore:
         word_count = len(content.split())
         content_hash = compute_content_hash(content)
 
-        # Priority 1: Deduplicate by source (document path)
+        # Priority 1: Deduplicate by source + title (3-key: container_tag, source, title)
+        # If title provided, match on all three keys; otherwise legacy 2-key (container_tag, source)
         if source:
-            existing = await self.find_by_source(container_tag, source)
+            existing = await self.find_by_source(container_tag, source, title=title)
             if existing:
                 # Content changed → update document and chunks
                 if existing.content_hash != content_hash:
@@ -375,17 +376,32 @@ class DocumentStore:
         return self._row_to_document(row) if row else None
 
     async def find_by_source(
-        self, container_tag: str, source: str
+        self, container_tag: str, source: str, title: Optional[str] = None
     ) -> Optional[Document]:
-        """Find document by source path within a container."""
-        row = await db.fetchrow(
-            """
-            SELECT * FROM documents
-            WHERE container_tag = $1 AND source = $2
-            """,
-            container_tag,
-            source,
-        )
+        """Find document by source path within a container.
+        
+        If title is provided, match on container_tag + source + title (3-key dedup).
+        If title is None, match on container_tag + source only (legacy behavior).
+        """
+        if title:
+            row = await db.fetchrow(
+                """
+                SELECT * FROM documents
+                WHERE container_tag = $1 AND source = $2 AND title = $3
+                """,
+                container_tag,
+                source,
+                title,
+            )
+        else:
+            row = await db.fetchrow(
+                """
+                SELECT * FROM documents
+                WHERE container_tag = $1 AND source = $2
+                """,
+                container_tag,
+                source,
+            )
         return self._row_to_document(row) if row else None
 
     async def update(
