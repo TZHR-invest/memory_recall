@@ -716,9 +716,9 @@ async def _handle_hybrid_search(args: dict) -> list[TextContent]:
 
 async def _handle_status(args: dict) -> list[TextContent]:
     try:
-        # 记忆数
+        # 记忆数（用 total 字段，不受 limit 影响）
         mem_result = await api_request("GET", "/memories", params={"container_tag": PROJECT_TAG, "limit": 1}, timeout=5.0)
-        mem_count = mem_result.get("count", 0) if isinstance(mem_result, dict) else "?"
+        mem_count = mem_result.get("total", mem_result.get("count", 0)) if isinstance(mem_result, dict) else "?"
         # 文档数
         doc_count = "?"
         try:

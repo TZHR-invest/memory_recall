@@ -37,7 +37,7 @@ export class FileWatcher {
       return false;
     }
 
-    const fileName = path.basename(filePath);
+    const fileName = path.relative(this.directory, filePath);
     for (const pattern of this.config.trackedDocPatterns) {
       if (pattern.startsWith("*")) {
         if (fileName.endsWith(pattern.slice(1))) return true;
