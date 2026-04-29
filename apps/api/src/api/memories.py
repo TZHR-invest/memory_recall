@@ -6,6 +6,7 @@ from src.services.core.memory_store import memory_store
 from src.services.core.profile_service import profile_service
 from src.services.core.relation_service import relation_service
 from src.services.core.document_store import document_store
+from src.database import db
 from src.api.auth import (
     require_permission,
     check_rate_limit,
@@ -244,6 +245,12 @@ async def list_memories(
     container_tag = container_tag or current_user["container_tag"]
     verify_container_ownership(container_tag, current_user["key_id"])
 
+    # 先查总数（不受 limit 影响）
+    total = await db.fetchval(
+        "SELECT COUNT(*) FROM memories WHERE container_tag = $1 AND is_latest = TRUE AND is_forgotten = FALSE",
+        container_tag,
+    )
+
     memories = await memory_store.get_by_container(
         container_tag=container_tag,
         limit=limit,
@@ -260,6 +267,7 @@ async def list_memories(
             for m in memories
         ],
         "count": len(memories),
+        "total": total,
     }
 
 
