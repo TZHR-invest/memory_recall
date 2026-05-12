@@ -72,6 +72,10 @@ apps/api/tests/extraction_results/
 # OpenClaw Plugin (built separately)
 clients/
 
+# Node
+node_modules/
+package-lock.json
+
 # Build artifacts
 *.tgz
 *.sh
