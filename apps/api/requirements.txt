@@ -1,31 +1,31 @@
 # Memory Recall - Python Dependencies
 
 # Web Framework
-fastapi==0.109.0
-uvicorn[standard]==0.27.0
-python-multipart==0.0.22
+fastapi==0.135.1
+uvicorn[standard]==0.42.0
+python-multipart==0.0.27
 
 # Database
-psycopg2-binary==2.9.9
-pgvector==0.2.4
-asyncpg==0.29.0
+psycopg2-binary==2.9.11
+pgvector==0.4.2
+asyncpg==0.31.0
 
 # LLM & Embedding (火山引擎兼容 OpenAI)
-openai==1.12.0
+openai==2.29.0
 
 # Image Processing
-Pillow==12.1.1
+Pillow==12.2.0
 
 # Utilities
-python-dotenv==1.0.1
-pydantic==2.6.1
-pydantic-settings==2.1.0
-python-dateutil==2.8.2
+python-dotenv==1.2.2
+pydantic==2.12.5
+pydantic-settings==2.13.1
+python-dateutil==2.9.0
 
 # Testing
-pytest==8.0.0
+pytest==9.0.3
 pytest-asyncio
-httpx==0.26.0
+httpx==0.28.1
 
 # Code Quality
 black==26.3.1
