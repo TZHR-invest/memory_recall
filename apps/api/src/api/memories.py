@@ -60,7 +60,7 @@ class SearchRequest(BaseModel):
     )
     limit: int = Field(10, ge=1, le=100, description="Max results")
     threshold: float = Field(
-        0.6, ge=0.0, le=1.0, description="Similarity threshold (0-1)"
+        0.3, ge=0.0, le=1.0, description="Similarity threshold (0-1)"
     )
 
 

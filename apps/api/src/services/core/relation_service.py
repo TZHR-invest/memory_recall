@@ -17,6 +17,15 @@ from src.services.core.chinese_entity_types import (
     has_extend_marker,
     has_derive_marker,
 )
+try:
+    from src.services.jieba_service import extract_keywords as _jieba_extract_keywords
+except ImportError:
+    # jieba not available, use simple regex fallback
+    import re as _re
+    def _jieba_extract_keywords(text: str, min_length: int = 2):
+        """Fallback: split by punctuation/whitespace, filter short tokens"""
+        tokens = _re.split(r'[，。！？、；：\s,.;!?]+', text)
+        return [t for t in tokens if len(t) >= min_length and not t.isdigit()]
 from src.embedding.client import get_embedding_client
 
 logger = logging.getLogger(__name__)
@@ -146,8 +155,10 @@ class RelationService:
         return min(confidence, 1.0)
 
     def _count_common_entities(self, content1: str, content2: str) -> int:
-        words1 = set(content1)
-        words2 = set(content2)
+        if not content1 or not content2:
+            return 0
+        words1 = set(_jieba_extract_keywords(content1))
+        words2 = set(_jieba_extract_keywords(content2))
         return len(words1 & words2)
 
     async def create(
