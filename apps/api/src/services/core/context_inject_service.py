@@ -326,28 +326,44 @@ class ContextInjectService:
                     query_entities = entity_extractor.extract(query)
 
                     if query_entities:
-                        entity_ids = [e.id for e in query_entities[:5]]
+                        # Extract entity names from NER results, then look up
+                        # real entity IDs from the database entities table.
+                        # NER Entity objects have .text (not .id) — using e.id
+                        # would be the Python object id, not the DB entity id.
+                        entity_names = [e.text for e in query_entities[:5]]
 
-                        entity_chunks = await document_store.find_chunks_by_entities(
-                            entity_ids=entity_ids,
-                            container_tag=container_tag,
-                            limit=config.get("max_chunks", 2),
+                        rows = await db.fetch(
+                            """
+                            SELECT id FROM entities
+                            WHERE name = ANY($1) AND container_tag = $2
+                            """,
+                            entity_names,
+                            container_tag,
                         )
 
-                        for c in entity_chunks:
-                            if c["id"] not in seen_ids:
-                                seen_ids.add(c["id"])
-                                all_chunks.append(
-                                    {
-                                        "id": c["id"],
-                                        "content": c["content"],
-                                        "embedding": c.get("embedding"),
-                                        "document_id": c.get("document_id"),
-                                        "title": c.get("title"),
-                                        "source": c.get("source"),
-                                        "similarity": 0.0,
-                                    }
-                                )
+                        entity_ids = [str(r["id"]) for r in rows]
+
+                        if entity_ids:
+                            entity_chunks = await document_store.find_chunks_by_entities(
+                                entity_ids=entity_ids,
+                                container_tag=container_tag,
+                                limit=config.get("max_chunks", 2),
+                            )
+
+                            for c in entity_chunks:
+                                if c["id"] not in seen_ids:
+                                    seen_ids.add(c["id"])
+                                    all_chunks.append(
+                                        {
+                                            "id": c["id"],
+                                            "content": c["content"],
+                                            "embedding": c.get("embedding"),
+                                            "document_id": c.get("document_id"),
+                                            "title": c.get("title"),
+                                            "source": c.get("source"),
+                                            "similarity": 0.0,
+                                        }
+                                    )
                 except Exception:
                     pass
 

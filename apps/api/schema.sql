@@ -153,7 +153,7 @@ CREATE TABLE IF NOT EXISTS documents (
     word_count INTEGER DEFAULT 0,
     chunk_count INTEGER DEFAULT 0,
     content_hash VARCHAR(64),
-    status VARCHAR(20) DEFAULT 'done' CHECK (status IN ('queued', 'processing', 'done')),
+    status VARCHAR(20) DEFAULT 'queued' CHECK (status IN ('queued', 'extracting', 'chunking', 'embedding', 'indexing', 'done', 'failed')),
     metadata JSONB DEFAULT '{}',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()

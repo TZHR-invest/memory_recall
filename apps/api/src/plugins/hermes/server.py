@@ -154,7 +154,7 @@ async def list_tools() -> list[Tool]:
                     },
                     "threshold": {
                         "type": "number",
-                        "description": "相似度阈值 0-1（默认 0.6）",
+                        "description": "相似度阈值 0-1（默认 0.3）",
                     },
                 },
                 "required": ["query"],
@@ -514,7 +514,7 @@ async def _handle_search(args: dict) -> list[TextContent]:
     query = args["query"]
     scope = args.get("scope", "project")
     limit = args.get("limit", 10)
-    threshold = args.get("threshold", 0.6)
+    threshold = args.get("threshold", 0.3)
 
     body = {
         "query": query,

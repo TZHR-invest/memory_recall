@@ -35,10 +35,9 @@ class Document:
     word_count: int = 0
     chunk_count: int = 0
     content_hash: Optional[str] = None
-    status: str = "done"
+    status: str = "queued"
     metadata: Dict[str, Any] = field(default_factory=dict)
     created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
 
