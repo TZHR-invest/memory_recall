@@ -23,5 +23,11 @@
     "enable_graph_recall": true,
     "enable_entity_recall": true,
     "graph_max_depth": 2,
-    "graph_max_nodes": 5
+    "graph_max_nodes": 5,
+
+    // Skill 自动加载
+    // skill_name: memory-recall
+    // skill_path: ~/.deepseek/skills/memory-recall/SKILL.md
+    // 安装脚本（install.sh）会自动创建标准 skill 目录结构
+    // 重启 DeepSeek TUI 后，memory-recall skill 的规则将注入到系统提示中
 }
