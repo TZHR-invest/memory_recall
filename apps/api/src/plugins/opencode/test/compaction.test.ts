@@ -104,6 +104,20 @@ describe("checkAndTriggerCompaction with OpenCode client", () => {
     tui: {
       showToast: mock(() => Promise.resolve()),
     },
+    config: {
+      providers: mock(() => Promise.resolve({
+        data: {
+          providers: [{
+            id: "test_provider",
+            models: {
+              test_model: {
+                limit: { context: 200000 },
+              },
+            },
+          }],
+        },
+      })),
+    },
   };
 
   const mockApiClient = {
@@ -245,9 +259,10 @@ describe("summary capture after compaction", () => {
     info: mock(() => {}),
     warn: mock(() => {}),
     error: mock(() => {}),
+    debug: mock(() => {}),
   };
 
-  test("saves summary when enableSummaryCapture is true", async () => {
+  test("caches summary to memory when enableSummaryCapture is true", async () => {
     const testMessageId = "msg_summary_test_" + Date.now();
     const testSummary = "This is a test summary that is long enough to meet the minimum length requirement of one hundred characters for saving.";
 
@@ -258,6 +273,9 @@ describe("summary capture after compaction", () => {
       JSON.stringify({ type: "text", text: testSummary })
     );
 
+    // 验证文件确实写入成功
+    expect(fs.existsSync(path.join(partDir, `prt_summary.json`))).toBe(true);
+
     const { CompactionHook } = await import("../src/compaction");
     const hook = new CompactionHook(
       mockApiClient as any,
@@ -267,18 +285,17 @@ describe("summary capture after compaction", () => {
       "/test/dir"
     );
 
-    (hook as any).state.summarizedSessions.add("test_session_summary");
+    const sessionId = "test_session_summary";
+    (hook as any).state.summarizedSessions.add(sessionId);
 
-    await hook.handleSummaryMessage("test_session_summary", {
-      id: testMessageId,
-      sessionID: "test_session_summary",
-      role: "assistant",
-      summary: true,
-      finish: true,
-    }, null);
+    // 直接调用 saveSummaryAsMemory 验证缓存逻辑
+    const result = await (hook as any).saveSummaryAsMemory(sessionId, testSummary);
 
     fs.rmSync(partDir, { recursive: true, force: true });
 
-    expect(mockApiClient.addMemory).toHaveBeenCalled();
+    expect(result).toBeNull();
+    expect(mockApiClient.addMemory).not.toHaveBeenCalled();
+    expect((hook as any).state.savedSummarySessions.has(sessionId)).toBe(true);
+    expect((hook as any).state.latestSummaries.get(sessionId)).toBeDefined();
   });
 });

@@ -26,6 +26,9 @@ interface CompactionState {
   todoSnapshots: Map<string, TodoItem[]>;
 }
 
+/** 模型上下文窗口缓存，key = "providerId:modelId" */
+type ModelContextCache = Map<string, number>;
+
 interface AgentConfig {
   agent?: string;
   model?: {
@@ -57,12 +60,15 @@ interface MessageInfo {
   tokens?: {
     input?: number;
     output?: number;
+    total?: number;
+    reasoning?: number;
     cache?: {
       read?: number;
+      write?: number;
     };
   };
   summary?: boolean;
-  finish?: boolean;
+  finish?: string | boolean;
   providerID?: string;
   modelID?: string;
 }
@@ -336,6 +342,9 @@ export class CompactionHook {
     todoSnapshots: new Map(),
   };
 
+  /** 模型上下文窗口缓存，避免重复 API 调用 */
+  private modelContextCache: ModelContextCache = new Map();
+
   constructor(
     client: ApiClient,
     config: Config,
@@ -354,6 +363,59 @@ export class CompactionHook {
 
   setOpenCodeClient(client: OpencodeClient): void {
     this.opencodeClient = client;
+  }
+
+  /**
+   * 通过 OpenCode 客户端查询模型的实际上下文窗口大小。
+   * 查询不到时降级为 DEFAULT_CONTEXT_LIMIT (200K)。
+   * 结果会被缓存，同一模型不重复查询。
+   */
+  private async resolveContextLimit(providerId: string, modelId: string): Promise<number> {
+    const cacheKey = `${providerId}:${modelId}`;
+    if (this.modelContextCache.has(cacheKey)) {
+      return this.modelContextCache.get(cacheKey)!;
+    }
+
+    if (!this.opencodeClient) return DEFAULT_CONTEXT_LIMIT;
+
+    try {
+      const resp = await this.opencodeClient.config.providers();
+      const data = (resp.data ?? resp) as {
+        providers?: Array<{
+          id: string;
+          models?: Record<string, { limit?: { context?: number } }>;
+        }>;
+      };
+
+      const providers = data?.providers ?? [];
+      for (const provider of providers) {
+        if (provider.id === providerId && provider.models) {
+          const model = provider.models[modelId];
+          if (model?.limit?.context && model.limit.context > 0) {
+            this.modelContextCache.set(cacheKey, model.limit.context);
+            return model.limit.context;
+          }
+        }
+      }
+
+      if (this.logger) {
+        this.logger.warn("Model context limit not found in providers config", {
+          providerId,
+          modelId,
+          availableProviders: providers.map(p => p.id),
+        });
+      }
+    } catch (e) {
+      if (this.logger) {
+        this.logger.warn("Failed to resolve model context limit", {
+          providerId,
+          modelId,
+          error: String(e),
+        });
+      }
+    }
+
+    return DEFAULT_CONTEXT_LIMIT;
   }
 
   private async fetchProjectMemoriesForCompaction(sessionId?: string): Promise<string[]> {
@@ -681,10 +743,11 @@ export class CompactionHook {
       agent = storedMessage.agent;
     }
 
-    const contextLimit = DEFAULT_CONTEXT_LIMIT;
+    const contextLimit = await this.resolveContextLimit(providerId, modelId);
 
+    // 优先使用 SDK 提供的 tokens.total（总消耗），降级到手动累加
     const cacheRead = tokens.cache?.read || 0;
-    const totalUsed = (tokens.input || 0) + cacheRead + (tokens.output || 0);
+    const totalUsed = tokens.total ?? ((tokens.input || 0) + cacheRead + (tokens.output || 0));
 
     if (totalUsed < MIN_TOKENS_FOR_COMPACTION) {
       if (this.logger) {
