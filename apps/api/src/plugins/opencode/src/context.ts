@@ -563,6 +563,10 @@ export function getAiGuidance(isZh: boolean): string[] {
         "",
         "**【核心原则】**：先问记忆，再找代码。记忆里没有，才去探索。",
         "",
+        "### 记忆存储规范",
+        "- 存储偏好/约束/永久特征时，必须传 `isStatic: true`，确保进入 static（永久特征）而非 dynamic（临时信息）",
+        "- 存储项目架构/技术决策时，传 `scope: \"project\"`（默认），用户私密信息传 `scope: \"user\"`",
+        "",
       ]
     : [
         "### 🚨 AI Behavior Guidance (Mandatory)",
@@ -601,6 +605,10 @@ export function getAiGuidance(isZh: boolean): string[] {
         "- Codebase exploration: 30-60 seconds, re-scans code",
         "",
         "**[CORE PRINCIPLE]**: Ask memory first, then search code. Only explore if memory is empty.",
+        "",
+        "### Memory Storage Rules",
+        "- When storing preferences/constraints/permanent traits, ALWAYS pass `isStatic: true` to put them in static (permanent) instead of dynamic (temporary)",
+        "- Store project architecture/technical decisions with `scope: \"project\"` (default), user private info with `scope: \"user\"`",
         "",
       ];
 }
