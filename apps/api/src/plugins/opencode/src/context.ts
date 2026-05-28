@@ -564,8 +564,10 @@ export function getAiGuidance(isZh: boolean): string[] {
         "**【核心原则】**：先问记忆，再找代码。记忆里没有，才去探索。",
         "",
         "### 记忆存储规范",
-        "- 存储偏好/约束/永久特征时，必须传 `isStatic: true`，确保进入 static（永久特征）而非 dynamic（临时信息）",
-        "- 存储项目架构/技术决策时，传 `scope: \"project\"`（默认），用户私密信息传 `scope: \"user\"`",
+        "- 偏好/约束 → 传 `type: \"preference\"`，后端自动归为 static（永久特征）",
+        "- 其他永久特征（姓名、职业、长期规则）→ 传 `isStatic: true`",
+        "- 临时信息（会话摘要、最近活动）→ 无需 isStatic，默认 dynamic",
+        "- 项目架构/技术决策 → `scope: \"project\"`（默认），用户私密信息 → `scope: \"user\"`",
         "",
       ]
     : [
@@ -607,8 +609,10 @@ export function getAiGuidance(isZh: boolean): string[] {
         "**[CORE PRINCIPLE]**: Ask memory first, then search code. Only explore if memory is empty.",
         "",
         "### Memory Storage Rules",
-        "- When storing preferences/constraints/permanent traits, ALWAYS pass `isStatic: true` to put them in static (permanent) instead of dynamic (temporary)",
-        "- Store project architecture/technical decisions with `scope: \"project\"` (default), user private info with `scope: \"user\"`",
+        "- Preferences/constraints → pass `type: \"preference\"`, backend auto-classifies as static",
+        "- Other permanent traits (name, occupation, long-term rules) → pass `isStatic: true`",
+        "- Temporary info (session summaries, recent activities) → no isStatic needed, defaults to dynamic",
+        "- Project architecture/technical decisions → `scope: \"project\"` (default), user private info → `scope: \"user\"`",
         "",
       ];
 }
