@@ -170,6 +170,11 @@ async def create_memory(
 
     verify_container_ownership(container_tag, current_user["key_id"])
 
+    # 自动分类：type=preference 时强制为永久特征
+    is_static = request.is_static
+    if not is_static and request.metadata.get("type") == "preference":
+        is_static = True
+
     entity_context = request.entity_context
 
     if entity_context:
@@ -183,7 +188,7 @@ async def create_memory(
     memory = await memory_store.create(
         content=request.content,
         container_tag=container_tag,
-        is_static=request.is_static,
+        is_static=is_static,
         metadata=request.metadata,
         entity_context=entity_context,
         extract_entities=not request.skip_extraction,
