@@ -78,13 +78,28 @@ package-lock.json
 
 # Build artifacts
 *.tgz
+*.tar.gz
 *.sh
+
+# Plugin build output (specific plugin dirs)
+apps/api/src/plugins/opencode/dist/
+apps/api/src/plugins/deepseek-tui/.venv/
 
 # Tool config directories
 .pi/
 .opencode/
 
+# Database backups (contain sensitive data)
+apps/api/backups/
+
 # Runtime storage
 storage/
 openspec/
+
+# Raster image files (example/test images)
+storage/images/*.jpg
+storage/images/*.png
+storage/images/*.jpeg
+storage/images/*.gif
+
 .memory-recall-docs.json

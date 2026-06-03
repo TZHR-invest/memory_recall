@@ -9,7 +9,7 @@
 确保后端 API 服务正在运行：
 
 ```bash
-cd /home/wbaifan/.openclaw/workspace-ai_tui/projects/memory_recall
+cd /path/to/memory_recall
 python3 -m uvicorn apps.api.main:app --reload --host 0.0.0.0 --port 8000
 ```
 

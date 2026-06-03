@@ -40,8 +40,8 @@ logger = logging.getLogger("memory-recall")
 # ── 配置 ──────────────────────────────────────────────────────────
 API_BASE_URL = os.environ.get("MEMORY_RECALL_BASE_URL", "http://localhost:8000")
 API_KEY = os.environ.get("MEMORY_RECALL_API_KEY", "")
-USER_TAG = os.environ.get("MEMORY_RECALL_USER_TAG", "b262d2f1-6232-49f4-820e-3f5e4cf6b956")
-PROJECT_TAG = os.environ.get("MEMORY_RECALL_PROJECT_TAG", "b262d2f1-6232-49f4-820e-3f5e4cf6b956_hermes")
+USER_TAG = os.environ.get("MEMORY_RECALL_USER_TAG", "your-key-id")
+PROJECT_TAG = os.environ.get("MEMORY_RECALL_PROJECT_TAG", "your-key-id_hermes")
 
 app = Server("memory-recall")
 

@@ -436,7 +436,7 @@ bunx memory-recall-opencode install
     "apiKey": "your-api-key",
     "baseUrl": "http://localhost:8000",
     "userName": "YourName",
-    "keyId": "b262d2f1-6232-49f4-820e-3f5e4cf6b956",
+        "keyId": "<your-key-id>",
     "injectionStrategy": "smart",
     "initialInjection": {
         "profile": true,
@@ -462,11 +462,11 @@ bunx memory-recall-opencode install
 插件自动为每个项目生成独立的 container_tag，实现数据隔离：
 
 ```
-keyId: b262d2f1-6232-49f4-820e-3f5e4cf6b956
+keyId: <your-key-id>
 
-用户画像 container: b262d2f1-6232-49f4-820e-3f5e4cf6b956
-项目 A container: b262d2f1-6232-49f4-820e-3f5e4cf6b956_project-memory_recall
-项目 B container: b262d2f1-6232-49f4-820e-3f5e4cf6b956_project-shuihu_card_game
+用户画像 container: <your-key-id>
+项目 A container: <your-key-id>_project-memory_recall
+项目 B container: <your-key-id>_project-shuihu_card_game
 ```
 
 **隔离效果**：
@@ -983,6 +983,5 @@ MIT License
 
 ---
 
-*创建者：颓弟*
 *创建时间：2026-03-19*
 *最后更新：2026-04-04*
