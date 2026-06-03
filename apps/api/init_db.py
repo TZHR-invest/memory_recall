@@ -9,8 +9,8 @@ import sys
 import os
 from pathlib import Path
 
-# 添加项目根目录到 Python 路径
-sys.path.insert(0, str(Path(__file__).parent.parent))
+# 添加 apps/api 目录到 Python 路径
+sys.path.insert(0, str(Path(__file__).parent))
 
 from src.database import db
 from src.config import settings
