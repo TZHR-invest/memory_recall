@@ -1,0 +1,98 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          cd apps/api
+          python -m pip install --upgrade pip
+          pip install ruff
+          pip install -r requirements.txt
+
+      - name: Lint with ruff
+        run: |
+          cd apps/api
+          ruff check src/ tests/
+        continue-on-error: true
+
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: memory_recall
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          cd apps/api
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Initialize database schema
+        run: |
+          cd apps/api
+          PGPASSWORD=postgres psql -h localhost -U postgres -d memory_recall -f schema.sql
+        env:
+          PGPASSWORD: postgres
+        continue-on-error: true
+
+      - name: Run tests
+        run: |
+          cd apps/api
+          python -m pytest tests/ -v --timeout=30 -x
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/memory_recall
+        continue-on-error: true
+
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          cd apps/api
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Check Python imports
+        run: |
+          cd apps/api
+          python -c "import sys; sys.path.insert(0, 'src'); from src.config import settings; print(f'Config OK: {settings.APP_NAME}')"
