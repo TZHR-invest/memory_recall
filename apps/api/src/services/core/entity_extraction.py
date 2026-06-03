@@ -3,7 +3,7 @@ Lightweight entity extraction using jieba and regex patterns.
 """
 
 import re
-from typing import List, Dict, Any, Set, Optional
+from typing import List, Dict, Any, Set
 from dataclasses import dataclass, field
 
 try:
@@ -162,35 +162,17 @@ def get_generic_types_for_asmr(asmr_dimension: str) -> Set[str]:
 
 
 class EntityExtractor:
-    def __init__(self, use_lac: Optional[bool] = None):
-        self.patterns = ENTITY_PATTERNS
-        self.use_lac = use_lac if use_lac is not None else settings.USE_LAC_EXTRACTOR
-        self._lac_extractor = None
+    def __init__(self):
+        super().__init__()
         self._init_jieba()
 
     def _init_jieba(self) -> None:
         if JIEBA_AVAILABLE:
             jieba.initialize()
 
-    def _get_lac_extractor(self):
-        if self._lac_extractor is None and self.use_lac:
-            from src.services.core.lac_extractor import lac_extractor
-
-            self._lac_extractor = lac_extractor
-        return self._lac_extractor
-
     def extract(self, text: str) -> List[Entity]:
         entities = []
         extracted_texts: Set[str] = set()
-
-        if self.use_lac:
-            lac = self._get_lac_extractor()
-            if lac and lac.is_available():
-                lac_entities = self._extract_by_lac(text)
-                for entity in lac_entities:
-                    if entity.text not in extracted_texts:
-                        entities.append(entity)
-                        extracted_texts.add(entity.text)
 
         pattern_entities = self._extract_by_patterns(text)
         for entity in pattern_entities:
@@ -204,56 +186,6 @@ class EntityExtractor:
                 if entity.text not in extracted_texts:
                     entities.append(entity)
                     extracted_texts.add(entity.text)
-
-        return entities
-
-    def _extract_by_lac(self, text: str) -> List[Entity]:
-        lac = self._get_lac_extractor()
-        if not lac or not lac.is_available():
-            return []
-
-        lac_result = lac.extract_with_positions(text)
-        return [
-            Entity(
-                text=e["text"],
-                type=e["type"],
-                start=e["start"],
-                end=e["end"],
-                confidence=e.get("confidence", 0.95),
-            )
-            for e in lac_result
-        ]
-
-    def extract_to_metadata(self, text: str) -> Dict[str, List[str]]:
-        entities = self.extract(text)
-        metadata: Dict[str, List[str]] = {}
-
-        for entity in entities:
-            if entity.type not in metadata:
-                metadata[entity.type] = []
-            if entity.text not in metadata[entity.type]:
-                metadata[entity.type].append(entity.text)
-
-        return metadata
-
-    def _extract_by_patterns(self, text: str) -> List[Entity]:
-        entities = []
-
-        for entity_type, patterns in self.patterns.items():
-            for pattern in patterns:
-                matches = re.finditer(pattern, text)
-                for match in matches:
-                    group = match.group(1) if match.groups() else match.group(0)
-                    if group and len(group.strip()) > 0:
-                        entities.append(
-                            Entity(
-                                text=group.strip(),
-                                type=entity_type,
-                                start=match.start(),
-                                end=match.end(),
-                                confidence=0.9,
-                            )
-                        )
 
         return entities
 
