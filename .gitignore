@@ -103,3 +103,4 @@ storage/images/*.jpeg
 storage/images/*.gif
 
 .memory-recall-docs.json
+zhihu-article.md
