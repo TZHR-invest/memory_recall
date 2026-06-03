@@ -34,7 +34,7 @@
 | 🧩 **Unified API** | Single endpoint for memories, profiles, documents, and graph |
 | 🔐 **Auth & Isolation** | API Key authentication + container-level data isolation |
 | 🧠 **Knowledge Graph** | Entity extraction, relation inference, visual queries |
-| 🌐 **Multi-Platform** | Plugins for OpenCode, DeepSeek TUI, Hermes Agent, OpenClaw |
+| 🌐 **Multi-Platform** | Plugins for OpenCode, DeepSeek TUI, Hermes Agent |
 | 📄 **Document Memory** | Auto-import README, design docs, full-text search |
 | 🐳 **30s Setup** | Docker Compose one-command deployment |
 
@@ -53,7 +53,7 @@ docker compose up -d
 curl http://localhost:8000/health
 ```
 
-> Need LLM API Key? See [deployment guide](docs/DEPLOYMENT.md).
+> Need LLM API Key? See `.env.example` for configuration reference.
 
 ### 📦 Try It Now
 
@@ -96,8 +96,6 @@ memory_recall/
 │   │   └── llm/           # LLM client (Volcengine / OpenAI compatible)
 │   ├── schema.sql         # Full database schema
 │   └── tests/
-├── docs/                  # Design documents
-└── web/                   # Web UI (vanilla HTML + JS)
 ```
 </details>
 
@@ -115,7 +113,7 @@ memory_recall/
 | `POST /memories/{id}/update` | Versioned update |
 | `POST /context-inject` | Unified context injection |
 
-> Full API docs: [API Documentation](docs/API_DOCUMENTATION.md).
+> Visit `/docs` after starting the service for Swagger UI.
 
 ---
 
@@ -126,7 +124,7 @@ memory_recall/
 | **OpenCode** | `bunx memory-recall-opencode install` | TypeScript plugin, auto project isolation |
 | **DeepSeek TUI** | `./install.sh` | MCP protocol, 15 tools |
 | **Hermes Agent** | `python server.py` | MCP protocol, 15 tools |
-| **OpenClaw** | `openclaw plugins install memory-recall` | Python plugin |
+
 
 ---
 
@@ -150,7 +148,7 @@ docker compose up -d
 | Database | **PostgreSQL 14+** + **pgvector** |
 | Embedding | 1024-dim (doubao-embedding) |
 | LLM | Volcengine doubao-seed / OpenAI compatible |
-| Frontend | Vanilla HTML + JavaScript (no build step) |
+
 
 ---
 
@@ -164,4 +162,4 @@ PRs welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.m
 
 ---
 
-*Created: 2026-03-19 · Last updated: 2026-04-07*
+*Created: 2026-03-19 · Last updated: 2026-06-03*

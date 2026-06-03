@@ -34,7 +34,7 @@
 | 🧩 **统一 API** | 单一入口管理记忆、画像、文档、图谱 |
 | 🔐 **完整认证** | API Key + 容器隔离 + 速率限制 |
 | 🧠 **知识图谱** | 实体提取、关系推理、可视化查询 |
-| 🌐 **多平台插件** | OpenCode / DeepSeek TUI / Hermes Agent / OpenClaw |
+| 🌐 **多平台插件** | OpenCode / DeepSeek TUI / Hermes Agent |
 | 📄 **文档记忆** | 自动导入 README、设计文档、支持全文搜索 |
 | 🐳 **一键部署** | Docker Compose 启动，30 秒跑起来 |
 
@@ -53,7 +53,7 @@ docker compose up -d
 curl http://localhost:8000/health
 ```
 
-> 需要配置 LLM API Key？见 [配置文档](docs/DEPLOYMENT.md)。
+> 需要配置 LLM API Key？参考 `.env.example` 文件。
 
 ### 📦 一键试用
 
@@ -96,8 +96,6 @@ memory_recall/
 │   │   └── llm/           # LLM 客户端（火山引擎 / OpenAI 兼容）
 │   ├── schema.sql         # 完整数据库结构
 │   └── tests/
-├── docs/                  # 设计文档
-└── web/                   # Web 管理界面（纯 HTML + JS）
 ```
 </details>
 
@@ -115,7 +113,7 @@ memory_recall/
 | `POST /memories/{id}/update` | 版本化更新 |
 | `POST /context-inject` | 统一上下文注入 |
 
-> 详细 API 文档见 [API 文档](docs/API_DOCUMENTATION.md)。
+> 启动后访问 `/docs` 查看 Swagger UI。
 
 ---
 
@@ -126,7 +124,7 @@ memory_recall/
 | **OpenCode** | `bunx memory-recall-opencode install` | TypeScript 插件，自动项目隔离 |
 | **DeepSeek TUI** | `./install.sh` | MCP 协议，15 个工具 |
 | **Hermes Agent** | `python server.py` | MCP 协议，15 个工具 |
-| **OpenClaw** | `openclaw plugins install memory-recall` | Python 插件 |
+
 
 ---
 
@@ -150,7 +148,7 @@ docker compose up -d
 | 数据库 | **PostgreSQL 14+** + **pgvector** |
 | 向量维度 | 1024 维（doubao-embedding） |
 | LLM | 火山引擎 doubao-seed / OpenAI 兼容 |
-| 前端 | 纯 HTML + JavaScript（无需构建） |
+
 
 ---
 
@@ -164,4 +162,4 @@ docker compose up -d
 
 ---
 
-*创建时间：2026-03-19 · 最后更新：2026-04-07*
+*创建时间：2026-03-19 · 最后更新：2026-06-03*
