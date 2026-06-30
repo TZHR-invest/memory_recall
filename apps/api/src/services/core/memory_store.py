@@ -269,6 +269,50 @@ class MemoryStore:
 
         return memory
 
+    async def process_embedding_async(self, memory_id: str) -> None:
+        """异步生成 embedding + 实体提取。由 FastAPI BackgroundTasks 调用。
+        先算 embedding → UPDATE 回数据库 → 再调 process_memory_async 处理实体提取。"""
+        import logging as _logging
+        _logger = _logging.getLogger("memory_store.async")
+
+        try:
+            memory = await self.get_by_id(memory_id, include_forgotten=True)
+            if not memory:
+                _logger.error(f"Memory {memory_id} not found for embedding generation")
+                return
+
+            embedding = await self._generate_embedding(memory.content)
+
+            if embedding:
+                embedding_str = self._embedding_to_str(embedding)
+                await db.execute(
+                    "UPDATE memories SET embedding = $1 WHERE id = $2",
+                    embedding_str, memory_id
+                )
+                try:
+                    similar = await self._check_similar_memory(
+                        memory.content, memory.container_tag, embedding=embedding
+                    )
+                    if similar:
+                        _logger.info(f"Merging memory {memory_id} into {similar['id']}")
+                        await self.merge_similar_memory(similar["id"], memory.content)
+                        return
+                except Exception as e:
+                    _logger.warning(f"Similar memory check failed for {memory_id}: {e}")
+
+            await self.process_memory_async(memory_id)
+
+        except Exception as e:
+            _logger.error(f"process_embedding_async failed for {memory_id}: {e}")
+            try:
+                memory = await self.get_by_id(memory_id, include_forgotten=True)
+                if memory:
+                    meta = memory.metadata.copy()
+                    meta["_status"] = "failed"
+                    await self.update_metadata(memory_id, meta)
+            except Exception:
+                pass
+
     async def process_memory_async(self, memory_id: str) -> None:
         """异步处理记忆：LLM 实体提取 + 关系创建。
         由 FastAPI BackgroundTasks 调用，处理完成后 _status=done。"""

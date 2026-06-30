@@ -193,11 +193,12 @@ async def create_memory(
         entity_context=entity_context,
         extract_entities=not request.skip_extraction,
         async_process=request.async_process,
+        generate_embedding=not request.async_process,
     )
 
     # 异步模式：后台处理实体提取和关系创建
     if request.async_process:
-        background_tasks.add_task(memory_store.process_memory_async, memory.id)
+        background_tasks.add_task(memory_store.process_embedding_async, memory.id)
     else:
         await profile_service.invalidate_cache(container_tag)
 
