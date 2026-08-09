@@ -33,7 +33,12 @@ export class FileWatcher {
   }
 
   private shouldTrack(filePath: string): boolean {
-    if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
+    try {
+      if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
+        return false;
+      }
+    } catch {
+      // 文件在 existsSync 和 statSync 之间被删除（如 Chrome 缓存驱逐），竞态导致 ENOENT
       return false;
     }
 
@@ -144,13 +149,20 @@ export class FileWatcher {
         watchDir,
         { recursive: true, persistent: false },
         (event, filename) => {
-          if (!filename) return;
-          const filePath = path.join(watchDir, filename);
+          try {
+            if (!filename) return;
+            const filePath = path.join(watchDir, filename);
 
-          if (filePath.includes("node_modules") || filePath.includes(".git")) return;
+            if (filePath.includes("node_modules") || filePath.includes(".git")) return;
 
-          const eventType = event === "rename" ? "created" : "modified";
-          this.onFileChanged(filePath, eventType);
+            const eventType = event === "rename" ? "created" : "modified";
+            this.onFileChanged(filePath, eventType);
+          } catch (e) {
+            // 单次回调异常不应拖垮整个 server 进程
+            if (this.logger) {
+              this.logger.warn("File watcher callback error", { error: String(e) });
+            }
+          }
         }
       );
 
