@@ -57,6 +57,7 @@ class ContextInjectRequest(BaseModel):
     config: ContextInjectConfig = Field(
         default_factory=ContextInjectConfig, description="注入配置"
     )
+    include_trace: bool = Field(False, description="响应中附带本次召回 Trace 明细")
 
 
 class ContextSource(BaseModel):
@@ -92,6 +93,7 @@ class ContextInjectResponse(BaseModel):
         default_factory=ContextSource, description="数据来源"
     )
     stats: ContextStats = Field(default_factory=ContextStats, description="统计信息")
+    trace: Optional[Dict[str, Any]] = Field(None, description="召回 Trace 明细（include_trace=true 时返回）")
 
 
 @router.post(
@@ -137,6 +139,7 @@ async def context_inject(
                 project_tag=project_tag,
                 query=request.query,
                 config=request.config.model_dump(),
+                include_trace=request.include_trace,
             )
             return result
         except Exception as e:
@@ -153,6 +156,7 @@ async def context_inject(
             container_tag=container_tag,
             query=request.query,
             config=request.config.model_dump(),
+            include_trace=request.include_trace,
         )
         return result
     except Exception as e:

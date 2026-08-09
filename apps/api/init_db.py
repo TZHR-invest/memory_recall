@@ -58,6 +58,7 @@ async def init_database():
         print("  - entity_relations (实体关系)")
         print("  - memory_entities (记忆-实体关联)")
         print("  - chunk_entities (分块-实体关联)")
+        print("  - recall_traces (召回链路 Trace)")
         print()
 
     except Exception as e:

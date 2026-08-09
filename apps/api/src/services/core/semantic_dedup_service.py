@@ -50,6 +50,7 @@ class SemanticDedupService:
         self,
         items: List[DedupItem],
         threshold: float = 0.85,
+        dropped_log: Optional[list] = None,
     ) -> List[DedupItem]:
         if len(items) <= 1:
             return items
@@ -73,6 +74,19 @@ class SemanticDedupService:
 
                     if similarity >= threshold:
                         is_duplicate = True
+                        if dropped_log is not None:
+                            dropped_log.append(
+                                {
+                                    "id": item.id,
+                                    "source": item.source,
+                                    "content": item.content[:200],
+                                    "duplicate_of": {
+                                        "id": kept_item.id,
+                                        "source": kept_item.source,
+                                    },
+                                    "similarity": round(similarity, 4),
+                                }
+                            )
                         break
 
             if not is_duplicate:

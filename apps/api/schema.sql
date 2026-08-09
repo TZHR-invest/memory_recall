@@ -310,6 +310,36 @@ COMMENT ON COLUMN chunk_entities.mention_context IS 'Surrounding text where enti
 COMMENT ON COLUMN chunk_entities.confidence IS 'Confidence score for this entity association';
 
 -- ============================================================================
+-- 9.8. Recall Traces Table (Debug Observability, v5.3)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS recall_traces (
+    id VARCHAR(40) PRIMARY KEY DEFAULT 'trace_' || replace(gen_random_uuid()::text, '-', ''),
+    container_tag VARCHAR(100) NOT NULL,
+    mode VARCHAR(20) NOT NULL DEFAULT 'single',
+    user_tag VARCHAR(100),
+    project_tag VARCHAR(100),
+    query TEXT,
+    config JSONB DEFAULT '{}',
+    channels JSONB DEFAULT '{}',
+    dedup JSONB DEFAULT '{}',
+    final JSONB DEFAULT '[]',
+    elapsed_ms JSONB DEFAULT '{}',
+    total_ms FLOAT DEFAULT 0,
+    summary JSONB DEFAULT '{}',
+    error TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_recall_traces_container ON recall_traces(container_tag, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_recall_traces_created ON recall_traces(created_at);
+
+COMMENT ON TABLE recall_traces IS 'Per-request recall pipeline traces for debugging (channel-level visibility)';
+COMMENT ON COLUMN recall_traces.channels IS 'Per-channel recall details: profile/vector/memory_graph/entity_graph/chunks';
+COMMENT ON COLUMN recall_traces.dedup IS 'Dedup details: kept and dropped (with duplicate_of reference)';
+COMMENT ON COLUMN recall_traces.final IS 'Final injection order after dedup';
+COMMENT ON COLUMN recall_traces.summary IS 'Channel counts for list view (avoids reading large JSONB columns)';
+
+-- ============================================================================
 -- 10. Helper Functions
 -- ============================================================================
 

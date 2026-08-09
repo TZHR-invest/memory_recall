@@ -11,6 +11,10 @@ from src.services.core.semantic_dedup_service import (
     DedupItem,
     SOURCE_PRIORITY,
 )
+from src.services.core.recall_trace_service import (
+    RecallTrace,
+    recall_trace_service,
+)
 from src.services.core.profile_service import profile_service
 from src.services.core.memory_store import memory_store
 from src.services.core.document_store import document_store
@@ -23,31 +27,77 @@ class ContextInjectService:
         container_tag: str,
         query: Optional[str],
         config: Dict[str, Any],
+        include_trace: bool = False,
+        trace: Optional[RecallTrace] = None,
     ) -> Dict[str, Any]:
-        profile = await self._get_profile(container_tag, config)
-        memories = await self._get_memories(container_tag, query, config)
-        chunks = await self._get_chunks(container_tag, query, config)
+        trace = trace or RecallTrace(
+            mode="single",
+            container_tag=container_tag,
+            user_tag=container_tag,
+            project_tag=None,
+            query=query,
+            config=config,
+        )
 
-        all_items = self._collect_items(profile, memories, chunks)
-
-        if config.get("enable_semantic_dedup", True):
-            deduped_items = await semantic_dedup_service.deduplicate(
-                all_items,
-                threshold=config.get("dedup_threshold", 0.85),
+        try:
+            profile = await self._get_profile(container_tag, config)
+            trace.record_profile(
+                profile.get("static", []),
+                profile.get("dynamic", []),
+                enabled=config.get("inject_profile", False),
             )
-        else:
-            deduped_items = all_items
+            trace.mark_profile()
 
-        context = self._format_context(deduped_items, config.get("language", "auto"))
+            memories = await self._get_memories(container_tag, query, config, trace)
+            trace.mark_memories()
 
-        sources = self._build_sources(profile, memories, chunks, deduped_items)
-        stats = self._build_stats(all_items, deduped_items)
+            chunks = await self._get_chunks(container_tag, query, config, trace)
+            trace.mark_chunks()
 
-        return {
-            "context": context,
-            "sources": sources,
-            "stats": stats,
-        }
+            all_items = self._collect_items(profile, memories, chunks)
+
+            dropped_log: List[Dict[str, Any]] = []
+            if config.get("enable_semantic_dedup", True):
+                deduped_items = await semantic_dedup_service.deduplicate(
+                    all_items,
+                    threshold=config.get("dedup_threshold", 0.85),
+                    dropped_log=dropped_log,
+                )
+            else:
+                deduped_items = all_items
+            trace.record_dedup(
+                deduped_items,
+                dropped_log,
+                config.get("dedup_threshold", 0.85),
+            )
+            trace.mark_dedup()
+
+            context = self._format_context(deduped_items, config.get("language", "auto"))
+            trace.record_final(deduped_items)
+            trace.mark_format()
+
+            sources = self._build_sources(profile, memories, chunks, deduped_items)
+            stats = self._build_stats(all_items, deduped_items)
+
+            if await recall_trace_service.should_record(force=include_trace):
+                await recall_trace_service.save(trace)
+
+            result = {
+                "context": context,
+                "sources": sources,
+                "stats": stats,
+            }
+            if include_trace:
+                result["trace"] = trace.to_dict()
+            return result
+        except Exception as e:
+            trace.mark_error(str(e))
+            try:
+                if await recall_trace_service.should_record(force=include_trace):
+                    await recall_trace_service.save(trace)
+            except Exception:
+                pass
+            raise
 
     async def inject_with_tags(
         self,
@@ -55,44 +105,90 @@ class ContextInjectService:
         project_tag: str,
         query: Optional[str],
         config: Dict[str, Any],
+        include_trace: bool = False,
+        trace: Optional[RecallTrace] = None,
     ) -> Dict[str, Any]:
-        profile = await self._get_profile(user_tag, config)
-        user_memories = await self._get_memories(user_tag, query, config)
-        project_memories = await self._get_memories(project_tag, query, config)
-        user_chunks = await self._get_chunks(user_tag, query, config)
-        project_chunks = await self._get_chunks(project_tag, query, config)
-
-        all_items = self._collect_items_with_tags(
-            profile, user_memories, project_memories, user_chunks, project_chunks
+        trace = trace or RecallTrace(
+            mode="tags",
+            container_tag=project_tag,
+            user_tag=user_tag,
+            project_tag=project_tag,
+            query=query,
+            config=config,
         )
 
-        if config.get("enable_semantic_dedup", True):
-            deduped_items = await semantic_dedup_service.deduplicate(
-                all_items,
-                threshold=config.get("dedup_threshold", 0.85),
+        try:
+            profile = await self._get_profile(user_tag, config)
+            trace.record_profile(
+                profile.get("static", []),
+                profile.get("dynamic", []),
+                enabled=config.get("inject_profile", False),
             )
-        else:
-            deduped_items = all_items
+            trace.mark_profile()
 
-        context = self._format_context_with_tags(
-            deduped_items, config.get("language", "auto")
-        )
+            user_memories = await self._get_memories(user_tag, query, config, trace, scope="user")
+            project_memories = await self._get_memories(project_tag, query, config, trace, scope="project")
+            trace.mark_memories()
 
-        sources = self._build_sources_with_tags(
-            profile,
-            user_memories,
-            project_memories,
-            user_chunks,
-            project_chunks,
-            deduped_items,
-        )
-        stats = self._build_stats_with_tags(all_items, deduped_items)
+            user_chunks = await self._get_chunks(user_tag, query, config, trace, scope="user")
+            project_chunks = await self._get_chunks(project_tag, query, config, trace, scope="project")
+            trace.mark_chunks()
 
-        return {
-            "context": context,
-            "sources": sources,
-            "stats": stats,
-        }
+            all_items = self._collect_items_with_tags(
+                profile, user_memories, project_memories, user_chunks, project_chunks
+            )
+
+            dropped_log: List[Dict[str, Any]] = []
+            if config.get("enable_semantic_dedup", True):
+                deduped_items = await semantic_dedup_service.deduplicate(
+                    all_items,
+                    threshold=config.get("dedup_threshold", 0.85),
+                    dropped_log=dropped_log,
+                )
+            else:
+                deduped_items = all_items
+            trace.record_dedup(
+                deduped_items,
+                dropped_log,
+                config.get("dedup_threshold", 0.85),
+            )
+            trace.mark_dedup()
+
+            context = self._format_context_with_tags(
+                deduped_items, config.get("language", "auto")
+            )
+            trace.record_final(deduped_items)
+            trace.mark_format()
+
+            sources = self._build_sources_with_tags(
+                profile,
+                user_memories,
+                project_memories,
+                user_chunks,
+                project_chunks,
+                deduped_items,
+            )
+            stats = self._build_stats_with_tags(all_items, deduped_items)
+
+            if await recall_trace_service.should_record(force=include_trace):
+                await recall_trace_service.save(trace)
+
+            result = {
+                "context": context,
+                "sources": sources,
+                "stats": stats,
+            }
+            if include_trace:
+                result["trace"] = trace.to_dict()
+            return result
+        except Exception as e:
+            trace.mark_error(str(e))
+            try:
+                if await recall_trace_service.should_record(force=include_trace):
+                    await recall_trace_service.save(trace)
+            except Exception:
+                pass
+            raise
 
     async def _get_profile(
         self,
@@ -121,6 +217,8 @@ class ContextInjectService:
         container_tag: str,
         query: Optional[str],
         config: Dict[str, Any],
+        trace: Optional[RecallTrace] = None,
+        scope: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         try:
             enable_memory_graph = config.get("enable_memory_graph", True)
@@ -141,6 +239,13 @@ class ContextInjectService:
                         limit=max_memories,
                         threshold=config.get("memory_similarity_threshold", 0.3),
                     )
+
+                    if trace:
+                        trace.record_vector(
+                            search_results,
+                            config.get("memory_similarity_threshold", 0.3),
+                            scope=scope,
+                        )
 
                     for r in search_results:
                         mem_id = r.get("id")
@@ -185,6 +290,10 @@ class ContextInjectService:
                                             continue
 
                                         if target_id in seen_ids:
+                                            if trace:
+                                                trace.record_memory_graph(
+                                                    mem["id"], rel_type, {"id": target_id}, added=False, scope=scope
+                                                )
                                             for existing_mem in all_memories:
                                                 if existing_mem.get("id") == target_id:
                                                     if not existing_mem.get(
@@ -206,6 +315,10 @@ class ContextInjectService:
                                                 "relation_type": rel_type,
                                             }
                                         )
+                                        if trace:
+                                            trace.record_memory_graph(
+                                                mem["id"], rel_type, {"id": target_memory.id, "content": target_memory.content}, added=True, scope=scope
+                                            )
 
                                     if len(all_memories) >= max_memories * 2:
                                         break
@@ -233,6 +346,14 @@ class ContextInjectService:
                                             container_tag=container_tag,
                                         )
                                         related_entities.extend(related)
+                                        if trace:
+                                            for r_entity in related:
+                                                trace.record_entity_graph_path(
+                                                    entity.name,
+                                                    "related",
+                                                    r_entity.name,
+                                                    scope=scope,
+                                                )
                                     except Exception:
                                         pass
 
@@ -260,6 +381,11 @@ class ContextInjectService:
                                                     "source": "entity_graph",
                                                 }
                                             )
+                                            if trace:
+                                                trace.record_entity_graph_memory(
+                                                    {"id": m.id, "content": m.content},
+                                                    scope=scope,
+                                                )
                         except Exception:
                             pass
 
@@ -277,6 +403,8 @@ class ContextInjectService:
         container_tag: str,
         query: Optional[str],
         config: Dict[str, Any],
+        trace: Optional[RecallTrace] = None,
+        scope: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         if not query:
             return []
@@ -299,6 +427,13 @@ class ContextInjectService:
                 limit=config.get("max_chunks", 3),
                 threshold=config.get("chunks_similarity_threshold", 0.3),
             )
+
+            if trace:
+                trace.record_chunks(
+                    chunks,
+                    config.get("chunks_similarity_threshold", 0.3),
+                    scope=scope,
+                )
 
             all_chunks = []
             seen_ids = set()
@@ -332,6 +467,9 @@ class ContextInjectService:
                         # would be the Python object id, not the DB entity id.
                         entity_names = [e.text for e in query_entities[:5]]
 
+                        if trace:
+                            trace.record_entity_graph_entities(entity_names, scope=scope)
+
                         rows = await db.fetch(
                             """
                             SELECT id FROM entities
@@ -364,6 +502,8 @@ class ContextInjectService:
                                             "similarity": 0.0,
                                         }
                                     )
+                                    if trace:
+                                        trace.record_chunk_entity_hit(c, scope=scope)
                 except Exception:
                     pass
 

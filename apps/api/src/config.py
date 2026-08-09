@@ -74,6 +74,12 @@ class Settings(BaseSettings):
     # 记忆合并配置
     MEMORY_MERGE_THRESHOLD: float = 0.95  # 记忆合并相似度阈值
 
+    # Recall Trace 配置
+    TRACE_ENABLED: bool = True  # 是否记录召回 Trace
+    TRACE_SAMPLE_RATE: float = 1.0  # Trace 采样率 0~1（include_trace 请求不受采样影响）
+    TRACE_RETENTION_DAYS: int = 7  # Trace 保留天数，由后台任务清理
+    TRACE_CONTENT_MAX_LEN: int = 200  # Trace 中内容截断长度
+
     class Config:
         env_file = ".env"
         case_sensitive = True

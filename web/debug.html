@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Memory Recall - 召回 Trace 调试台</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: #f4f6f8;
+            color: #333;
+            padding: 20px;
+        }
+        .container { max-width: 1100px; margin: 0 auto; }
+
+        header { background: #1e293b; color: #fff; border-radius: 12px; padding: 16px 20px; margin-bottom: 20px; }
+        header h1 { font-size: 1.3em; margin-bottom: 10px; }
+        .header-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+        .header-row label { font-size: 0.85em; color: #cbd5e1; }
+        .header-row input { flex: 1; min-width: 220px; padding: 8px 10px; border: none; border-radius: 6px; font-size: 0.9em; }
+
+        .card { background: #fff; border-radius: 12px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+        .card h2 { font-size: 1.05em; margin-bottom: 14px; color: #1e293b; display: flex; align-items: center; gap: 8px; }
+        .card h2 .badge { font-size: 0.75em; background: #e2e8f0; color: #475569; padding: 2px 8px; border-radius: 10px; }
+
+        .btn {
+            padding: 10px 20px; border: none; border-radius: 8px; cursor: pointer; font-size: 0.95em; font-weight: 500;
+            transition: background 0.2s;
+        }
+        .btn-primary { background: #2563eb; color: #fff; }
+        .btn-primary:hover { background: #1d4ed8; }
+        .btn-secondary { background: #e2e8f0; color: #334155; }
+        .btn-secondary:hover { background: #cbd5e1; }
+        .btn-compare { background: #7c3aed; color: #fff; }
+        .btn-compare:hover { background: #6d28d9; }
+
+        .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+        .form-group label { display: block; font-size: 0.85em; color: #64748b; margin-bottom: 6px; font-weight: 500; }
+        .form-group input, .form-group textarea {
+            width: 100%; padding: 9px 11px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 0.92em;
+        }
+        .form-group textarea { resize: vertical; min-height: 56px; font-family: inherit; }
+
+        details.advanced { margin: 12px 0; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px; }
+        details.advanced summary { cursor: pointer; color: #475569; font-size: 0.88em; user-select: none; }
+        .adv-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-top: 12px; }
+        .adv-item label { display: block; font-size: 0.8em; color: #64748b; margin-bottom: 4px; }
+        .adv-item input[type="number"] { width: 100%; padding: 6px 8px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.88em; }
+        .adv-item.toggle { display: flex; align-items: center; gap: 6px; font-size: 0.85em; color: #475569; }
+        .adv-item.toggle input { width: auto; }
+
+        .compare-bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
+
+        /* Trace render */
+        .trace-meta { font-size: 0.85em; color: #64748b; margin-bottom: 16px; display: flex; flex-wrap: wrap; gap: 16px; }
+        .trace-meta b { color: #334155; }
+        .channels { display: grid; gap: 14px; }
+        .channel { border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; }
+        .channel > .ch-head { background: #f8fafc; padding: 9px 14px; font-size: 0.9em; font-weight: 600; color: #1e293b;
+            display: flex; align-items: center; justify-content: space-between; }
+        .ch-head .ch-count { font-size: 0.78em; font-weight: 400; color: #64748b; }
+        .channel .ch-body { padding: 8px 14px 12px; }
+        .ch-body.empty { color: #94a3b8; font-size: 0.85em; padding: 10px 14px; }
+
+        .hit { display: flex; gap: 10px; align-items: flex-start; padding: 7px 0; border-bottom: 1px dashed #e2e8f0; font-size: 0.9em; }
+        .hit:last-child { border-bottom: none; }
+        .hit .hit-main { flex: 1; }
+        .hit .hit-content { color: #334155; line-height: 1.5; word-break: break-all; }
+        .hit .hit-meta { font-size: 0.78em; color: #94a3b8; margin-top: 2px; }
+        .hit .hit-meta .scope-tag { background: #ede9fe; color: #6d28d9; padding: 1px 6px; border-radius: 4px; margin-left: 6px; }
+
+        .score { display: inline-block; min-width: 52px; text-align: center; padding: 2px 8px; border-radius: 5px; font-size: 0.78em; font-weight: 600; }
+        .score.high { background: #d1fae5; color: #065f46; }
+        .score.med { background: #ffedd5; color: #9a3412; }
+        .score.low { background: #f1f5f9; color: #64748b; }
+
+        .hit.rejected { opacity: 0.55; }
+        .hit.rejected .rej-reason { color: #ef4444; font-size: 0.78em; }
+
+        .path-line { padding: 5px 0; font-size: 0.88em; color: #475569; word-break: break-all; }
+        .path-line .rel { color: #7c3aed; font-weight: 500; padding: 0 4px; }
+        .path-line .add-flag { color: #16a34a; font-size: 0.78em; margin-left: 6px; }
+        .path-line .skip-flag { color: #94a3b8; font-size: 0.78em; margin-left: 6px; }
+
+        .final-list { counter-reset: fin; }
+        .final-item { display: flex; gap: 10px; padding: 7px 0; border-bottom: 1px dashed #e2e8f0; font-size: 0.9em; }
+        .final-item .idx { color: #94a3b8; min-width: 20px; font-size: 0.85em; }
+        .final-item .src { color: #2563eb; font-size: 0.78em; white-space: nowrap; }
+
+        /* Trace list */
+        .trace-item { border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px; margin-bottom: 8px; cursor: pointer; transition: all 0.15s; }
+        .trace-item:hover { border-color: #2563eb; box-shadow: 0 2px 6px rgba(37,99,235,0.1); }
+        .trace-item .t-head { display: flex; justify-content: space-between; font-size: 0.88em; }
+        .trace-item .t-query { color: #334155; font-weight: 500; }
+        .trace-item .t-time { color: #94a3b8; font-size: 0.82em; }
+        .trace-item .t-meta { display: flex; gap: 12px; flex-wrap: wrap; font-size: 0.78em; color: #64748b; margin-top: 6px; }
+        .trace-item .t-meta .ch { background: #eef2ff; color: #4338ca; padding: 1px 7px; border-radius: 4px; }
+        .trace-item.error { border-left: 4px solid #ef4444; }
+
+        .diff-a { background: #ecfdf5; }
+        .diff-b { background: #fef3c7; }
+        .empty-state { color: #94a3b8; text-align: center; padding: 30px; font-size: 0.9em; }
+        .loading { color: #64748b; font-size: 0.9em; padding: 10px 0; }
+        .toast { position: fixed; top: 18px; right: 18px; padding: 12px 18px; border-radius: 8px; color: #fff; z-index: 1000; font-size: 0.9em; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+        .toast.err { background: #ef4444; }
+        .toast.ok { background: #16a34a; }
+
+        .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        .col-title { text-align: center; font-size: 0.85em; font-weight: 600; color: #475569; margin-bottom: 10px; }
+
+        @media (max-width: 800px) {
+            .form-grid, .adv-grid, .two-col { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <header>
+        <h1>🔬 Memory Recall 召回 Trace 调试台</h1>
+        <div class="header-row">
+            <label>API 地址</label>
+            <input id="api-base" placeholder="http://host:8000">
+            <label>API Key</label>
+            <input id="api-key" placeholder="rk_live_..." type="password" style="flex:1.2">
+            <button class="btn btn-secondary" onclick="saveSettings()">保存</button>
+        </div>
+    </header>
+
+    <!-- 搜索区 -->
+    <div class="card">
+        <h2>🔍 触发召回（实时 Trace）</h2>
+        <div class="form-grid">
+            <div class="form-group" style="grid-column: 1 / -1;">
+                <label>Query（用户问题）</label>
+                <textarea id="q-query" placeholder="例如：张三在哪里工作"></textarea>
+            </div>
+            <div class="form-group">
+                <label>user_tag（用户容器）</label>
+                <input id="q-user" placeholder="留空使用 API Key 默认容器">
+            </div>
+            <div class="form-group">
+                <label>project_tag（项目容器）</label>
+                <input id="q-project" placeholder="留空则与 user_tag 相同">
+            </div>
+        </div>
+
+        <details class="advanced">
+            <summary>⚙️ 高级参数（本次召回配置）</summary>
+            <div class="adv-grid">
+                <div class="adv-item"><label>记忆相似度阈值</label><input type="number" id="cfg-mem-th" step="0.05" min="0" max="1" value="0.3"></div>
+                <div class="adv-item"><label>文档相似度阈值</label><input type="number" id="cfg-chunk-th" step="0.05" min="0" max="1" value="0.3"></div>
+                <div class="adv-item"><label>去重阈值</label><input type="number" id="cfg-dedup-th" step="0.05" min="0" max="1" value="0.85"></div>
+                <div class="adv-item"><label>max_memories</label><input type="number" id="cfg-max-mem" min="1" max="20" value="5"></div>
+                <div class="adv-item"><label>max_chunks</label><input type="number" id="cfg-max-chunk" min="1" max="10" value="3"></div>
+                <div class="adv-item"><label>记忆图深度</label><input type="number" id="cfg-mg-depth" min="1" max="5" value="2"></div>
+                <div class="adv-item"><label>实体图深度</label><input type="number" id="cfg-eg-depth" min="1" max="5" value="2"></div>
+                <div class="adv-item toggle"><input type="checkbox" id="cfg-profile" checked> 注入画像</div>
+                <div class="adv-item toggle"><input type="checkbox" id="cfg-dedup" checked> 语义去重</div>
+                <div class="adv-item toggle"><input type="checkbox" id="cfg-mg" checked> 记忆图扩展</div>
+                <div class="adv-item toggle"><input type="checkbox" id="cfg-eg" checked> 实体图扩展</div>
+                <div class="adv-item toggle"><input type="checkbox" id="cfg-chunk" checked> 文档搜索</div>
+            </div>
+        </details>
+
+        <div class="compare-bar">
+            <button class="btn btn-primary" onclick="runTrace()">🚀 执行召回</button>
+            <button class="btn btn-compare" onclick="toggleCompare()">⚖️ 对比模式（A vs B）</button>
+            <span id="compare-status" style="font-size:0.85em;color:#7c3aed;display:none;">对比模式已开启：B 列使用下方的覆盖参数</span>
+        </div>
+
+        <div id="compare-pane" style="display:none; margin-top:14px;" class="card">
+            <h2>⚖️ 对比参数覆盖（仅 B 列）</h2>
+            <div class="adv-grid">
+                <div class="adv-item"><label>记忆阈值覆盖</label><input type="number" id="cmp-mem-th" step="0.05" min="0" max="1" value="0.1"></div>
+                <div class="adv-item"><label>文档阈值覆盖</label><input type="number" id="cmp-chunk-th" step="0.05" min="0" max="1" value="0.1"></div>
+                <div class="adv-item"><label>去重阈值覆盖</label><input type="number" id="cmp-dedup-th" step="0.05" min="0" max="1" value="0.7"></div>
+                <div class="adv-item toggle"><input type="checkbox" id="cmp-mg" checked> 记忆图</div>
+                <div class="adv-item toggle"><input type="checkbox" id="cmp-eg" checked> 实体图</div>
+                <div class="adv-item toggle"><input type="checkbox" id="cmp-chunk" checked> 文档搜索</div>
+            </div>
+            <div style="margin-top:10px;"><button class="btn btn-compare" onclick="runCompare()">⚖️ 对比执行</button></div>
+        </div>
+    </div>
+
+    <!-- 结果区 -->
+    <div class="card" id="result-card" style="display:none;">
+        <h2>📊 本次 Trace <span class="badge" id="result-trace-id"></span></h2>
+        <div id="result-container"></div>
+    </div>
+
+    <div class="card" id="compare-card" style="display:none;">
+        <h2>⚖️ 对比结果 <span class="badge">A（默认）vs B（覆盖）</span></h2>
+        <div class="two-col">
+            <div>
+                <div class="col-title">A — 默认配置</div>
+                <div id="compare-a"></div>
+            </div>
+            <div>
+                <div class="col-title">B — 覆盖配置</div>
+                <div id="compare-b"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 最近 trace 列表 -->
+    <div class="card">
+        <h2>🕐 最近 Trace 记录</h2>
+        <div style="display:flex; gap:10px; margin-bottom:12px;">
+            <input id="list-container" placeholder="容器过滤（留空默认）" style="flex:1; padding:8px 11px; border:1px solid #cbd5e1; border-radius:8px;">
+            <button class="btn btn-secondary" onclick="loadTraces()">刷新</button>
+        </div>
+        <div id="trace-list"><div class="empty-state">点击"刷新"加载最近 Trace</div></div>
+    </div>
+</div>
+
+<script>
+    const LS_KEY = 'memory_recall_debug_api_key';
+    const LS_BASE = 'memory_recall_debug_api_base';
+
+    function apiBase() {
+        return document.getElementById('api-base').value.trim() || `http://${location.hostname}:8000`;
+    }
+    function apiKey() {
+        return document.getElementById('api-key').value.trim();
+    }
+    function saveSettings() {
+        localStorage.setItem(LS_KEY, apiKey());
+        localStorage.setItem(LS_BASE, document.getElementById('api-base').value.trim());
+        toast('设置已保存', 'ok');
+    }
+
+    function headers() {
+        const h = { 'Content-Type': 'application/json' };
+        const k = apiKey();
+        if (k) h['X-API-Key'] = k;
+        return h;
+    }
+
+    function readConfig() {
+        return {
+            inject_profile: document.getElementById('cfg-profile').checked,
+            enable_semantic_dedup: document.getElementById('cfg-dedup').checked,
+            dedup_threshold: parseFloat(document.getElementById('cfg-dedup-th').value),
+            max_memories: parseInt(document.getElementById('cfg-max-mem').value),
+            max_chunks: parseInt(document.getElementById('cfg-max-chunk').value),
+            enable_memory_graph: document.getElementById('cfg-mg').checked,
+            memory_graph_depth: parseInt(document.getElementById('cfg-mg-depth').value),
+            enable_entity_graph: document.getElementById('cfg-eg').checked,
+            entity_graph_depth: parseInt(document.getElementById('cfg-eg-depth').value),
+            enable_chunks_search: document.getElementById('cfg-chunk').checked,
+            memory_similarity_threshold: parseFloat(document.getElementById('cfg-mem-th').value),
+            chunks_similarity_threshold: parseFloat(document.getElementById('cfg-chunk-th').value),
+            language: 'auto',
+        };
+    }
+
+    function readBody(override) {
+        const body = {
+            user_tag: document.getElementById('q-user').value.trim() || undefined,
+            project_tag: document.getElementById('q-project').value.trim() || undefined,
+            query: document.getElementById('q-query').value.trim() || undefined,
+            config: readConfig(),
+        };
+        if (override) {
+            body.config = Object.assign(body.config, override);
+        }
+        return body;
+    }
+
+    async function runTrace() {
+        const res = await fetch(`${apiBase()}/debug/traces/run`, { method: 'POST', headers: headers(), body: JSON.stringify(readBody()) });
+        const data = await res.json();
+        if (!res.ok) { toast('触发失败: ' + (data.detail || res.status), 'err'); return; }
+        document.getElementById('result-card').style.display = 'block';
+        const tid = data.trace && data.trace.request_id || '';
+        document.getElementById('result-trace-id').textContent = tid ? `#${tid}` : '';
+        document.getElementById('result-container').innerHTML = renderTrace(data.trace || data);
+    }
+
+    function toggleCompare() {
+        const pane = document.getElementById('compare-pane');
+        const status = document.getElementById('compare-status');
+        const showing = pane.style.display !== 'none';
+        pane.style.display = showing ? 'none' : 'block';
+        status.style.display = showing ? 'none' : 'inline';
+    }
+
+    async function runCompare() {
+        const override = {
+            memory_similarity_threshold: parseFloat(document.getElementById('cmp-mem-th').value),
+            chunks_similarity_threshold: parseFloat(document.getElementById('cmp-chunk-th').value),
+            dedup_threshold: parseFloat(document.getElementById('cmp-dedup-th').value),
+            enable_memory_graph: document.getElementById('cmp-mg').checked,
+            enable_entity_graph: document.getElementById('cmp-eg').checked,
+            enable_chunks_search: document.getElementById('cmp-chunk').checked,
+        };
+        const baseBody = readBody();
+        const [a, b] = await Promise.all([
+            fetch(`${apiBase()}/debug/traces/run`, { method: 'POST', headers: headers(), body: JSON.stringify(baseBody) }),
+            fetch(`${apiBase()}/debug/traces/run`, { method: 'POST', headers: headers(), body: JSON.stringify(readBody(override)) }),
+        ]);
+        const [da, dbRes] = await Promise.all([a.json(), b.json()]);
+        if (!a.ok || !b.ok) { toast('对比失败', 'err'); return; }
+        document.getElementById('compare-card').style.display = 'block';
+        document.getElementById('compare-a').innerHTML = renderTrace(da.trace || da, 'A');
+        document.getElementById('compare-b').innerHTML = renderTrace(dbRes.trace || dbRes, 'B');
+    }
+
+    // ==================== Trace 渲染 ====================
+
+    function esc(s) {
+        return (s || '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    }
+
+    function scoreTag(v) {
+        if (v === undefined || v === null) return '';
+        const pct = (v * 100).toFixed(0);
+        const cls = v >= 0.8 ? 'high' : v >= 0.5 ? 'med' : 'low';
+        return `<span class="score ${cls}">${pct}%</span>`;
+    }
+
+    function scopeHtml(item) {
+        return item.scope ? `<span class="scope-tag">${esc(item.scope)}</span>` : '';
+    }
+
+    function renderChannel(tr, key, title, renderBody) {
+        const ch = tr.channels ? tr.channels[key] : null;
+        if (!ch) return '';
+        let count = 0;
+        if (key === 'profile') count = (ch.static_count || 0) + (ch.dynamic_count || 0);
+        else if (key === 'vector') count = (ch.hits || []).length;
+        else if (key === 'memory_graph') count = (ch.paths || []).length;
+        else if (key === 'entity_graph') count = (ch.memories || []).length + (ch.entity_paths || []).length;
+        else if (key === 'chunks') count = (ch.hits || []).length + (ch.entity_hits || []).length;
+        const body = renderBody(ch);
+        return `
+            <div class="channel">
+                <div class="ch-head">${title} <span class="ch-count">${count} 项${ch.enabled === false ? '（已关闭）' : ''}</span></div>
+                <div class="ch-body ${body.trim() === '' ? 'empty' : ''}">${body.trim() === '' ? '无命中' : body}</div>
+            </div>`;
+    }
+
+    function renderTrace(tr) {
+        if (!tr) return '<div class="empty-state">无 Trace 数据</div>';
+        const total = tr.total_ms || 0;
+        const errHtml = tr.error ? `<div style="background:#fef2f2;color:#dc2626;padding:10px;border-radius:8px;margin-bottom:12px;font-size:0.88em;">Trace 异常: ${esc(tr.error)}</div>` : '';
+
+        let html = `
+            <div class="trace-meta">
+                <span>模式: <b>${esc(tr.mode)}</b></span>
+                <span>耗时: <b>${total}ms</b></span>
+                ${tr.query ? `<span>query: <b>${esc(tr.query)}</b></span>` : ''}
+                ${tr.user_tag ? `<span>user: <b>${esc(tr.user_tag)}</b></span>` : ''}
+                ${tr.project_tag ? `<span>project: <b>${esc(tr.project_tag)}</b></span>` : ''}
+                <span>最终注入: <b>${(tr.final || []).length}</b> 条</span>
+            </div>
+            ${errHtml}
+            <div class="channels">`;
+
+        html += renderChannel(tr, 'profile', '👤 画像注入', ch => {
+            if (!ch.enabled) return '';
+            const items = ch.items || [];
+            if (!items.length) return '';
+            return items.map(i => `<div class="hit"><div class="hit-main"><div class="hit-content">${esc(i)}</div></div></div>`).join('');
+        });
+
+        html += renderChannel(tr, 'vector', '📐 向量检索', ch => {
+            const threshold = ch.threshold;
+            return (ch.hits || []).map(h => `
+                <div class="hit ${h.passed ? '' : 'rejected'}">
+                    ${scoreTag(h.similarity)}
+                    <div class="hit-main">
+                        <div class="hit-content">${esc(h.content)}</div>
+                        <div class="hit-meta">${esc(h.id || '')} ${scopeHtml(h)} ${h.passed ? '' : `<span class="rej-reason">低于阈值 ${threshold}</span>`}</div>
+                    </div>
+                </div>`).join('');
+        });
+
+        html += renderChannel(tr, 'memory_graph', '🕸️ 记忆图扩展', ch => {
+            return (ch.paths || []).map(p => `
+                <div class="path-line">
+                    <span class="rel">${esc(p.relation_type)}</span> →
+                    ${esc(p.to_id || '')}${p.added ? `<span class="add-flag">✓ 加入</span>` : `<span class="skip-flag">（已在结果中）</span>`}
+                    ${p.content ? `<div style="color:#64748b;font-size:0.82em;margin-left:14px;">${esc(p.content)}</div>` : ''}
+                </div>`).join('');
+        });
+
+        html += renderChannel(tr, 'entity_graph', '🌐 实体图扩展', ch => {
+            const paths = (ch.entity_paths || []).map(p =>
+                `<div class="path-line"><span class="rel">${esc(p.entity)}</span> → <span class="rel">${esc(p.relation_type)}</span> → ${esc(p.to_entity)} ${scopeHtml(p)}</div>`).join('');
+            const mems = (ch.memories || []).map(m =>
+                `<div class="hit"><div class="hit-main"><div class="hit-content">${esc(m.content)}</div><div class="hit-meta">${esc(m.id || '')} ${scopeHtml(m)}</div></div></div>`).join('');
+            return (paths ? `<div style="margin-bottom:6px;">${paths}</div>` : '') + mems;
+        });
+
+        html += renderChannel(tr, 'chunks', '📄 文档 chunk 检索', ch => {
+            const threshold = ch.threshold;
+            const hits = (ch.hits || []).map(h => `
+                <div class="hit ${h.passed ? '' : 'rejected'}">
+                    ${scoreTag(h.similarity)}
+                    <div class="hit-main">
+                        <div class="hit-content">${esc(h.content)}</div>
+                        <div class="hit-meta">${esc(h.title || h.document_id || h.id || '')} ${scopeHtml(h)} ${h.passed ? '' : `<span class="rej-reason">低于阈值 ${threshold}</span>`}</div>
+                    </div>
+                </div>`).join('');
+            const eHits = (ch.entity_hits || []).map(h => `
+                <div class="hit"><div class="hit-main">
+                    <div class="hit-content">${esc(h.content)}</div>
+                    <div class="hit-meta">${esc(h.title || h.document_id || '')} 实体命中 ${scopeHtml(h)}</div>
+                </div></div>`).join('');
+            return hits + eHits;
+        });
+
+        // dedup
+        const dd = tr.dedup;
+        if (dd) {
+            const keptN = (dd.kept || []).length;
+            const droppedN = (dd.dropped || []).length;
+            let ddHtml = '';
+            (dd.dropped || []).forEach(d => {
+                ddHtml += `
+                    <div class="hit rejected">
+                        <div class="hit-main">
+                            <div class="hit-content">${esc(d.content || d.id || '')}</div>
+                            <div class="hit-meta">${esc(d.id || '')} · ${esc(d.source || '')} <span class="rej-reason">与 #${esc(d.duplicate_of ? d.duplicate_of.id : '')} 重复 ${scoreTag(d.similarity)}</span></div>
+                        </div>
+                    </div>`;
+            });
+            html += `
+                <div class="channel">
+                    <div class="ch-head">🗑️ 语义去重 <span class="ch-count">保留 ${keptN} / 丢弃 ${droppedN}（阈值 ${dd.threshold}）</span></div>
+                    <div class="ch-body ${ddHtml.trim() === '' ? 'empty' : ''}">${ddHtml.trim() === '' ? '无丢弃' : ddHtml}</div>
+                </div>`;
+        }
+
+        // final
+        const finals = (tr.final || []).map((f, i) => `
+            <div class="final-item">
+                <span class="idx">${i + 1}</span>
+                <div style="flex:1">
+                    <div>${esc(f.content)}</div>
+                    <div class="hit-meta">${esc(f.id || '')} ${esc(f.relation_type || '')}</div>
+                </div>
+                <span class="src">${esc(f.source || '')}</span>
+            </div>`).join('');
+        html += `
+            <div class="channel">
+                <div class="ch-head">✅ 最终注入（去重后） <span class="ch-count">${(tr.final || []).length} 条</span></div>
+                <div class="ch-body ${finals.trim() === '' ? 'empty' : ''}">${finals.trim() === '' ? '无结果' : finals}</div>
+            </div>`;
+
+        html += '</div>';
+        return html;
+    }
+
+    // ==================== Trace 列表 ====================
+
+    async function loadTraces() {
+        const container = document.getElementById('list-container').value.trim();
+        const url = container
+            ? `${apiBase()}/debug/traces?container_tag=${encodeURIComponent(container)}&limit=20`
+            : `${apiBase()}/debug/traces?limit=20`;
+        const res = await fetch(url, { headers: headers() });
+        const data = await res.json();
+        if (!res.ok) { toast('加载失败: ' + (data.detail || res.status), 'err'); return; }
+        const list = document.getElementById('trace-list');
+        if (!data.traces || !data.traces.length) {
+            list.innerHTML = '<div class="empty-state">暂无 Trace 记录（先执行一次召回，或调用 /context-inject）</div>';
+            return;
+        }
+        list.innerHTML = data.traces.map(t => {
+            const s = t.summary || {};
+            const time = t.created_at ? new Date(t.created_at).toLocaleString('zh-CN') : '';
+            return `
+                <div class="trace-item ${t.error ? 'error' : ''}" onclick="loadTraceDetail('${t.id}')">
+                    <div class="t-head">
+                        <span class="t-query">${esc(t.query || '（无 query）')}</span>
+                        <span class="t-time">${time}</span>
+                    </div>
+                    <div class="t-meta">
+                        <span>${esc(t.mode)}</span>
+                        <span>${t.total_ms || 0}ms</span>
+                        <span class="ch">向量 ${s.vector || 0}</span>
+                        <span class="ch">记忆图 ${s.memory_graph || 0}</span>
+                        <span class="ch">实体图 ${s.entity_graph || 0}</span>
+                        <span class="ch">chunk ${s.chunks || 0}</span>
+                        <span class="ch">去重丢弃 ${s.dropped || 0}</span>
+                        <span class="ch">注入 ${s.final || 0}</span>
+                        ${t.error ? `<span style="color:#ef4444;">错误</span>` : ''}
+                    </div>
+                </div>`;
+        }).join('');
+    }
+
+    async function loadTraceDetail(id) {
+        const res = await fetch(`${apiBase()}/debug/traces/${id}`, { headers: headers() });
+        const data = await res.json();
+        if (!res.ok) { toast('加载详情失败', 'err'); return; }
+        document.getElementById('result-card').style.display = 'block';
+        document.getElementById('result-trace-id').textContent = '#' + id;
+        document.getElementById('result-container').innerHTML = renderTrace(data);
+        document.getElementById('result-card').scrollIntoView({ behavior: 'smooth' });
+    }
+
+    // ==================== Utils ====================
+
+    function toast(msg, type) {
+        const t = document.createElement('div');
+        t.className = 'toast ' + (type || '');
+        t.textContent = msg;
+        document.body.appendChild(t);
+        setTimeout(() => t.remove(), 2600);
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+        document.getElementById('api-key').value = localStorage.getItem(LS_KEY) || '';
+        document.getElementById('api-base').value = localStorage.getItem(LS_BASE) || `http://${location.hostname}:8000`;
+        loadTraces();
+    });
+</script>
+</body>
+</html>

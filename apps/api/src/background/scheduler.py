@@ -128,6 +128,15 @@ async def cache_cleanup_task() -> None:
     print(f"Cache cleanup: {result}")
 
 
+async def trace_cleanup_task() -> None:
+    """Delete recall traces older than retention window."""
+    from src.config import settings
+    from src.services.core.recall_trace_service import recall_trace_service
+
+    deleted = await recall_trace_service.cleanup(settings.TRACE_RETENTION_DAYS)
+    print(f"Trace cleanup: deleted {deleted} records")
+
+
 def setup_background_tasks() -> None:
     scheduler.register_task(
         name="profile_rebuild",
@@ -139,4 +148,10 @@ def setup_background_tasks() -> None:
         name="cache_cleanup",
         interval_seconds=600,
         task_func=cache_cleanup_task,
+    )
+
+    scheduler.register_task(
+        name="trace_cleanup",
+        interval_seconds=3600,
+        task_func=trace_cleanup_task,
     )
