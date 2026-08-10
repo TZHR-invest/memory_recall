@@ -15,7 +15,7 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 )
 
-from src.api.stats import get_timeline, get_overview, _resolve_container
+from src.api.stats import get_timeline, get_overview, _resolve_container, _resolve_tz
 
 
 class TestResolveContainer:
@@ -90,6 +90,49 @@ class TestTimeline:
             )
         assert len(data["points"]) >= 12
         assert all(p["count"] == 0 for p in data["points"])
+
+    @pytest.mark.asyncio
+    async def test_last_bucket_is_local_today_in_shanghai(self):
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        with patch("src.api.stats._resolve_container", new=AsyncMock(return_value="c")), \
+             patch("src.api.stats.db.fetch", new=AsyncMock(return_value=[])):
+            data = await get_timeline(
+                container_tag=None,
+                days=30,
+                group_by="day",
+                tz="Asia/Shanghai",
+                current_user={"container_tag": "c", "key_id": "c"},
+                _=None,
+            )
+        assert data["points"][-1]["date"] == datetime.now(ZoneInfo("Asia/Shanghai")).date().isoformat()
+
+    @pytest.mark.asyncio
+    async def test_invalid_tz_falls_back_to_utc(self):
+        from datetime import datetime, timezone
+        with patch("src.api.stats._resolve_container", new=AsyncMock(return_value="c")), \
+             patch("src.api.stats.db.fetch", new=AsyncMock(return_value=[])):
+            data = await get_timeline(
+                container_tag=None,
+                days=30,
+                group_by="day",
+                tz="Not/AZone",
+                current_user={"container_tag": "c", "key_id": "c"},
+                _=None,
+            )
+        assert data["points"][-1]["date"] == datetime.now(timezone.utc).date().isoformat()
+
+
+class TestResolveTz:
+    def test_valid_tz_passes_through(self):
+        assert _resolve_tz("Asia/Shanghai") == "Asia/Shanghai"
+        assert _resolve_tz("UTC") == "UTC"
+        assert _resolve_tz("America/New_York") == "America/New_York"
+
+    def test_invalid_or_empty_falls_back_to_utc(self):
+        assert _resolve_tz("Not/AZone") == "UTC"
+        assert _resolve_tz("") == "UTC"
+        assert _resolve_tz(None) == "UTC"
 
 
 class TestOverview:
