@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Memory Recall - 个人数据仪表盘</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: #f4f6f8;
+            color: #333;
+            padding: 20px;
+        }
+        .container { max-width: 1100px; margin: 0 auto; }
+
+        header { background: #1e293b; color: #fff; border-radius: 12px; padding: 16px 20px; margin-bottom: 20px; }
+        header h1 { font-size: 1.3em; margin-bottom: 10px; }
+        .header-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+        .header-row label { font-size: 0.85em; color: #cbd5e1; }
+        .header-row input { flex: 1; min-width: 220px; padding: 8px 10px; border: none; border-radius: 6px; font-size: 0.9em; }
+        .nav-links { display: flex; gap: 14px; margin-top: 10px; font-size: 0.85em; }
+        .nav-links a { color: #93c5fd; text-decoration: none; }
+        .nav-links a:hover { text-decoration: underline; }
+
+        .card { background: #fff; border-radius: 12px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+        .card h2 { font-size: 1.05em; margin-bottom: 14px; color: #1e293b; display: flex; align-items: center; gap: 8px; }
+        .card h2 .badge { font-size: 0.75em; background: #e2e8f0; color: #475569; padding: 2px 8px; border-radius: 10px; }
+
+        .btn {
+            padding: 9px 18px; border: none; border-radius: 8px; cursor: pointer; font-size: 0.92em; font-weight: 500;
+            transition: background 0.2s;
+        }
+        .btn-primary { background: #2563eb; color: #fff; }
+        .btn-primary:hover { background: #1d4ed8; }
+        .btn-secondary { background: #e2e8f0; color: #334155; }
+        .btn-secondary:hover { background: #cbd5e1; }
+
+        .toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
+        .toolbar select, .toolbar input {
+            padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 0.9em;
+        }
+
+        /* overview stat cards */
+        .stat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+        .stat { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px; text-align: center; }
+        .stat .num { font-size: 1.7em; font-weight: 700; color: #1e293b; }
+        .stat .num.small { font-size: 1.25em; }
+        .stat .lbl { font-size: 0.8em; color: #64748b; margin-top: 4px; }
+        .stat .sub { font-size: 0.74em; color: #94a3b8; margin-top: 2px; }
+
+        /* CSS bar chart */
+        .bar-chart { display: flex; align-items: flex-end; gap: 3px; height: 130px; padding-top: 8px; }
+        .bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; min-width: 0; }
+        .bar { width: 70%; max-width: 26px; background: #2563eb; border-radius: 3px 3px 0 0; min-height: 2px; transition: height 0.3s; }
+        .bar:hover { background: #1d4ed8; }
+        .bar-col .b-label { font-size: 0.62em; color: #94a3b8; margin-top: 4px; transform: rotate(-40deg); transform-origin: top left; white-space: nowrap; }
+        .bar-col .b-val { font-size: 0.62em; color: #475569; font-weight: 600; }
+
+        /* list rows */
+        .row-item { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px dashed #e2e8f0; font-size: 0.88em; }
+        .row-item:last-child { border-bottom: none; }
+        .row-item .r-name { flex: 1; color: #334155; word-break: break-all; }
+        .row-item .r-count { color: #2563eb; font-weight: 600; min-width: 36px; text-align: right; }
+        .row-item .r-bar { height: 8px; background: #eef2ff; border-radius: 4px; flex: 1; max-width: 200px; }
+        .row-item .r-bar > div { height: 100%; background: #4338ca; border-radius: 4px; }
+        .row-item .r-sub { font-size: 0.76em; color: #94a3b8; min-width: 70px; text-align: right; }
+        .row-item .r-err { font-size: 0.76em; color: #ef4444; word-break: break-all; }
+
+        .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        @media (max-width: 800px) { .two-col { grid-template-columns: 1fr; } }
+
+        .health-nums { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; margin-bottom: 14px; }
+        .health-num { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px; text-align: center; }
+        .health-num .n { font-size: 1.3em; font-weight: 700; }
+        .health-num .n.ok { color: #16a34a; }
+        .health-num .n.bad { color: #ef4444; }
+        .health-num .l { font-size: 0.74em; color: #64748b; margin-top: 3px; }
+
+        .empty-state { color: #94a3b8; font-size: 0.88em; padding: 18px; text-align: center; }
+        .toast {
+            position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+            background: #1e293b; color: #fff; padding: 10px 20px; border-radius: 8px; font-size: 0.9em;
+            opacity: 0; transition: opacity 0.3s; z-index: 999; pointer-events: none;
+        }
+        .toast.show { opacity: 1; }
+        .toast.ok { background: #16a34a; }
+        .toast.err { background: #dc2626; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📊 Memory Recall 个人数据仪表盘</h1>
+            <div class="header-row">
+                <label>API 地址</label>
+                <input id="api-base" placeholder="http://host:8000">
+                <label>API Key</label>
+                <input id="api-key" type="password" placeholder="rk_live_...">
+                <button class="btn btn-primary" onclick="saveSettings()">保存</button>
+                <button class="btn btn-secondary" onclick="loadAll()">刷新全部</button>
+            </div>
+            <div class="nav-links">
+                <a href="debug.html">🔬 召回 Trace 调试台</a>
+                <a href="index.html">（旧版页面，已废弃）</a>
+            </div>
+        </header>
+
+        <!-- 概览 -->
+        <div class="card">
+            <h2>🧮 数据概览 <span class="badge" id="ov-container"></span></h2>
+            <div class="stat-grid" id="overview-grid"><div class="empty-state">点击"刷新全部"加载</div></div>
+        </div>
+
+        <!-- 时间趋势 -->
+        <div class="card">
+            <h2>📈 记忆新增趋势 <span class="badge" id="tl-summary"></span></h2>
+            <div class="toolbar">
+                <select id="tl-days">
+                    <option value="7">近 7 天</option>
+                    <option value="30" selected>近 30 天</option>
+                    <option value="90">近 90 天</option>
+                </select>
+                <select id="tl-group">
+                    <option value="day" selected>按天</option>
+                    <option value="week">按周</option>
+                    <option value="month">按月</option>
+                </select>
+                <button class="btn btn-secondary" onclick="loadTimeline()">刷新</button>
+            </div>
+            <div class="bar-chart" id="timeline-chart"><div class="empty-state" style="width:100%;">暂无数据</div></div>
+        </div>
+
+        <!-- 图谱构成 -->
+        <div class="card">
+            <h2>🕸️ 知识图谱构成</h2>
+            <div class="two-col">
+                <div>
+                    <h3 style="font-size:0.95em; color:#475569; margin-bottom:8px;">实体类型分布</h3>
+                    <div id="entity-types"><div class="empty-state">暂无数据</div></div>
+                </div>
+                <div>
+                    <h3 style="font-size:0.95em; color:#475569; margin-bottom:8px;">Top 实体（按提及次数）</h3>
+                    <div id="top-entities"><div class="empty-state">暂无数据</div></div>
+                </div>
+            </div>
+            <div style="margin-top:14px;">
+                <h3 style="font-size:0.95em; color:#475569; margin-bottom:8px;">实体关系类型</h3>
+                <div id="relation-types"><div class="empty-state">暂无数据</div></div>
+            </div>
+        </div>
+
+        <!-- 行为健康 -->
+        <div class="card">
+            <h2>❤️ 召回与 Embedding 健康 <span class="badge" id="act-days"></span></h2>
+            <div class="two-col">
+                <div>
+                    <h3 style="font-size:0.95em; color:#475569; margin-bottom:8px;">召回运行情况</h3>
+                    <div class="health-nums" id="recall-nums"></div>
+                    <div id="recall-trend" style="margin-bottom:10px;"></div>
+                    <div id="top-queries"></div>
+                </div>
+                <div>
+                    <h3 style="font-size:0.95em; color:#475569; margin-bottom:8px;">Embedding 调用</h3>
+                    <div class="health-nums" id="embed-nums"></div>
+                    <div id="embed-kinds" style="margin-bottom:10px;"></div>
+                    <div id="embed-errors"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+<script>
+    const LS_KEY = 'memory_recall_debug_api_key';
+    const LS_BASE = 'memory_recall_debug_api_base';
+
+    function apiBase() {
+        return document.getElementById('api-base').value.trim() || `http://${location.hostname}:8000`;
+    }
+    function apiKey() {
+        return document.getElementById('api-key').value.trim();
+    }
+    function saveSettings() {
+        localStorage.setItem(LS_KEY, apiKey());
+        localStorage.setItem(LS_BASE, document.getElementById('api-base').value.trim());
+        toast('设置已保存', 'ok');
+    }
+    function headers() {
+        const h = { 'Content-Type': 'application/json' };
+        const k = apiKey();
+        if (k) h['X-API-Key'] = k;
+        return h;
+    }
+    function esc(s) {
+        if (s == null) return '';
+        return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+    function toast(msg, type) {
+        const t = document.createElement('div');
+        t.className = 'toast ' + (type || '');
+        t.textContent = msg;
+        document.body.appendChild(t);
+        requestAnimationFrame(() => t.classList.add('show'));
+        setTimeout(() => { t.classList.remove('show'); setTimeout(() => t.remove(), 400); }, 2600);
+    }
+    async function jget(url) {
+        const res = await fetch(url, { headers: headers() });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+        return data;
+    }
+    function pct(a, b) {
+        if (!b) return '0%';
+        return Math.round((a / b) * 100) + '%';
+    }
+
+    // ==================== 概览 ====================
+
+    async function loadOverview() {
+        const d = await jget(`${apiBase()}/stats/overview`);
+        document.getElementById('ov-container').textContent = d.container_tag;
+        const m = d.memories || {};
+        const docs = d.documents || {};
+        const cards = [
+            { num: m.total || 0, lbl: '记忆总数', sub: `静态 ${m.static || 0} / 动态 ${m.dynamic || 0}` },
+            { num: m.inferred || 0, lbl: '推断记忆', sub: `占 ${pct(m.inferred, m.total)}` },
+            { num: m.forgotten || 0, lbl: '已遗忘', sub: `版本历史 ${m.old_versions || 0}` },
+            { num: m.with_embedding || 0, lbl: '有向量', sub: m.all_rows ? pct(m.with_embedding, m.all_rows) + '（含旧版）' : '' },
+            { num: d.entities || 0, lbl: '实体', sub: `${(d.entity_relations || 0)} 条实体关系` },
+            { num: d.memory_relations || 0, lbl: '记忆关系', sub: 'updates/extends/derives' },
+            { num: docs.total || 0, lbl: '文档', sub: `${docs.done || 0} 完成` },
+            { num: docs.total_tokens || 0, lbl: '内容 Token 总量', sub: `${docs.total_chunks || 0} chunks`, small: true },
+            { num: d.recalls ? d.recalls.total : 0, lbl: '召回次数', sub: d.recalls ? `${d.recalls.errors || 0} 次出错` : '' },
+            { num: d.embedding_calls ? d.embedding_calls.total : 0, lbl: 'Embedding 调用', sub: d.embedding_calls ? `${d.embedding_calls.cache_hits || 0} 缓存命中` : '' },
+        ];
+        document.getElementById('overview-grid').innerHTML = cards.map(c => `
+            <div class="stat">
+                <div class="num ${c.small ? 'small' : ''}">${c.num}</div>
+                <div class="lbl">${c.lbl}</div>
+                ${c.sub ? `<div class="sub">${c.sub}</div>` : ''}
+            </div>`).join('');
+    }
+
+    // ==================== 时间趋势 ====================
+
+    async function loadTimeline() {
+        const days = document.getElementById('tl-days').value;
+        const group = document.getElementById('tl-group').value;
+        const d = await jget(`${apiBase()}/stats/timeline?days=${days}&group_by=${group}`);
+        const el = document.getElementById('timeline-chart');
+        document.getElementById('tl-summary').textContent = `共 ${d.total} 条`;
+        if (!d.points || !d.points.length) {
+            el.innerHTML = '<div class="empty-state" style="width:100%;">暂无数据</div>';
+            return;
+        }
+        const max = Math.max(...d.points.map(p => p.count), 1);
+        const cols = d.points.map(p => {
+            const h = p.count ? Math.max(6, Math.round((p.count / max) * 100)) : 0;
+            const label = group === 'month'
+                ? p.date.slice(0, 7)
+                : group === 'week'
+                    ? p.date.slice(5, 10)
+                    : p.date.slice(5, 10);
+            return `
+                <div class="bar-col" title="${p.date}: ${p.count} 条">
+                    <div class="b-val">${p.count}</div>
+                    <div class="bar" style="height:${h}%"></div>
+                    <div class="b-label">${esc(label)}</div>
+                </div>`;
+        }).join('');
+        el.innerHTML = cols;
+    }
+
+    // ==================== 图谱构成 ====================
+
+    async function loadEntities() {
+        const d = await jget(`${apiBase()}/stats/entities?top_n=10`);
+        const typesEl = document.getElementById('entity-types');
+        if (!d.by_type || !d.by_type.length) {
+            typesEl.innerHTML = '<div class="empty-state">暂无实体</div>';
+        } else {
+            const max = Math.max(...d.by_type.map(r => r.count), 1);
+            typesEl.innerHTML = d.by_type.map(r => `
+                <div class="row-item">
+                    <span class="r-name">${esc(r.type)}</span>
+                    <div class="r-bar"><div style="width:${Math.round((r.count / max) * 100)}%"></div></div>
+                    <span class="r-count">${r.count}</span>
+                </div>`).join('')
+                + (d.isolated_entities ? `<div style="font-size:0.76em; color:#94a3b8; margin-top:8px;">孤立实体（无关系）: ${d.isolated_entities}</div>` : '');
+        }
+        const topEl = document.getElementById('top-entities');
+        if (!d.top || !d.top.length) {
+            topEl.innerHTML = '<div class="empty-state">暂无实体</div>';
+        } else {
+            topEl.innerHTML = d.top.map(r => `
+                <div class="row-item">
+                    <span class="r-name">${esc(r.name)}</span>
+                    <span class="r-sub">${esc(r.type)}</span>
+                    <span class="r-count">${r.mention_count} 次</span>
+                </div>`).join('');
+        }
+        const relEl = document.getElementById('relation-types');
+        if (!d.relation_types || !d.relation_types.length) {
+            relEl.innerHTML = '<div class="empty-state">暂无实体关系</div>';
+        } else {
+            relEl.innerHTML = d.relation_types.map(r => `
+                <div class="row-item">
+                    <span class="r-name">${esc(r.relation_type)}</span>
+                    <span class="r-count">${r.count} 条</span>
+                    <span class="r-sub">平均权重 ${r.avg_weight ?? '-'}</span>
+                </div>`).join('');
+        }
+    }
+
+    // ==================== 行为健康 ====================
+
+    async function loadActivity() {
+        const d = await jget(`${apiBase()}/stats/activity?days=7`);
+        document.getElementById('act-days').textContent = `近 ${d.days} 天`;
+        const r = d.recalls || {};
+        const okRate = r.total ? pct(r.total - (r.errors || 0), r.total) : '—';
+        document.getElementById('recall-nums').innerHTML = [
+            { n: r.total || 0, l: '召回次数', cls: '' },
+            { n: okRate, l: '成功率', cls: (r.errors || 0) === 0 ? 'ok' : 'bad' },
+            { n: (r.avg_ms ?? '-') + 'ms', l: '平均耗时', cls: '' },
+            { n: (r.p95_ms ?? '-') + 'ms', l: 'P95 耗时', cls: '' },
+        ].map(x => `<div class="health-num"><div class="n ${x.cls}">${x.n}</div><div class="l">${x.l}</div></div>`).join('');
+        const trendEl = document.getElementById('recall-trend');
+        const trend = d.recall_trend || [];
+        if (trend.length) {
+            const max = Math.max(...trend.map(t => t.count), 1);
+            trendEl.innerHTML = `<div style="font-size:0.76em; color:#64748b; margin-bottom:6px;">每日召回</div>
+                <div class="bar-chart" style="height:60px;">${trend.map(t => `
+                    <div class="bar-col" title="${t.bucket}: ${t.count} 次">
+                        <div class="bar" style="height:${Math.max(4, Math.round((t.count / max) * 100))}%"></div>
+                    </div>`).join('')}</div>`;
+        }
+        const qEl = document.getElementById('top-queries');
+        const qs = d.top_queries || [];
+        qEl.innerHTML = (qs.length ? '<div style="font-size:0.76em; color:#64748b; margin-bottom:6px;">常问 Top 5</div>' : '')
+            + qs.map(q => `
+                <div class="row-item">
+                    <span class="r-name">"${esc(q.query)}"</span>
+                    <span class="r-count">${q.count} 次</span>
+                </div>`).join('');
+
+        const e = d.embedding || {};
+        const eOk = e.total ? pct(e.ok, e.total) : '—';
+        const eCache = e.total ? pct(e.cache_hits, e.total) : '—';
+        document.getElementById('embed-nums').innerHTML = [
+            { n: e.total || 0, l: '调用总数', cls: '' },
+            { n: eOk, l: '成功率', cls: e.total && e.ok === e.total ? 'ok' : 'bad' },
+            { n: eCache, l: '缓存命中率', cls: '' },
+            { n: (e.avg_ms ?? '-') + 'ms', l: '平均耗时', cls: '' },
+        ].map(x => `<div class="health-num"><div class="n ${x.cls}">${x.n}</div><div class="l">${x.l}</div></div>`).join('');
+        const kindsEl = document.getElementById('embed-kinds');
+        const kinds = d.embedding_by_kind || [];
+        kindsEl.innerHTML = kinds.length
+            ? kinds.map(k => `
+                <div class="row-item">
+                    <span class="r-name">${esc(k.kind)}</span>
+                    <span class="r-sub">成功 ${k.ok}/${k.count} · 缓存 ${k.cache_hits}</span>
+                    <span class="r-count">${k.count} 次</span>
+                </div>`).join('')
+            : '';
+        const errEl = document.getElementById('embed-errors');
+        const errs = d.embedding_errors || [];
+        errEl.innerHTML = errs.length
+            ? '<div style="font-size:0.76em; color:#64748b; margin-bottom:6px;">最近失败原因</div>'
+                + errs.map(x => `
+                    <div class="row-item">
+                        <span class="r-err" style="flex:1;">${esc(x.error)}</span>
+                        <span class="r-count">${x.count} 次</span>
+                    </div>`).join('')
+            : (e.total ? '<div style="font-size:0.8em; color:#16a34a;">✅ 无失败调用</div>' : '');
+    }
+
+    // ==================== 入口 ====================
+
+    async function loadAll() {
+        try {
+            await Promise.all([loadOverview(), loadTimeline(), loadEntities(), loadActivity()]);
+            toast('已刷新', 'ok');
+        } catch (e) {
+            toast('加载失败: ' + e.message, 'err');
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const savedKey = localStorage.getItem(LS_KEY);
+        const savedBase = localStorage.getItem(LS_BASE);
+        if (savedKey) document.getElementById('api-key').value = savedKey;
+        if (savedBase) document.getElementById('api-base').value = savedBase;
+        if (savedKey) loadAll();
+    });
+</script>
+</body>
+</html>

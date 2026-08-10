@@ -223,7 +223,7 @@ class TestRecallEmbeddingLog:
             result = await self.service.list_logs("c", kind="memory", limit=10, offset=0)
             assert result[0]["id"] == "e1"
             sql = m.await_args.args[0]
-            assert "kind = $2" in sql
+            assert "kind = $1" in sql
 
     @pytest.mark.asyncio
     async def test_list_without_kind(self):
