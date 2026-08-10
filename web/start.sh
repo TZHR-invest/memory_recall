@@ -27,10 +27,10 @@ fi
 
 echo ""
 echo "启动 HTTP 服务器..."
-echo "前端地址: http://localhost:8080"
+echo "前端地址: http://localhost:3000"
 echo ""
 echo "按 Ctrl+C 停止服务"
 echo ""
 
-# 启动 Python HTTP 服务器
-python3 -m http.server 8080
+# 启动 Python HTTP 服务器（端口与 docker-compose web 服务一致）
+python3 -m http.server 3000

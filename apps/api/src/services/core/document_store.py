@@ -104,7 +104,13 @@ class DocumentStore:
                 # Content unchanged → return existing
                 return existing, True
 
-        # Priority 2: Deduplicate by content hash (same content, no source)
+        # Priority 2: Deduplicate by URL (same URL, regardless of content)
+        if url:
+            existing = await self.find_by_url(container_tag, url)
+            if existing:
+                return existing, True
+
+        # Priority 3: Deduplicate by content hash (same content, no source)
         existing = await self.find_by_content_hash(container_tag, content_hash)
         if existing:
             return existing, True
