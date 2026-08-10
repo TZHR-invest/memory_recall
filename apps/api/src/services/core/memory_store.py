@@ -412,7 +412,7 @@ class MemoryStore:
                 fresh_meta = latest.metadata.copy()
                 fresh_meta.pop("_status", None)
                 for k, v in meta.items():
-                    if k.startswith("_pending_") or k == "relations":
+                    if k.startswith("_pending_") or k == "relations" or k == "_status":
                         continue
                     fresh_meta[k] = v
                 await self.update_metadata(memory_id, fresh_meta)
