@@ -66,7 +66,7 @@ ENTITY_PATTERNS = {
     "contact": [
         r"(1[3-9]\d{9})",
         r"([\w.-]+@[\w.-]+\.\w+)",
-        r"微信号[：:]?\s*([a-zA-Z][a-zA-Z0-9_-]{5,19})",
+        r"微信号[是为叫]?[：:]?\s*([a-zA-Z][a-zA-Z0-9_-]{5,19})",
         r"微信[是叫]([a-zA-Z][a-zA-Z0-9_-]{5,19})",
         r"加我微信[：:]?\s*([a-zA-Z][a-zA-Z0-9_-]{5,19})",
         r"QQ[号]?[：:]?\s*(\d{5,11})",
@@ -93,7 +93,7 @@ ENTITY_PATTERNS = {
         r"(爱好|业余)(.{1,20})",
     ],
     "family_relation": [
-        r"我的(.{1,10})(妻子|儿子|女儿|父母|哥哥|姐姐|弟弟|妹妹)",
+        r"我的(.{0,10})(妻子|儿子|女儿|父母|哥哥|姐姐|弟弟|妹妹)",
     ],
 }
 
@@ -243,7 +243,10 @@ class EntityExtractor:
             for pattern in patterns:
                 matches = re.finditer(pattern, text)
                 for match in matches:
-                    group = match.group(1) if match.groups() else match.group(0)
+                    groups = match.groups()
+                    group = next((g for g in groups if g and g.strip()), None) if groups else None
+                    if group is None:
+                        group = match.group(0)
                     if group and len(group.strip()) > 0:
                         entities.append(
                             Entity(

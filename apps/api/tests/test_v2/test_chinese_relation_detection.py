@@ -135,7 +135,7 @@ class TestChineseRelationDetection:
             content2="我在上海工作",
         )
         assert is_similar is True
-        assert topic == "居住"
+        assert topic == "工作"
 
     def test_relation_type_enum(self):
         assert RelationType.UPDATES.value == "updates"
