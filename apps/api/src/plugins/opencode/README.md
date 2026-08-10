@@ -228,7 +228,7 @@ memory-recall(mode: "import-docs", force: true)
   "apiKey": "rk_live_xxx",
   "baseUrl": "http://localhost:8000",
   "userName": "YourName",
-  "keyId": "b262d2f1-6232-49f4-820e-3f5e4cf6b956",
+  "keyId": "<your-key-id>",
   
   "similarityThreshold": 0.3,
   "maxMemories": 5,
@@ -251,15 +251,15 @@ memory-recall(mode: "import-docs", force: true)
 
 **示例**：
 ```
-keyId: b262d2f1-6232-49f4-820e-3f5e4cf6b956
+keyId: <your-key-id>
 
 memory_recall 项目:
-  user_tag: b262d2f1-6232-49f4-820e-3f5e4cf6b956
-  project_tag: b262d2f1-..._project-memory_recall
+  user_tag: <your-key-id>
+  project_tag: <your-key-id>_project-memory_recall
 
 shuihu_card_game 项目:
-  user_tag: b262d2f1-6232-49f4-820e-3f5e4cf6b956
-  project_tag: b262d2f1-..._project-shuihu_card_game
+  user_tag: <your-key-id>
+  project_tag: <your-key-id>_project-shuihu_card_game
 ```
 
 **向后兼容**：

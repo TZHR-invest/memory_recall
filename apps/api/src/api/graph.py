@@ -94,7 +94,7 @@ async def get_graph(
     current_user: Dict = Depends(require_permission("read")),
     _: Dict = Depends(check_rate_limit),
 ):
-    verify_container_ownership(container_tag, current_user["user_id"])
+    verify_container_ownership(container_tag, current_user["key_id"])
 
     entity_type_filter = None
     if entity_types:

@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.abspath(src_dir))
 
 # 设置环境变量
 os.environ.setdefault('DATABASE_URL', 'postgresql://postgres:postgres@localhost:5432/memory_recall')
-os.environ.setdefault('VOLC_API_KEY', '7e4a4d80-c618-41da-bdb4-cb43bd07ec68')
+os.environ.setdefault('VOLC_API_KEY', 'your-volc-api-key')
 os.environ.setdefault('VOLC_API_BASE', 'https://ark.cn-beijing.volces.com/api/v3')
 os.environ.setdefault('VOLC_LLM_MODEL', 'doubao-seed-2-0-mini-260215')
 

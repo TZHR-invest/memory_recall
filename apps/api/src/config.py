@@ -11,7 +11,7 @@ class Settings(BaseSettings):
 
     # 应用配置
     APP_NAME: str = "Memory Recall API"
-    APP_VERSION: str = "5.0.0"
+    APP_VERSION: str = "5.2.1"
     APP_ENV: str = "development"
     APP_DEBUG: bool = True
     LOG_LEVEL: str = "INFO"
@@ -53,6 +53,7 @@ class Settings(BaseSettings):
     LLM_EXTRACTION_TIMEOUT: float = 300.0  # LLM提取超时时间（秒）
     USE_LLM_EXTRACTION: bool = True  # 默认使用LLM提取
     USE_LAC_EXTRACTOR: bool = False  # LAC提取器（可选）
+
     USE_DEFAULT_ENTITY_CONTEXT: bool = True  # 默认使用entity_context自动注入
 
     # Entity Graph 配置

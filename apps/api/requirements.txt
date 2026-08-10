@@ -13,21 +13,15 @@ asyncpg==0.31.0
 # LLM & Embedding (火山引擎兼容 OpenAI)
 openai==2.29.0
 
-# Image Processing
-Pillow==12.2.0
-
 # Utilities
 python-dotenv==1.2.2
 pydantic==2.12.5
 pydantic-settings==2.13.1
-python-dateutil==2.9.0
 
 # Testing
 pytest==9.0.3
 pytest-asyncio
 httpx==0.28.1
 
-# Code Quality
-black==26.3.1
-flake8==7.0.0
-mypy==1.8.0
+# Development (linting, formatting)
+# CI uses ruff - install separately: pip install ruff

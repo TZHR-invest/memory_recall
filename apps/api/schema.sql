@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS api_keys (
     user_id VARCHAR(100) NOT NULL,
     user_name VARCHAR(100),
     key_hash VARCHAR(64) NOT NULL,
-    key_prefix VARCHAR(12) NOT NULL,
+    key_prefix VARCHAR(20) NOT NULL,
     name VARCHAR(100),
     permissions TEXT[] DEFAULT ARRAY['read']::TEXT[],
     is_active BOOLEAN DEFAULT TRUE,
@@ -31,11 +31,16 @@ CREATE TABLE IF NOT EXISTS api_keys (
 -- API Keys indexes
 CREATE INDEX IF NOT EXISTS idx_api_keys_user ON api_keys(user_id);
 CREATE INDEX IF NOT EXISTS idx_api_keys_prefix ON api_keys(key_prefix);
-CREATE INDEX IF NOT EXISTS idx_api_keys_active ON api_keys(is_active) WHERE is_active = TRUE;
+CREATE INDEX IF NOT EXISTS idx_api_keys_active ON api_keys(user_id, is_active) WHERE is_active = TRUE;
+CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash);
+CREATE INDEX IF NOT EXISTS idx_api_keys_user_name ON api_keys(user_name);
+
+-- API Keys constraints
+ALTER TABLE api_keys ADD CONSTRAINT api_keys_key_hash_key UNIQUE (key_hash);
 
 COMMENT ON TABLE api_keys IS 'API authentication keys with permissions and usage tracking';
 COMMENT ON COLUMN api_keys.key_hash IS 'SHA-256 hash of the full API key';
-COMMENT ON COLUMN api_keys.key_prefix IS 'First 12 characters of the key for identification';
+COMMENT ON COLUMN api_keys.key_prefix IS 'First 20 characters of the key for identification';
 COMMENT ON COLUMN api_keys.user_name IS 'Display name for the user';
 
 -- ============================================================================
@@ -68,6 +73,8 @@ CREATE TABLE IF NOT EXISTS memories (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     is_forgotten BOOLEAN DEFAULT FALSE,
+    forget_after TIMESTAMP WITH TIME ZONE,
+    forget_reason VARCHAR(500),
     
     -- Constraints
     CONSTRAINT chk_version_positive CHECK (version >= 1)
@@ -160,7 +167,9 @@ CREATE TABLE IF NOT EXISTS documents (
 );
 
 CREATE INDEX IF NOT EXISTS idx_documents_container ON documents(container_tag);
-CREATE INDEX IF NOT EXISTS idx_documents_hash ON documents(content_hash);
+CREATE INDEX IF NOT EXISTS idx_documents_created ON documents(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_documents_status ON documents(status);
+CREATE INDEX IF NOT EXISTS idx_documents_content_hash ON documents(container_tag, content_hash);
 CREATE INDEX IF NOT EXISTS idx_documents_url ON documents(container_tag, url);
 
 COMMENT ON TABLE documents IS 'Document metadata storage. Actual content stored in chunks table.';
@@ -168,6 +177,7 @@ COMMENT ON COLUMN documents.doc_type IS 'Document type: text, markdown, pdf, etc
 COMMENT ON COLUMN documents.token_count IS 'Estimated token count';
 COMMENT ON COLUMN documents.word_count IS 'Word count';
 COMMENT ON COLUMN documents.chunk_count IS 'Number of chunks';
+COMMENT ON COLUMN documents.content_hash IS 'SHA-256 hash of document content for deduplication';
 
 -- ============================================================================
 -- 6. Chunks Table (Document Content Chunks)
@@ -188,7 +198,10 @@ CREATE TABLE IF NOT EXISTS chunks (
 
 CREATE INDEX IF NOT EXISTS idx_chunks_document ON chunks(document_id);
 CREATE INDEX IF NOT EXISTS idx_chunks_embedding ON chunks USING hnsw (embedding vector_cosine_ops);
-CREATE INDEX IF NOT EXISTS idx_chunks_content_hash ON chunks(content_hash);
+CREATE INDEX IF NOT EXISTS idx_chunks_position ON chunks(document_id, position);
+CREATE INDEX IF NOT EXISTS idx_chunks_content_hash ON chunks(document_id, content_hash);
+
+COMMENT ON COLUMN chunks.content_hash IS 'SHA-256 hash of chunk content for incremental updates';
 
 COMMENT ON TABLE chunks IS 'Document content chunks with embeddings.';
 COMMENT ON COLUMN chunks.embedded_content IS 'Contextualized content for embedding (with surrounding context)';
