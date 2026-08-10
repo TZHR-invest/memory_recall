@@ -219,6 +219,14 @@
         if (!b) return '0%';
         return Math.round((a / b) * 100) + '%';
     }
+    function browserTz() {
+        try {
+            const t = Intl.DateTimeFormat().resolvedOptions().timeZone;
+            return t ? encodeURIComponent(t) : 'UTC';
+        } catch (e) {
+            return 'UTC';
+        }
+    }
 
     // ==================== 概览 ====================
 
@@ -240,7 +248,7 @@
             { num: anomTotal || 0, lbl: '处理异常', sub: anomTotal ? `处理中 ${anom.processing || 0} · 失败 ${anom.failed || 0}` : '无异常', bad: anomTotal > 0 },
             { num: d.entities || 0, lbl: '实体', sub: `${(d.entity_relations || 0)} 条实体关系` },
             { num: d.memory_relations || 0, lbl: '记忆关系', sub: mrTypes },
-            { num: prof.containers || 0, lbl: '用户画像', sub: `静态 ${prof.static || 0} / 动态 ${prof.dynamic || 0} · ${profAge}` },
+            { num: (prof.static || 0) + (prof.dynamic || 0), lbl: '用户画像', sub: `静态 ${prof.static || 0} / 动态 ${prof.dynamic || 0} · ${prof.containers || 0} 个容器 · ${profAge}` },
             { num: docs.total || 0, lbl: '文档', sub: `${docs.done || 0} 完成` },
             { num: docs.total_tokens || 0, lbl: '内容 Token 总量', sub: `${docs.total_chunks || 0} chunks`, small: true },
             { num: d.recalls ? d.recalls.total : 0, lbl: '召回次数', sub: d.recalls ? `${d.recalls.errors || 0} 次出错` : '' },
@@ -281,7 +289,7 @@
     async function loadTimeline() {
         const days = document.getElementById('tl-days').value;
         const group = document.getElementById('tl-group').value;
-        const d = await jget(`${apiBase()}/stats/timeline?days=${days}&group_by=${group}`);
+        const d = await jget(`${apiBase()}/stats/timeline?days=${days}&group_by=${group}&tz=${browserTz()}`);
         const el = document.getElementById('timeline-chart');
         document.getElementById('tl-summary').textContent = `共 ${d.total} 条`;
         if (!d.points || !d.points.length) {
@@ -350,7 +358,7 @@
     // ==================== 行为健康 ====================
 
     async function loadActivity() {
-        const d = await jget(`${apiBase()}/stats/activity?days=7`);
+        const d = await jget(`${apiBase()}/stats/activity?days=7&tz=${browserTz()}`);
         document.getElementById('act-days').textContent = `近 ${d.days} 天`;
         const r = d.recalls || {};
         const okRate = r.total ? pct(r.total - (r.errors || 0), r.total) : '—';
