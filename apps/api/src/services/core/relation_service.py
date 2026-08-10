@@ -175,6 +175,7 @@ class RelationService:
             """
             INSERT INTO memory_relations (from_memory_id, to_memory_id, relation_type, confidence)
             VALUES ($1, $2, $3, $4)
+            ON CONFLICT (from_memory_id, to_memory_id, relation_type) DO NOTHING
             RETURNING *
             """,
             from_memory_id,
@@ -183,10 +184,33 @@ class RelationService:
             confidence,
         )
 
+        if row is None:
+            existing = await self.get_by_pair(from_memory_id, to_memory_id, relation_type)
+            if existing:
+                return existing
+            raise RuntimeError("Failed to create or find memory relation")
+
         if relation_type == RelationType.DERIVES.value:
             await self._mark_as_inference(from_memory_id)
 
         return self._row_to_relation(row)
+
+    async def get_by_pair(
+        self,
+        from_memory_id: str,
+        to_memory_id: str,
+        relation_type: str,
+    ) -> Optional[MemoryRelation]:
+        row = await db.fetchrow(
+            """
+            SELECT * FROM memory_relations
+            WHERE from_memory_id = $1 AND to_memory_id = $2 AND relation_type = $3
+            """,
+            from_memory_id,
+            to_memory_id,
+            relation_type,
+        )
+        return self._row_to_relation(row) if row else None
 
     async def get_by_memory(self, memory_id: str) -> List[MemoryRelation]:
         rows = await db.fetch(

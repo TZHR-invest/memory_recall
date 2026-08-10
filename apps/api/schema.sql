@@ -121,7 +121,8 @@ CREATE TABLE IF NOT EXISTS memory_relations (
     to_memory_id VARCHAR(40) NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
     relation_type VARCHAR(20) NOT NULL CHECK (relation_type IN ('updates', 'extends', 'derives')),
     confidence FLOAT DEFAULT 0.8,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    CONSTRAINT uq_memory_relations_src_dst_type UNIQUE (from_memory_id, to_memory_id, relation_type)
 );
 
 -- Memory relations indexes
