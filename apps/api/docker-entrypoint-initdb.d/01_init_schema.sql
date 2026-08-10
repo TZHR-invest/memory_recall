@@ -3,7 +3,7 @@
 
 \echo 'Initializing Memory Recall database schema...'
 
--- Readand execute the main schema file
+-- Read and execute the main schema file
 \i /docker-entrypoint-initdb.d/schema.sql
 
 \echo 'Schema initialization complete!'
