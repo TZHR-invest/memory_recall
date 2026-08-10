@@ -503,16 +503,9 @@ class LLMEntityExtractor:
                 entities = result.get("entities", {})
                 entities = self._filter_entities(entities)
 
-                llm_is_static = result.get("is_static", False)
-                chinese_is_static = (
-                    detect_is_static(text) if language == "chinese" else None
-                )
-
-                final_is_static = (
-                    chinese_is_static
-                    if chinese_is_static is not None
-                    else llm_is_static
-                )
+                # 静态/动态判断信任 LLM (中英一致, 语义理解优于规则词表);
+                # 规则词表仅作 LLM 不可用时的 fallback
+                final_is_static = result.get("is_static", False)
 
                 asmr_dimension = self._detect_primary_asmr_dimension(entities)
 
