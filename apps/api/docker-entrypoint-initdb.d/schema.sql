@@ -327,7 +327,7 @@ COMMENT ON COLUMN chunk_entities.confidence IS 'Confidence score for this entity
 -- 9.8. Recall Traces Table (Debug Observability, v5.3)
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS recall_traces (
-    id VARCHAR(24) PRIMARY KEY DEFAULT 'trace_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 20),
+    id VARCHAR(24) PRIMARY KEY DEFAULT 'trace_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 18),
     container_tag VARCHAR(100) NOT NULL,
     mode VARCHAR(20) NOT NULL DEFAULT 'single',
     user_tag VARCHAR(100),
@@ -358,7 +358,7 @@ COMMENT ON COLUMN recall_traces.summary IS 'Channel counts for list view (avoids
 -- 每次 embedding API 调用（成功/失败/缓存命中）的结构化日志，用于排查 LLM/embedding 故障
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS recall_embedding_logs (
-    id VARCHAR(24) PRIMARY KEY DEFAULT 'embed_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 20),
+    id VARCHAR(24) PRIMARY KEY DEFAULT 'embed_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 18),
     container_tag VARCHAR(100) NOT NULL DEFAULT '',
     kind VARCHAR(32) NOT NULL DEFAULT 'memory',
     model VARCHAR(64),
