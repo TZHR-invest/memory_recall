@@ -112,6 +112,12 @@
             <div class="stat-grid" id="overview-grid"><div class="empty-state">点击"刷新全部"加载</div></div>
         </div>
 
+        <!-- 容器分布 -->
+        <div class="card">
+            <h2>📦 容器分布 <span class="badge" id="ct-summary"></span></h2>
+            <div id="containers-list"><div class="empty-state">点击"刷新全部"加载</div></div>
+        </div>
+
         <!-- 时间趋势 -->
         <div class="card">
             <h2>📈 记忆新增趋势 <span class="badge" id="tl-summary"></span></h2>
@@ -239,6 +245,16 @@
                 <div class="lbl">${c.lbl}</div>
                 ${c.sub ? `<div class="sub">${c.sub}</div>` : ''}
             </div>`).join('');
+
+        const containers = d.containers || [];
+        document.getElementById('ct-summary').textContent = `${containers.length} 个容器`;
+        document.getElementById('containers-list').innerHTML = containers.length
+            ? containers.map(ct => `
+                <div class="stat" style="display:flex;align-items:center;justify-content:space-between;margin:6px 0;padding:8px 12px;background:#f8fafc;border-radius:8px;">
+                    <span style="font-family:monospace;font-size:12px;color:#475569;">${ct.container_tag}</span>
+                    <span style="font-weight:600;">${ct.count} 条</span>
+                </div>`).join('')
+            : '<div class="empty-state">无容器数据</div>';
     }
 
     // ==================== 时间趋势 ====================
