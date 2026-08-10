@@ -47,7 +47,7 @@ COMMENT ON COLUMN api_keys.user_name IS 'Display name for the user';
 -- 2. Memories Table (Core Memory Storage)
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS memories (
-    id VARCHAR(40) PRIMARY KEY DEFAULT 'mem_' || replace(gen_random_uuid()::text, '-', ''),
+    id VARCHAR(24) PRIMARY KEY DEFAULT 'mem_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 20),
     container_tag VARCHAR(100) NOT NULL,
     content TEXT NOT NULL,
     embedding vector(1024),
@@ -61,7 +61,7 @@ CREATE TABLE IF NOT EXISTS memories (
     
     -- Version control
     version INTEGER DEFAULT 1,
-    root_memory_id VARCHAR(40),
+    root_memory_id VARCHAR(24),
     source_count INTEGER DEFAULT 1,
     is_inference BOOLEAN DEFAULT FALSE,
     
@@ -117,11 +117,12 @@ COMMENT ON COLUMN memories.metadata IS 'JSONB containing: entities (extracted en
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS memory_relations (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    from_memory_id VARCHAR(40) NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
-    to_memory_id VARCHAR(40) NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+    from_memory_id VARCHAR(24) NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+    to_memory_id VARCHAR(24) NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
     relation_type VARCHAR(20) NOT NULL CHECK (relation_type IN ('updates', 'extends', 'derives')),
     confidence FLOAT DEFAULT 0.8,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    CONSTRAINT uq_memory_relations_src_dst_type UNIQUE (from_memory_id, to_memory_id, relation_type)
 );
 
 -- Memory relations indexes
@@ -150,7 +151,7 @@ COMMENT ON COLUMN memory_profiles.entity_context IS 'Per-container context to gu
 -- 5. Documents Table (Document Metadata)
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS documents (
-    id VARCHAR(40) PRIMARY KEY DEFAULT 'doc_' || replace(gen_random_uuid()::text, '-', ''),
+    id VARCHAR(24) PRIMARY KEY DEFAULT 'doc_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 20),
     container_tag VARCHAR(100) NOT NULL,
     title VARCHAR(500),
     url TEXT,
@@ -183,8 +184,8 @@ COMMENT ON COLUMN documents.content_hash IS 'SHA-256 hash of document content fo
 -- 6. Chunks Table (Document Content Chunks)
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS chunks (
-    id VARCHAR(40) PRIMARY KEY DEFAULT 'chk_' || replace(gen_random_uuid()::text, '-', ''),
-    document_id VARCHAR(40) NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    id VARCHAR(24) PRIMARY KEY DEFAULT 'chk_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 20),
+    document_id VARCHAR(24) NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
     content TEXT NOT NULL,
     embedded_content TEXT,
     position INTEGER NOT NULL,
@@ -254,7 +255,7 @@ CREATE TABLE IF NOT EXISTS entity_relations (
     weight FLOAT DEFAULT 0.5,
     confidence FLOAT DEFAULT 0.8,
     container_tag VARCHAR(100) NOT NULL,
-    source_memory_id VARCHAR(40),
+    source_memory_id VARCHAR(24),
     created_at TIMESTAMP DEFAULT NOW()
 );
 
@@ -277,7 +278,7 @@ COMMENT ON COLUMN entity_relations.source_memory_id IS 'Memory ID where this rel
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS memory_entities (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    memory_id VARCHAR(40) NOT NULL,
+    memory_id VARCHAR(24) NOT NULL,
     entity_id UUID NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
     entity_type VARCHAR(50),
     mention_context TEXT,
@@ -301,7 +302,7 @@ COMMENT ON COLUMN memory_entities.mention_context IS 'Surrounding text where ent
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS chunk_entities (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    chunk_id VARCHAR(40) NOT NULL REFERENCES chunks(id) ON DELETE CASCADE,
+    chunk_id VARCHAR(24) NOT NULL REFERENCES chunks(id) ON DELETE CASCADE,
     entity_id UUID NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
     entity_type VARCHAR(50),
     mention_context TEXT,
@@ -326,7 +327,7 @@ COMMENT ON COLUMN chunk_entities.confidence IS 'Confidence score for this entity
 -- 9.8. Recall Traces Table (Debug Observability, v5.3)
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS recall_traces (
-    id VARCHAR(40) PRIMARY KEY DEFAULT 'trace_' || replace(gen_random_uuid()::text, '-', ''),
+    id VARCHAR(24) PRIMARY KEY DEFAULT 'trace_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 20),
     container_tag VARCHAR(100) NOT NULL,
     mode VARCHAR(20) NOT NULL DEFAULT 'single',
     user_tag VARCHAR(100),
@@ -357,7 +358,7 @@ COMMENT ON COLUMN recall_traces.summary IS 'Channel counts for list view (avoids
 -- 每次 embedding API 调用（成功/失败/缓存命中）的结构化日志，用于排查 LLM/embedding 故障
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS recall_embedding_logs (
-    id VARCHAR(40) PRIMARY KEY DEFAULT 'embed_' || replace(gen_random_uuid()::text, '-', ''),
+    id VARCHAR(24) PRIMARY KEY DEFAULT 'embed_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 20),
     container_tag VARCHAR(100) NOT NULL DEFAULT '',
     kind VARCHAR(32) NOT NULL DEFAULT 'memory',
     model VARCHAR(64),
@@ -381,14 +382,14 @@ COMMENT ON TABLE recall_embedding_logs IS 'Structured log of every embedding API
 -- ============================================================================
 
 -- Generate memory ID
-CREATE OR REPLACE FUNCTION generate_memory_id() RETURNS VARCHAR(40) AS $$
+CREATE OR REPLACE FUNCTION generate_memory_id() RETURNS VARCHAR(24) AS $$
 BEGIN
     RETURN 'mem_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 20);
 END;
 $$ LANGUAGE plpgsql;
 
 -- Generate document ID
-CREATE OR REPLACE FUNCTION generate_document_id() RETURNS VARCHAR(40) AS $$
+CREATE OR REPLACE FUNCTION generate_document_id() RETURNS VARCHAR(24) AS $$
 BEGIN
     RETURN 'doc_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 20);
 END;
