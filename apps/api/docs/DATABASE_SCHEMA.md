@@ -11,7 +11,7 @@ Primary storage for user memories.
 
 | Column | Type | Description |
 |--------|------|-------------|
-| id | VARCHAR(24) | Primary key (raw_xxx format) |
+| id | VARCHAR(40) | Primary key (raw_xxx format) |
 | user_id | VARCHAR(100) | User identifier |
 | content | TEXT | Memory content |
 | memory_type | VARCHAR(20) | preference/note/dialogue |
@@ -31,7 +31,7 @@ DAG compression summaries.
 
 | Column | Type | Description |
 |--------|------|-------------|
-| summary_id | VARCHAR(24) | Primary key |
+| summary_id | VARCHAR(40) | Primary key |
 | content | TEXT | Summary content |
 | depth | INTEGER | DAG depth level |
 | token_count | INTEGER | Estimated tokens |
@@ -54,8 +54,8 @@ Memory relationships.
 
 | Column | Type | Description |
 |--------|------|-------------|
-| source_memory_id | VARCHAR(24) | Source memory |
-| target_memory_id | VARCHAR(24) | Target memory |
+| source_memory_id | VARCHAR(40) | Source memory |
+| target_memory_id | VARCHAR(40) | Target memory |
 | relation_type | VARCHAR(20) | updates/extends/derives/supersedes/related_to |
 
 ### user_profiles
@@ -85,7 +85,7 @@ System notifications.
 | Column | Type | Description |
 |--------|------|-------------|
 | notification_type | VARCHAR(50) | Type of notification |
-| memory_id | VARCHAR(24) | Related memory |
+| memory_id | VARCHAR(40) | Related memory |
 | is_read | BOOLEAN | Read status |
 
 ### content_chunks
@@ -93,7 +93,7 @@ Long document chunks.
 
 | Column | Type | Description |
 |--------|------|-------------|
-| memory_id | VARCHAR(24) | Parent memory |
+| memory_id | VARCHAR(40) | Parent memory |
 | chunk_index | INTEGER | Chunk position |
 | chunk_text | TEXT | Chunk content |
 | embedding | vector(1024) | Chunk embedding |
