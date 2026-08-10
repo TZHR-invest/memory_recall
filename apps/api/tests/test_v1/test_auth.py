@@ -57,6 +57,7 @@ async def test_check_permission():
     key = APIKey(
         id="test",
         user_id="user1",
+        user_name="user1",
         key_hash="hash",
         key_prefix="rk_live_",
         name="test",
