@@ -406,8 +406,19 @@ class MemoryStore:
                     _logger.warning(f"Memory {memory_id}: auto relations failed: {e}")
 
             # 更新 metadata：移除 pending 标记，设置 status=done
-            meta.pop("_status", None)
-            await self.update_metadata(memory_id, meta)
+            # 重新读取最新 metadata 再合并，避免覆盖 _update_embedded_relations 刚写入的 relations
+            latest = await self.get_by_id(memory_id)
+            if latest:
+                fresh_meta = latest.metadata.copy()
+                fresh_meta.pop("_status", None)
+                for k, v in meta.items():
+                    if k.startswith("_pending_") or k == "relations":
+                        continue
+                    fresh_meta[k] = v
+                await self.update_metadata(memory_id, fresh_meta)
+            else:
+                meta.pop("_status", None)
+                await self.update_metadata(memory_id, meta)
 
             # 刷新 profile cache
             from src.services.core.profile_service import profile_service
