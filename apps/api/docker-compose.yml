@@ -13,10 +13,14 @@ services:
       - DATABASE_NAME=memory_recall
       - DATABASE_USER=postgres
       - DATABASE_PASSWORD=postgres
+      - LLM_PROVIDER=${LLM_PROVIDER:-volcengine}
       - VOLC_API_KEY=${VOLC_API_KEY}
       - VOLC_API_BASE=${VOLC_API_BASE:-https://ark.cn-beijing.volces.com/api/v3}
       - VOLC_LLM_MODEL=${VOLC_LLM_MODEL:-doubao-seed-2-0-mini-260215}
       - VOLC_EMBEDDING_MODEL=${VOLC_EMBEDDING_MODEL:-doubao-embedding-vision-251215}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+      - DEEPSEEK_API_BASE=${DEEPSEEK_API_BASE:-https://api.deepseek.com}
+      - DEEPSEEK_LLM_MODEL=${DEEPSEEK_LLM_MODEL:-deepseek-v4-flash}
     depends_on:
       postgres:
         condition: service_healthy

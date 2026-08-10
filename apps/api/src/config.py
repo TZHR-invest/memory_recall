@@ -28,10 +28,18 @@ class Settings(BaseSettings):
     VOLC_API_KEY: Optional[str] = None
     VOLC_API_BASE: str = "https://ark.cn-beijing.volces.com/api/v3"
 
+    # LLM 提供商：volcengine 或 deepseek
+    LLM_PROVIDER: str = "volcengine"
+
     # LLM 模型配置（支持动态切换）
     VOLC_LLM_MODEL_PRO: str = "doubao-seed-2-0-pro-260215"
     VOLC_LLM_MODEL_MINI: str = "doubao-seed-2-0-mini"
     VOLC_LLM_MODEL: str = "doubao-seed-2-0-pro-260215"  # 默认使用 pro 模型
+
+    # DeepSeek LLM 配置（LLM_PROVIDER=deepseek 时生效）
+    DEEPSEEK_API_KEY: Optional[str] = None
+    DEEPSEEK_API_BASE: str = "https://api.deepseek.com"
+    DEEPSEEK_LLM_MODEL: str = "deepseek-v4-flash"
 
     VOLC_EMBEDDING_MODEL: str = "doubao-embedding-vision-251215"
 

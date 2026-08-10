@@ -24,18 +24,34 @@ class LLMClient:
 
     def __init__(self):
         """初始化客户端"""
-        if not settings.VOLC_API_KEY:
-            raise ValueError("VOLC_API_KEY 未配置")
+        if settings.LLM_PROVIDER == "deepseek":
+            if not settings.DEEPSEEK_API_KEY:
+                raise ValueError("LLM_PROVIDER=deepseek 但未配置 DEEPSEEK_API_KEY")
+            api_key = settings.DEEPSEEK_API_KEY
+            base_url = settings.DEEPSEEK_API_BASE
+            model = settings.DEEPSEEK_LLM_MODEL
+        else:
+            if not settings.VOLC_API_KEY:
+                raise ValueError("VOLC_API_KEY 未配置")
+            api_key = settings.VOLC_API_KEY
+            base_url = settings.VOLC_API_BASE
+            model = settings.VOLC_LLM_MODEL
 
+        self.provider = settings.LLM_PROVIDER
         self.client = OpenAI(
-            api_key=settings.VOLC_API_KEY,
-            base_url=settings.VOLC_API_BASE
+            api_key=api_key,
+            base_url=base_url
         )
         self.async_client = AsyncOpenAI(
-            api_key=settings.VOLC_API_KEY,
-            base_url=settings.VOLC_API_BASE
+            api_key=api_key,
+            base_url=base_url
         )
-        self.model = settings.VOLC_LLM_MODEL
+        self.model = model
+        # 深度思考模型会先消耗思维链 token，调用方给的 max_tokens 过小时结果会被截断为空
+        self._min_max_tokens = 1000 if self.provider == "deepseek" else 0
+
+    def _effective_max_tokens(self, max_tokens: int) -> int:
+        return max(max_tokens, self._min_max_tokens)
     
     def chat(
         self,
@@ -74,7 +90,7 @@ class LLMClient:
             model=self.model,
             messages=messages,
             temperature=temperature,
-            max_tokens=max_tokens,
+            max_tokens=self._effective_max_tokens(max_tokens),
             **kwargs
         )
         
@@ -109,7 +125,7 @@ class LLMClient:
             model=self.model,
             messages=messages,
             temperature=temperature,
-            max_tokens=max_tokens,
+            max_tokens=self._effective_max_tokens(max_tokens),
             **kwargs
         )
 
@@ -305,7 +321,7 @@ class LLMClient:
                 tools=tools,
                 tool_choice=tool_choice,
                 temperature=temperature,
-                max_tokens=max_tokens
+                max_tokens=self._effective_max_tokens(max_tokens)
             )
             
             message = response.choices[0].message
