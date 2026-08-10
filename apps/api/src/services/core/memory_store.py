@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from dataclasses import dataclass, field
 import json
 import logging
+import time
 
 from src.database import db
 from src.embedding.client import get_embedding_client
@@ -125,7 +126,7 @@ class MemoryStore:
 
         embedding = None
         if generate_embedding:
-            embedding = await self._generate_embedding(content)
+            embedding = await self._generate_embedding(content, container_tag)
 
         if check_merge and not parent_memory_id and embedding:
             similar = await self._check_similar_memory(
@@ -281,7 +282,9 @@ class MemoryStore:
                 _logger.error(f"Memory {memory_id} not found for embedding generation")
                 return
 
-            embedding = await self._generate_embedding(memory.content)
+            embedding = await self._generate_embedding(
+                memory.content, memory.container_tag
+            )
 
             if embedding:
                 embedding_str = self._embedding_to_str(embedding)
@@ -709,13 +712,44 @@ class MemoryStore:
 
         return new_memory
 
-    async def _generate_embedding(self, text: str) -> Optional[List[float]]:
+    async def _generate_embedding(
+        self,
+        text: str,
+        container_tag: Optional[str] = None,
+        kind: str = "memory",
+    ) -> Optional[List[float]]:
         if not self.embedding_client:
             return None
+        from src.services.core.recall_embedding_service import recall_embedding_service
+
+        start = time.monotonic()
         try:
             result = await self.embedding_client.embed(text)
+            ok = result is not None
+            if container_tag:
+                await recall_embedding_service.log(
+                    container_tag,
+                    kind,
+                    text,
+                    ok,
+                    cache_hit=self.embedding_client.last_cache_hit if ok else False,
+                    model=settings.VOLC_EMBEDDING_MODEL,
+                    error=(self.embedding_client.last_error if not ok else None),
+                    elapsed_ms=(time.monotonic() - start) * 1000,
+                    output_dim=len(result) if ok else None,
+                )
             return result
-        except Exception:
+        except Exception as e:
+            if container_tag:
+                await recall_embedding_service.log(
+                    container_tag,
+                    kind,
+                    text,
+                    False,
+                    model=settings.VOLC_EMBEDDING_MODEL,
+                    error=str(e),
+                    elapsed_ms=(time.monotonic() - start) * 1000,
+                )
             return None
 
     def _embedding_to_str(self, embedding: Optional[List[float]]) -> Optional[str]:

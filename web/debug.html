@@ -212,6 +212,22 @@
         </div>
         <div id="trace-list"><div class="empty-state">点击"刷新"加载最近 Trace</div></div>
     </div>
+
+    <!-- embedding 调用日志 -->
+    <div class="card">
+        <h2>⚙️ Embedding 调用日志</h2>
+        <div style="display:flex; gap:10px; margin-bottom:12px; align-items:center;">
+            <input id="embed-container" placeholder="容器过滤（留空默认）" style="flex:1; padding:8px 11px; border:1px solid #cbd5e1; border-radius:8px;">
+            <select id="embed-kind" style="padding:8px 11px; border:1px solid #cbd5e1; border-radius:8px;">
+                <option value="">全部类型</option>
+                <option value="memory">memory（创建记忆）</option>
+                <option value="context_query">context_query（召回 query）</option>
+                <option value="context_chunks">context_chunks（文档召回）</option>
+            </select>
+            <button class="btn btn-secondary" onclick="loadEmbeddingLogs()">刷新</button>
+        </div>
+        <div id="embedding-log-list"><div class="empty-state">点击"刷新"加载 Embedding 调用日志</div></div>
+    </div>
 </div>
 
 <script>
@@ -501,6 +517,44 @@
         document.getElementById('result-trace-id').textContent = '#' + id;
         document.getElementById('result-container').innerHTML = renderTrace(data);
         document.getElementById('result-card').scrollIntoView({ behavior: 'smooth' });
+    }
+
+    // ==================== Embedding 日志 ====================
+
+    async function loadEmbeddingLogs() {
+        const container = document.getElementById('embed-container').value.trim();
+        const kind = document.getElementById('embed-kind').value;
+        const params = new URLSearchParams({ limit: '50' });
+        if (container) params.set('container_tag', container);
+        if (kind) params.set('kind', kind);
+        const res = await fetch(`${apiBase()}/debug/embedding-logs?${params}`, { headers: headers() });
+        const data = await res.json();
+        if (!res.ok) { toast('加载失败: ' + (data.detail || res.status), 'err'); return; }
+        const list = document.getElementById('embedding-log-list');
+        if (!data.logs || !data.logs.length) {
+            list.innerHTML = '<div class="empty-state">暂无 Embedding 调用日志（创建记忆或触发召回后出现）</div>';
+            return;
+        }
+        list.innerHTML = data.logs.map(l => {
+            const time = l.created_at ? new Date(l.created_at).toLocaleString('zh-CN') : '';
+            const ok = l.ok ? 'ok' : 'err';
+            const badge = l.cache_hit ? '缓存命中' : (l.ok ? '成功' : '失败');
+            return `
+                <div class="trace-item ${ok}">
+                    <div class="t-head">
+                        <span class="t-query">[${esc(l.kind)}] ${esc(l.text_preview || '')}</span>
+                        <span class="t-time">${time}</span>
+                    </div>
+                    <div class="t-meta">
+                        <span style="color:${l.ok ? '#16a34a' : '#ef4444'}; font-weight:600;">${badge}</span>
+                        <span>${l.elapsed_ms || 0}ms</span>
+                        ${l.output_dim ? `<span>维度 ${l.output_dim}</span>` : ''}
+                        <span>${esc(l.model || '')}</span>
+                        <span>${l.text_len || 0} 字符</span>
+                        ${l.error ? `<span style="color:#ef4444; word-break:break-all;">${esc(l.error)}</span>` : ''}
+                    </div>
+                </div>`;
+        }).join('');
     }
 
     // ==================== Utils ====================

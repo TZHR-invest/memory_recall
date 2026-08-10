@@ -340,6 +340,30 @@ COMMENT ON COLUMN recall_traces.final IS 'Final injection order after dedup';
 COMMENT ON COLUMN recall_traces.summary IS 'Channel counts for list view (avoids reading large JSONB columns)';
 
 -- ============================================================================
+-- 9.9. Embedding Call Logs (Debug Observability, v5.3)
+-- 每次 embedding API 调用（成功/失败/缓存命中）的结构化日志，用于排查 LLM/embedding 故障
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS recall_embedding_logs (
+    id VARCHAR(40) PRIMARY KEY DEFAULT 'embed_' || replace(gen_random_uuid()::text, '-', ''),
+    container_tag VARCHAR(100) NOT NULL DEFAULT '',
+    kind VARCHAR(32) NOT NULL DEFAULT 'memory',
+    model VARCHAR(64),
+    text_preview VARCHAR(500),
+    text_len INT DEFAULT 0,
+    ok BOOLEAN NOT NULL DEFAULT FALSE,
+    cache_hit BOOLEAN NOT NULL DEFAULT FALSE,
+    error VARCHAR(500),
+    elapsed_ms FLOAT DEFAULT 0,
+    output_dim INT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_recall_embedding_logs_container ON recall_embedding_logs(container_tag, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_recall_embedding_logs_created ON recall_embedding_logs(created_at DESC);
+
+COMMENT ON TABLE recall_embedding_logs IS 'Structured log of every embedding API call (memory create, context query, etc.)';
+
+-- ============================================================================
 -- 10. Helper Functions
 -- ============================================================================
 

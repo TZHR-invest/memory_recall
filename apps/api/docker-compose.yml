@@ -53,6 +53,16 @@ services:
       postgres:
         condition: service_healthy
 
+  web:
+    image: python:3-slim
+    container_name: memory_recall-web
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - ../../web:/srv/web:ro
+    command: python3 -m http.server 3000 --directory /srv/web
+
 volumes:
   postgres_data:
 

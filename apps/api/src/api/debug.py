@@ -21,6 +21,7 @@ from src.api.auth import (
 from src.api.context_inject import ContextInjectRequest
 from src.services.core.context_inject_service import context_inject_service
 from src.services.core.recall_trace_service import recall_trace_service
+from src.services.core.recall_embedding_service import recall_embedding_service
 
 router = APIRouter(prefix="/debug", tags=["Debug"])
 
@@ -111,3 +112,31 @@ async def run_trace(
         config=request.config.model_dump(),
         include_trace=True,
     )
+
+
+@router.get(
+    "/embedding-logs",
+    summary="List embedding call logs",
+    description="Structured log of embedding API calls (memory create, context query). "
+    "Useful for diagnosing LLM/embedding failures like 401.",
+)
+async def list_embedding_logs(
+    container_tag: Optional[str] = Query(None, description="Container tag (optional)"),
+    kind: Optional[str] = Query(None, description="Filter by kind: memory/context_query/context_chunks"),
+    limit: int = Query(50, ge=1, le=200, description="Max results"),
+    offset: int = Query(0, ge=0, description="Offset for pagination"),
+    current_user: dict = Depends(require_permission("read")),
+    _: dict = Depends(check_rate_limit),
+):
+    container_tag = container_tag or current_user["container_tag"]
+    verify_container_ownership(container_tag, current_user["key_id"])
+
+    logs = await recall_embedding_service.list_logs(
+        container_tag=container_tag,
+        kind=kind,
+        limit=limit,
+        offset=offset,
+    )
+    total = await recall_embedding_service.count_for_container(container_tag, kind)
+
+    return {"logs": logs, "count": len(logs), "total": total}

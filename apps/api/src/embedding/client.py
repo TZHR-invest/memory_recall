@@ -31,6 +31,8 @@ class EmbeddingClient:
         self.model = "doubao-embedding-vision-251215"
         self.dimension = 1024
         self._client: Optional[httpx.AsyncClient] = None
+        self.last_error: Optional[str] = None
+        self.last_cache_hit: bool = False
 
     async def _get_client(self) -> httpx.AsyncClient:
         if self._client is None:
@@ -46,7 +48,9 @@ class EmbeddingClient:
         if use_cache:
             cached = cache_manager.get_embedding(text)
             if cached is not None:
+                self.last_cache_hit = True
                 return cached
+        self.last_cache_hit = False
 
         try:
             client = await self._get_client()
@@ -75,10 +79,12 @@ class EmbeddingClient:
                 if use_cache and result:
                     cache_manager.cache_embedding(text, result)
 
+                self.last_error = None
                 return result
 
             return None
         except Exception as e:
+            self.last_error = str(e)
             logger.error(f"Embedding 生成失败: {e}")
             return None
 
@@ -138,6 +144,7 @@ class EmbeddingClient:
 
             return None
         except Exception as e:
+            self.last_error = str(e)
             logger.error(f"图片 Embedding 生成失败: {e}")
             return None
 

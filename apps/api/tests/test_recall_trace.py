@@ -171,3 +171,68 @@ class TestSampling:
         with patch("src.services.core.recall_trace_service.settings.TRACE_ENABLED", True), \
              patch("src.services.core.recall_trace_service.settings.TRACE_SAMPLE_RATE", 1.0):
             assert await recall_trace_service.should_record(force=False) is True
+
+
+class TestRecallEmbeddingLog:
+    def setup_method(self):
+        from src.services.core.recall_embedding_service import (
+            RecallEmbeddingService,
+        )
+        self.service = RecallEmbeddingService()
+
+    @pytest.mark.asyncio
+    async def test_log_success(self):
+        row = {"id": "embed_abc"}
+        with patch("src.services.core.recall_embedding_service.db.fetchrow", new=AsyncMock(return_value=row)) as m:
+            rid = await self.service.log("container_x", "memory", "测试内容", True,
+                                         model="m1", elapsed_ms=12.5, output_dim=1024)
+            assert rid == "embed_abc"
+            args = m.await_args.args
+            assert args[1] == "container_x"
+            assert args[2] == "memory"
+            assert args[4] == "测试内容"
+            assert args[5] == 4  # text_len
+            assert args[6] is True
+            assert args[10] == 1024
+
+    @pytest.mark.asyncio
+    async def test_log_failure_records_error(self):
+        with patch("src.services.core.recall_embedding_service.db.fetchrow", new=AsyncMock(return_value=None)):
+            rid = await self.service.log("c", "memory", "文本", False, error="401 Unauthorized", elapsed_ms=300)
+            assert rid is None
+            # 不抛异常，失败不中断主流程
+
+    @pytest.mark.asyncio
+    async def test_log_never_raises_on_db_error(self):
+        with patch("src.services.core.recall_embedding_service.db.fetchrow", new=AsyncMock(side_effect=Exception("db down"))):
+            rid = await self.service.log("c", "memory", "文本", False)
+            assert rid is None
+
+    @pytest.mark.asyncio
+    async def test_long_text_preview_truncated(self):
+        with patch("src.services.core.recall_embedding_service.db.fetchrow", new=AsyncMock(return_value={"id": "x"})) as m:
+            await self.service.log("c", "memory", "长" * 500, True)
+            args = m.await_args.args
+            assert len(args[4]) <= 201
+            assert args[5] == 500
+
+    @pytest.mark.asyncio
+    async def test_list_with_kind(self):
+        rows = [{"id": "e1", "kind": "memory", "ok": True}]
+        with patch("src.services.core.recall_embedding_service.db.fetch", new=AsyncMock(return_value=rows)) as m:
+            result = await self.service.list_logs("c", kind="memory", limit=10, offset=0)
+            assert result[0]["id"] == "e1"
+            sql = m.await_args.args[0]
+            assert "kind = $2" in sql
+
+    @pytest.mark.asyncio
+    async def test_list_without_kind(self):
+        with patch("src.services.core.recall_embedding_service.db.fetch", new=AsyncMock(return_value=[])) as m:
+            await self.service.list_logs("c", limit=10, offset=0)
+            sql = m.await_args.args[0]
+            assert "kind = $" not in sql
+
+    @pytest.mark.asyncio
+    async def test_count(self):
+        with patch("src.services.core.recall_embedding_service.db.fetchrow", new=AsyncMock(return_value={"n": 7})):
+            assert await self.service.count_for_container("c") == 7

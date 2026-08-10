@@ -4,7 +4,9 @@
 """
 
 from typing import Dict, Any, List, Optional
+import time
 
+from src.config import settings
 from src.database import db
 from src.services.core.semantic_dedup_service import (
     semantic_dedup_service,
@@ -15,6 +17,7 @@ from src.services.core.recall_trace_service import (
     RecallTrace,
     recall_trace_service,
 )
+from src.services.core.recall_embedding_service import recall_embedding_service
 from src.services.core.profile_service import profile_service
 from src.services.core.memory_store import memory_store
 from src.services.core.document_store import document_store
@@ -230,7 +233,20 @@ class ContextInjectService:
 
             if query:
                 embedding_client = get_embedding_client()
+                embed_start = time.monotonic()
                 query_embedding = await embedding_client.embed(query)
+                embed_ok = query_embedding is not None
+                await recall_embedding_service.log(
+                    container_tag,
+                    "context_query",
+                    query,
+                    embed_ok,
+                    cache_hit=embedding_client.last_cache_hit if embed_ok else False,
+                    model=settings.VOLC_EMBEDDING_MODEL,
+                    error=(embedding_client.last_error if not embed_ok else None),
+                    elapsed_ms=(time.monotonic() - embed_start) * 1000,
+                    output_dim=len(query_embedding) if embed_ok else None,
+                )
 
                 if query_embedding:
                     search_results = await memory_store.search(
@@ -416,7 +432,20 @@ class ContextInjectService:
             from src.embedding.client import get_embedding_client
 
             embedding_client = get_embedding_client()
+            embed_start = time.monotonic()
             query_embedding = await embedding_client.embed(query)
+            embed_ok = query_embedding is not None
+            await recall_embedding_service.log(
+                container_tag,
+                "context_chunks",
+                query,
+                embed_ok,
+                cache_hit=embedding_client.last_cache_hit if embed_ok else False,
+                model=settings.VOLC_EMBEDDING_MODEL,
+                error=(embedding_client.last_error if not embed_ok else None),
+                elapsed_ms=(time.monotonic() - embed_start) * 1000,
+                output_dim=len(query_embedding) if embed_ok else None,
+            )
 
             if query_embedding is None:
                 return []

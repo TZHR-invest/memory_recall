@@ -273,6 +273,11 @@ async def deduplicate(self, items, threshold=0.85, dropped_log=None):
 | `web/debug.html` | 新增 debug 页面 |
 | `apps/api/tests/test_recall_trace.py` | 新增测试 |
 | `apps/api/.env.example` | 补充 TRACE_* 配置示例 |
+| `apps/api/docker-compose.yml` | 新增 web 服务（python http.server 挂载 `../../web`，端口 3000） |
+| `apps/api/src/embedding/client.py` | 暴露 `last_error` / `last_cache_hit`（供埋点读取） |
+| `apps/api/src/services/core/recall_embedding_service.py` | 新增：embedding 调用日志服务（`recall_embedding_logs` 表） |
+| `apps/api/src/services/core/memory_store.py` | `_generate_embedding` 埋点（创建记忆 embedding 调用日志） |
+| `apps/api/schema.sql` | 新增 recall_embedding_logs 表 + 索引 |
 
 **数据库迁移**：docker-entrypoint-initdb.d 只在首次启动执行，运行中的容器需手动执行新表 DDL（`schema.sql` 中 recall_traces 部分）。
 
@@ -291,6 +296,30 @@ async def deduplicate(self, items, threshold=0.85, dropped_log=None):
    - `POST /debug/traces/run` 触发后生成新 trace
    - 清理任务删除超期数据
 3. **页面冒烟**：浏览器/curl 验证 debug.html 各功能区。
+
+---
+
+## 9. Embedding 调用日志（v5.3 扩展）
+
+排查 LLM/embedding 故障（如火山 key 401）时，创建记忆与召回都依赖 embedding API。
+新增结构化日志表 `recall_embedding_logs`，记录**每次** embedding 调用的成败与耗时：
+
+| 列 | 含义 |
+|----|------|
+| `kind` | `memory`（创建记忆）/ `context_query`（召回 query）/ `context_chunks`（文档召回） |
+| `ok` / `error` | 成败与错误信息（401 等） |
+| `cache_hit` | 是否命中 embedding 缓存（未实际调 API） |
+| `elapsed_ms` / `output_dim` | 耗时 / 向量维度 |
+
+**埋点位置**（只读采集，失败不影响主流程）：
+- `memory_store._generate_embedding`（同步 create + 异步 process_embedding_async 共用）
+- `context_inject_service._get_memories` / `_get_chunks`（query embedding）
+
+**查看方式**：
+- `GET /debug/embedding-logs?container_tag=&kind=`（鉴权 + 容器归属过滤）
+- debug.html 底部"Embedding 调用日志"区块（按类型过滤）
+
+`src/embedding/client.py` 新增 `last_error` / `last_cache_hit` 实例属性，供埋点读取失败详情。
 
 ---
 
