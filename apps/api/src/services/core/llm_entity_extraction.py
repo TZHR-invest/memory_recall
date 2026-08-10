@@ -1114,7 +1114,8 @@ Return JSON:
             )
 
             if result and "relations" in result:
-                return self._parse_batch_relations(result["relations"])
+                valid_ids = {c["id"] for c in candidates}
+                return self._parse_batch_relations(result["relations"], valid_ids)
 
             # Fallback to rule-based detection if no valid response
             return self._fallback_batch_detection(new_content, candidates)
@@ -1127,9 +1128,13 @@ Return JSON:
             return self._fallback_batch_detection(new_content, candidates)
 
     def _parse_batch_relations(
-        self, relations_data: List[Dict[str, Any]]
+        self, relations_data: List[Dict[str, Any]], valid_ids: Optional[set] = None
     ) -> List[BatchRelationResult]:
-        """Parse batch LLM response into BatchRelationResult objects."""
+        """Parse batch LLM response into BatchRelationResult objects.
+
+        LLM may fabricate or truncate candidate ids; only accept ids present
+        in the actual candidate set to avoid writing invalid/overlong foreign keys.
+        """
         results = []
         for item in relations_data:
             memory_id = item.get("id", "")
@@ -1137,14 +1142,19 @@ Return JSON:
             confidence = item.get("confidence", 0.5)
 
             # Only include valid relation types
-            if relation_type in ("updates", "extends", "derives"):
-                results.append(
-                    BatchRelationResult(
-                        memory_id=memory_id,
-                        relation_type=relation_type,
-                        confidence=float(confidence),
-                    )
+            if relation_type not in ("updates", "extends", "derives"):
+                continue
+            # Reject ids the LLM invented or mangled — must be a real candidate
+            if valid_ids is not None and memory_id not in valid_ids:
+                continue
+
+            results.append(
+                BatchRelationResult(
+                    memory_id=memory_id,
+                    relation_type=relation_type,
+                    confidence=float(confidence),
                 )
+            )
             # Skip null relations (no significant relation)
 
         return results
