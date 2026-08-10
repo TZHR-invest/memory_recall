@@ -33,7 +33,7 @@ class TestContainerOwnership:
             verify_container_ownership("user_456_data", "user_123")
 
         assert exc_info.value.status_code == 403
-        assert "ownership mismatch" in exc_info.value.detail.lower()
+        assert "container access denied" in exc_info.value.detail.lower()
 
     def test_verify_container_ownership_different_user_raises(self):
         from fastapi import HTTPException

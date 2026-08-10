@@ -259,6 +259,7 @@ MEANINGLESS_ENTITIES = {
     "app",
     "APP",
     # 技术缩写
+    "ai",
     "AI",
     "UI",
     "API",
