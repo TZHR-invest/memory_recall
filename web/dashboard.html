@@ -46,6 +46,7 @@
         .stat { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px; text-align: center; }
         .stat .num { font-size: 1.7em; font-weight: 700; color: #1e293b; }
         .stat .num.small { font-size: 1.25em; }
+        .stat .num.bad { color: #dc2626; }
         .stat .lbl { font-size: 0.8em; color: #64748b; margin-top: 4px; }
         .stat .sub { font-size: 0.74em; color: #94a3b8; margin-top: 2px; }
 
@@ -226,13 +227,20 @@
         document.getElementById('ov-container').textContent = d.container_tag;
         const m = d.memories || {};
         const docs = d.documents || {};
+        const mrTypes = (d.memory_relations_by_type || []).map(r => `${r.relation_type} ${r.count}`).join(' · ') || '暂无';
+        const anom = d.anomalies || {};
+        const anomTotal = (anom.processing || 0) + (anom.failed || 0);
+        const prof = d.profiles || {};
+        const profAge = prof.last_updated ? (() => { const d2 = new Date(prof.last_updated); const days = Math.floor((Date.now() - d2.getTime()) / 86400000); return days <= 0 ? '今天更新' : `${days} 天前更新`; })() : '暂无画像';
         const cards = [
             { num: m.total || 0, lbl: '记忆总数', sub: `静态 ${m.static || 0} / 动态 ${m.dynamic || 0}` },
             { num: m.inferred || 0, lbl: '推断记忆', sub: `占 ${pct(m.inferred, m.total)}` },
             { num: m.forgotten || 0, lbl: '已遗忘', sub: `版本历史 ${m.old_versions || 0}` },
             { num: m.effective_embedding_count != null ? m.effective_embedding_count : (m.with_embedding || 0), lbl: '有向量', sub: (m.effective_embedding_count != null && m.total) ? (m.effective_embedding_count >= m.total ? '全部有效记忆均已向量化' : `${m.total - m.effective_embedding_count} 条向量生成中`) : '' },
+            { num: anomTotal || 0, lbl: '处理异常', sub: anomTotal ? `处理中 ${anom.processing || 0} · 失败 ${anom.failed || 0}` : '无异常', bad: anomTotal > 0 },
             { num: d.entities || 0, lbl: '实体', sub: `${(d.entity_relations || 0)} 条实体关系` },
-            { num: d.memory_relations || 0, lbl: '记忆关系', sub: 'updates/extends/derives' },
+            { num: d.memory_relations || 0, lbl: '记忆关系', sub: mrTypes },
+            { num: prof.containers || 0, lbl: '用户画像', sub: `静态 ${prof.static || 0} / 动态 ${prof.dynamic || 0} · ${profAge}` },
             { num: docs.total || 0, lbl: '文档', sub: `${docs.done || 0} 完成` },
             { num: docs.total_tokens || 0, lbl: '内容 Token 总量', sub: `${docs.total_chunks || 0} chunks`, small: true },
             { num: d.recalls ? d.recalls.total : 0, lbl: '召回次数', sub: d.recalls ? `${d.recalls.errors || 0} 次出错` : '' },
@@ -240,7 +248,7 @@
         ];
         document.getElementById('overview-grid').innerHTML = cards.map(c => `
             <div class="stat">
-                <div class="num ${c.small ? 'small' : ''}">${c.num}</div>
+                <div class="num ${c.small ? 'small' : ''} ${c.bad ? 'bad' : ''}">${c.num}</div>
                 <div class="lbl">${c.lbl}</div>
                 ${c.sub ? `<div class="sub">${c.sub}</div>` : ''}
             </div>`).join('');

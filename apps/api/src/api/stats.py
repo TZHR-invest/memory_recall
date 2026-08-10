@@ -104,6 +104,17 @@ async def get_overview(
         exact,
         prefix,
     )
+    memory_relations_by_type = await db.fetch(
+        f"""
+        SELECT mr.relation_type, COUNT(*) AS count
+        FROM memory_relations mr
+        JOIN memories m ON m.id = mr.from_memory_id
+        WHERE {_scope_sql('m.container_tag', 1, 2, 'm.is_latest = TRUE')}
+        GROUP BY mr.relation_type ORDER BY count DESC
+        """,
+        exact,
+        prefix,
+    )
     docs = await db.fetchrow(
         f"""
         SELECT
@@ -155,6 +166,30 @@ async def get_overview(
         exact,
         prefix,
     )
+    anomalies = await db.fetchrow(
+        f"""
+        SELECT
+            COUNT(*) FILTER (WHERE metadata->>'_status' = 'processing') AS processing,
+            COUNT(*) FILTER (WHERE metadata->>'_status' = 'failed') AS failed
+        FROM memories
+        WHERE {_scope_sql('container_tag', 1, 2, 'is_latest = TRUE AND is_forgotten = FALSE')}
+        """,
+        exact,
+        prefix,
+    )
+    profiles = await db.fetchrow(
+        f"""
+        SELECT
+            COUNT(*) AS containers,
+            COALESCE(SUM(jsonb_array_length(COALESCE(static_memories, '[]'::jsonb))), 0) AS static,
+            COALESCE(SUM(jsonb_array_length(COALESCE(dynamic_memories, '[]'::jsonb))), 0) AS dynamic,
+            MAX(last_updated) AS last_updated
+        FROM memory_profiles
+        WHERE {_scope_sql('container_tag', 1, 2)}
+        """,
+        exact,
+        prefix,
+    )
 
     return {
         "container_tag": c,
@@ -163,6 +198,9 @@ async def get_overview(
         "entities": entities,
         "entity_relations": relations,
         "memory_relations": memory_relations,
+        "memory_relations_by_type": [dict(r) for r in memory_relations_by_type],
+        "anomalies": dict(anomalies),
+        "profiles": dict(profiles),
         "documents": dict(docs),
         "recalls": dict(traces),
         "embedding_calls": dict(embedding_calls),

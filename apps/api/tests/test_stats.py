@@ -96,7 +96,7 @@ class TestOverview:
     @pytest.mark.asyncio
     async def test_overview_effective_caliber_fields(self):
         user = {"container_tag": "c", "key_id": "c"}
-        rows = [
+        containers = [
             {"container_tag": "c_hermes", "count": 1763, "active_count": 1129, "forgotten_count": 20},
             {"container_tag": "c", "count": 112, "active_count": 111, "forgotten_count": 1},
         ]
@@ -122,8 +122,17 @@ class TestOverview:
                 {"total": 12, "done": 10, "total_tokens": 5000, "total_chunks": 100},
                 {"total": 50, "errors": 2},
                 {"total": 60, "ok": 58, "cache_hits": 40},
+                {"processing": 0, "failed": 0},
+                {"containers": 2, "static": 15, "dynamic": 30, "last_updated": None},
             ]
-            mock_fetch.return_value = rows
+            mock_fetch.side_effect = [
+                [
+                    {"relation_type": "extends", "count": 800},
+                    {"relation_type": "updates", "count": 300},
+                    {"relation_type": "derives", "count": 40},
+                ],
+                containers,
+            ]
             mock_fetchval.side_effect = [9656, 123, 456]
 
             data = await get_overview(
@@ -139,3 +148,7 @@ class TestOverview:
         assert sum(c["active_count"] for c in containers) == 1240
         assert data["memories"]["effective_embedding_count"] == 1239
         assert data["memories"]["with_embedding"] == 2497
+        by_type = {r["relation_type"]: r["count"] for r in data["memory_relations_by_type"]}
+        assert by_type == {"extends": 800, "updates": 300, "derives": 40}
+        assert data["anomalies"]["processing"] == 0
+        assert data["profiles"]["static"] == 15
