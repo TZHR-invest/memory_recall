@@ -203,6 +203,7 @@ async function server(input: PluginInput, options: Record<string, unknown> = {})
           language: config.language,
           semanticDedup: config.semanticDedup,
           enableGraphRecall: config.enableGraphRecall,
+          enableEntityRecall: config.enableEntityRecall,
           graphMaxDepth: config.graphMaxDepth,
           graphMaxNodes: config.graphMaxNodes,
           enableChunksSearch: config.enableChunksSearch,

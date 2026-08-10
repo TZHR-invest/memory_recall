@@ -878,6 +878,7 @@ export async function injectContextFromBackend(
     language: string;
     semanticDedup?: SemanticDedupConfig;
     enableGraphRecall?: boolean;
+    enableEntityRecall?: boolean;
     graphMaxDepth?: number;
     graphMaxNodes?: number;
     enableChunksSearch?: boolean;
@@ -944,7 +945,7 @@ export async function injectContextFromBackend(
       chunksSimilarityThreshold: 0.5,
       chunksDocTypes: [],
       enableGraphRecall: config.enableGraphRecall ?? false,
-      enableEntityRecall: false,
+      enableEntityRecall: config.enableEntityRecall ?? false,
     });
   }
 }

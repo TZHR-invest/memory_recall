@@ -826,7 +826,7 @@ class DocumentStore:
                     """
                     INSERT INTO entities (name, type, container_tag, confidence)
                     VALUES ($1, $2, $3, $4)
-                    ON CONFLICT (name, container_tag) DO UPDATE SET mention_count = entities.mention_count + 1
+                    ON CONFLICT (name, type, container_tag) DO UPDATE SET mention_count = entities.mention_count + 1
                     RETURNING id
                     """,
                     ner_ent.text,
