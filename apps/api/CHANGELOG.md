@@ -2,6 +2,24 @@
 
 All notable changes to Memory Recall will be documented in this file.
 
+## [5.2.2] - 2026-08-11
+
+### Added
+- stats API 时区支持：`/stats/timeline` 与 `/stats/activity` 新增 `tz` 参数（IANA 时区名，默认 `UTC`，非法值自动回退），日期分桶与"今天"边界按指定时区计算
+- dashboard 自动传入浏览器时区：`Intl.DateTimeFormat().resolvedOptions().timeZone`，无需手动配置
+- `/stats/entities` 新增 `memory_relation_types`：记忆关系（updates/extends/derives）类型分布 + 平均置信度
+- dashboard 图谱构成区块新增"记忆关系类型（演进）"栏，与实体关系类型对称展示双图谱
+
+### Fixed
+- 修复时间趋势时区错位：原实现按 UTC 统计，本地时区（如 UTC+8）00:00~07:59 查看时"今天"柱子缺失、凌晨写入的记忆被归到前一天；SQL 分组改用 `(created_at AT TIME ZONE $tz)::date`，bucket 序列用 `datetime.now(ZoneInfo(tz))` 生成
+
+### Changed
+- stats API 文档补全：`entities`/`activity` 端点文档、`tz` 参数说明
+
+### Tests
+- `test_stats.py`: 新增时区断言（最后一天=本地今天、非法 tz 回退 UTC）、`TestEntities`（memory_relation_types）、`TestActivity`（tz 传播到 recall_trend）
+- 新增 `test_stats_tz_integration.py`: 真实 DB 集成测试，验证跨时区 bucket 归属（无 DB 自动 skip）
+
 ## [5.2.1] - 2026-04-07
 
 ### Added
