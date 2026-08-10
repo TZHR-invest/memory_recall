@@ -15,7 +15,7 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 )
 
-from src.api.stats import get_timeline, get_overview, get_entities, _resolve_container, _resolve_tz
+from src.api.stats import get_timeline, get_overview, get_entities, get_activity, _resolve_container, _resolve_tz
 
 
 class TestResolveContainer:
@@ -228,3 +228,55 @@ class TestEntities:
         assert data["memory_relation_types"][0]["avg_confidence"] == 0.85
         assert data["relation_types"][0]["relation_type"] == "works_at"
         assert data["isolated_entities"] == 2
+
+
+class TestActivity:
+    @pytest.mark.asyncio
+    async def test_tz_propagates_to_recall_trend(self):
+        user = {"container_tag": "c", "key_id": "c"}
+        with (
+            patch("src.api.stats._resolve_container", new=AsyncMock(return_value="c")),
+            patch(
+                "src.api.stats.db.fetchrow",
+                new=AsyncMock(return_value={"total": 5, "errors": 0, "avg_ms": 10.0, "p95_ms": 20.0}),
+            ),
+            patch("src.api.stats.db.fetch") as mock_fetch,
+        ):
+            mock_fetch.return_value = []
+
+            data = await get_activity(
+                container_tag=None,
+                days=7,
+                tz="Asia/Shanghai",
+                current_user=user,
+                _=None,
+            )
+
+        assert data["days"] == 7
+        assert data["recalls"]["total"] == 5
+        # 5 次 fetch 调用：mode_dist / recall_trend / emb_by_kind / emb_errors / top_queries
+        calls = mock_fetch.call_args_list
+        assert len(calls) == 5
+        # recall_trend 是第 2 次调用，参数 (sql, exact, prefix, since, tz_name)
+        assert calls[1].args[4] == "Asia/Shanghai"
+
+    @pytest.mark.asyncio
+    async def test_default_tz_is_utc(self):
+        user = {"container_tag": "c", "key_id": "c"}
+        with (
+            patch("src.api.stats._resolve_container", new=AsyncMock(return_value="c")),
+            patch(
+                "src.api.stats.db.fetchrow",
+                new=AsyncMock(return_value={"total": 0, "errors": 0, "avg_ms": None, "p95_ms": None}),
+            ),
+            patch("src.api.stats.db.fetch") as mock_fetch,
+        ):
+            mock_fetch.return_value = []
+            await get_activity(
+                container_tag=None,
+                days=7,
+                current_user=user,
+                _=None,
+            )
+        calls = mock_fetch.call_args_list
+        assert calls[1].args[4] == "UTC"

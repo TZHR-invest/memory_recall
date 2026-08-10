@@ -236,12 +236,51 @@ curl http://localhost:8000/api/stats
 #### 时间线统计
 
 ```bash
-curl "http://localhost:8000/api/stats/timeline?days=30&group_by=day"
+curl "http://localhost:8000/api/stats/timeline?days=30&group_by=day&tz=Asia/Shanghai"
 ```
 
 **查询参数**：
 - `days`: 统计最近多少天，默认 30
 - `group_by`: 分组方式（day/week/month），默认 day
+- `tz`: IANA 时区名（如 `Asia/Shanghai`），决定日期分桶与"今天"的边界，默认 `UTC`；非法时区自动回退 UTC
+
+> 前端（dashboard）会自动传入浏览器时区 `Intl.DateTimeFormat().resolvedOptions().timeZone`，无需手动指定。
+
+#### 图谱构成（知识图谱 / 记忆图谱）
+
+```bash
+curl "http://localhost:8000/api/stats/entities?top_n=10"
+```
+
+**查询参数**：
+- `top_n`: Top 实体数量，默认 10
+
+**返回信息**：
+- `by_type`: 实体类型分布（person/location/organization/...）
+- `top`: Top 实体（按提及次数）
+- `relation_types`: 实体关系类型（friend/works_at/related_to/...）+ 平均权重
+- `memory_relation_types`: 记忆关系类型（updates/extends/derives）+ 平均置信度
+- `isolated_entities`: 孤立实体数（无任何关系的实体）
+
+> 记忆关系（memory_relations）是三层召回中"记忆图谱"的演进关系（更新/扩展/派生），与实体关系（语义网络）对称展示。
+
+#### 召回与 Embedding 健康
+
+```bash
+curl "http://localhost:8000/api/stats/activity?days=7&tz=Asia/Shanghai"
+```
+
+**查询参数**：
+- `days`: 统计最近多少天，默认 7
+- `tz`: IANA 时区名，决定"每日召回"趋势的分桶，默认 `UTC`
+
+**返回信息**：
+- `recalls`: 召回次数/成功率/平均耗时/P95 耗时
+- `recall_by_mode`: 按召回渠道（vector/memory_graph/entity_graph）分布
+- `recall_trend`: 每日召回趋势（按 tz 时区分桶）
+- `top_queries`: 常问 Top 5
+- `embedding`: embedding 调用总数/成功率/缓存命中率/耗时
+- `embedding_by_kind` / `embedding_errors`: embedding 调用分类与错误
 
 #### 标签统计
 

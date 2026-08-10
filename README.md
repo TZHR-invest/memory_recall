@@ -117,6 +117,9 @@ memory_recall/
 | `GET /debug/traces` | 召回链路 Trace 列表（可观测性） |
 | `GET /debug/embedding-logs` | embedding 调用日志 |
 | `GET /stats/overview` | 数据统计总览 |
+| `GET /stats/timeline` | 记忆新增趋势（按天/周/月，支持时区） |
+| `GET /stats/entities` | 图谱构成（实体关系 + 记忆关系类型分布） |
+| `GET /stats/activity` | 召回与 embedding 健康（支持时区） |
 
 > 启动后访问 `/docs` 查看 Swagger UI。
 
