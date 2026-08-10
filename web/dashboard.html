@@ -249,7 +249,6 @@
         const profMainStatic = (prof.main_static != null) ? prof.main_static : (prof.static || 0);
         const profMainDynamic = (prof.main_dynamic != null) ? prof.main_dynamic : (prof.dynamic || 0);
         const profMainAge = prof.main_last_updated ? (() => { const d2 = new Date(prof.main_last_updated); const days = Math.floor((Date.now() - d2.getTime()) / 86400000); return days <= 0 ? '今天更新' : `${days} 天前更新`; })() : '暂无画像';
-        const profCacheSub = (prof.main_static != null && prof.static !== prof.main_static) ? ` · 系统缓存 ${(prof.static || 0) + (prof.dynamic || 0)} 条覆盖 ${prof.containers || 0} 容器` : '';
         const cards = [
             { num: m.total || 0, lbl: '记忆总数', sub: `静态 ${m.static || 0} / 动态 ${m.dynamic || 0}` },
             { num: m.inferred || 0, lbl: '推断记忆', sub: `占 ${pct(m.inferred, m.total)}` },
@@ -258,7 +257,7 @@
             { num: anomTotal || 0, lbl: '处理异常', sub: anomTotal ? `处理中 ${anom.processing || 0} · 失败 ${anom.failed || 0}` : '无异常', bad: anomTotal > 0 },
             { num: d.entities || 0, lbl: '实体', sub: `${(d.entity_relations || 0)} 条实体关系` },
             { num: d.memory_relations || 0, lbl: '记忆关系', sub: mrTypes },
-            { num: profMain, lbl: '用户画像', sub: `静态 ${profMainStatic} / 动态 ${profMainDynamic} · 注入于会话首条消息 · ${profMainAge}${profCacheSub}` },
+            { num: profMain, lbl: '用户画像', sub: `静态 ${profMainStatic} / 动态 ${profMainDynamic} · 注入于会话首条消息 · ${profMainAge}` },
             { num: docs.total || 0, lbl: '文档', sub: `${docs.done || 0} 完成` },
             { num: docs.total_tokens || 0, lbl: '内容 Token 总量', sub: `${docs.total_chunks || 0} chunks`, small: true },
             { num: d.recalls ? d.recalls.total : 0, lbl: '召回次数', sub: d.recalls ? `${d.recalls.errors || 0} 次出错` : '' },

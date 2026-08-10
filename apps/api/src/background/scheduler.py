@@ -103,11 +103,16 @@ async def profile_rebuild_task() -> None:
     )
 
     for row in rows:
+        container_tag = row["container_tag"]
+        # 用户级容器 tag = keyId (UUID, 无下划线); 子容器 (project/hermes) 画像
+        # 运行时无人消费, 跳过重建避免产生死缓存
+        if "_" in container_tag:
+            continue
         try:
-            await profile_service.invalidate_cache(row["container_tag"])
-            await profile_service.get_profile(row["container_tag"])
+            await profile_service.invalidate_cache(container_tag)
+            await profile_service.get_profile(container_tag)
         except Exception as e:
-            print(f"Failed to rebuild profile for {row['container_tag']}: {e}")
+            print(f"Failed to rebuild profile for {container_tag}: {e}")
 
 
 async def cache_cleanup_task() -> None:
