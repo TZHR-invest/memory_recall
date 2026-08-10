@@ -232,19 +232,6 @@ CHINESE_DERIVE_MARKERS = [
     "由于",
 ]
 
-# Chinese Contradiction Patterns
-CHINESE_CONTRADICTION_PATTERNS = [
-    # Occupation contradiction
-    (r"在(.{1,20})公司工作", r"在(.{1,20})公司工作"),
-    # Location contradiction
-    (r"住在(.{1,10})", r"住在(.{1,10})"),
-    # Status contradiction
-    (r"是单身", r"结婚"),
-    (r"结婚", r"离婚"),
-    # Preference contradiction
-    (r"喜欢(.{1,20})", r"不喜欢(.{1,20})"),
-]
-
 
 def get_chinese_type(name: str) -> ChineseEntityType | None:
     return CHINESE_ENTITY_TYPES.get(name)

@@ -12,11 +12,6 @@ import logging
 from src.database import db
 from src.config import settings
 from src.services.core.llm_entity_extraction import llm_entity_extractor
-from src.services.core.chinese_entity_types import (
-    has_update_marker,
-    has_extend_marker,
-    has_derive_marker,
-)
 try:
     from src.services.jieba_service import extract_keywords as _jieba_extract_keywords
 except ImportError:
@@ -47,42 +42,6 @@ class MemoryRelation:
     created_at: datetime
 
 
-CHINESE_UPDATE_MARKERS = [
-    "现在",
-    "改",
-    "换成",
-    "不再",
-    "已经",
-    "更新",
-    "原来是",
-    "以前是",
-    "之前在",
-    "刚换",
-]
-
-CHINESE_EXTEND_MARKERS = [
-    "而且",
-    "另外",
-    "还有",
-    "同时",
-    "顺便",
-    "具体来说",
-    "比如说",
-    "特别是",
-    "另外还有",
-]
-
-CHINESE_DERIVE_MARKERS = [
-    "所以",
-    "因此",
-    "可以推断",
-    "由此可见",
-    "这说明",
-    "这意味着",
-    "因为",
-    "由于",
-]
-
 CONTRADICTION_PATTERNS = [
     (r"现在(.+?)(工作|住|在)", r"以前(.+?)(工作|住|在)"),
     (r"目前在(.+?)", r"之前在(.+?)"),
@@ -107,59 +66,7 @@ class RelationService:
     def __init__(self):
         self.contradiction_patterns = CONTRADICTION_PATTERNS
         self.topic_keywords = TOPIC_KEYWORDS
-        self.update_markers = CHINESE_UPDATE_MARKERS
-        self.extend_markers = CHINESE_EXTEND_MARKERS
-        self.derive_markers = CHINESE_DERIVE_MARKERS
         self.embedding_client = get_embedding_client()
-
-    def detect_relation_type_by_markers(
-        self,
-        new_content: str,
-        existing_content: str,
-    ) -> Tuple[Optional[str], float]:
-        if has_update_marker(new_content):
-            return (RelationType.UPDATES.value, 0.7)
-
-        if has_extend_marker(new_content):
-            return (RelationType.EXTENDS.value, 0.6)
-
-        if has_derive_marker(new_content):
-            return (RelationType.DERIVES.value, 0.6)
-
-        return (None, 0.0)
-
-    def calculate_relation_confidence(
-        self,
-        relation_type: str,
-        new_content: str,
-        existing_content: str,
-    ) -> float:
-        confidence = 0.5
-
-        if relation_type == RelationType.UPDATES.value:
-            if has_update_marker(new_content):
-                confidence += 0.2
-            if any(kw in new_content for kw in ["不再", "换成", "改了"]):
-                confidence += 0.1
-
-        elif relation_type == RelationType.EXTENDS.value:
-            if has_extend_marker(new_content):
-                confidence += 0.2
-            common_entities = self._count_common_entities(new_content, existing_content)
-            confidence += min(common_entities * 0.1, 0.3)
-
-        elif relation_type == RelationType.DERIVES.value:
-            if has_derive_marker(new_content):
-                confidence += 0.2
-
-        return min(confidence, 1.0)
-
-    def _count_common_entities(self, content1: str, content2: str) -> int:
-        if not content1 or not content2:
-            return 0
-        words1 = set(_jieba_extract_keywords(content1))
-        words2 = set(_jieba_extract_keywords(content2))
-        return len(words1 & words2)
 
     async def create(
         self,

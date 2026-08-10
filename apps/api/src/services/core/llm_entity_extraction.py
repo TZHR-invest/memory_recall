@@ -18,7 +18,6 @@ from src.services.core.chinese_prompts import (
     get_chinese_extraction_prompt,
     get_chinese_contradiction_prompt,
     get_chinese_topic_similarity_prompt,
-    get_chinese_relation_detection_prompt,
     detect_language,
 )
 from src.services.core.asmr_entity_types import detect_is_static
@@ -1029,59 +1028,6 @@ Return JSON:
             raise
         except Exception:
             raise
-
-    async def detect_relation(
-        self,
-        new_content: str,
-        existing_content: str,
-    ) -> tuple[Optional[str], float, str]:
-        if not self.llm_client:
-            return (None, 0.0, "")
-
-        language = detect_language(new_content + existing_content)
-
-        try:
-            if language == "chinese":
-                prompt = get_chinese_relation_detection_prompt(
-                    new_content, existing_content
-                )
-            else:
-                prompt = f"""Analyze the relationship between new memory and existing memory.
-
-New memory: {new_content}
-Existing memory: {existing_content}
-
-Relation types:
-1. updates: New information replaces old knowledge
-2. extends: Enriches/supplements existing information
-3. derives: Inferred new knowledge from patterns
-
-Return JSON:
-{{
-  "relation_type": "updates",
-  "confidence": 0.9,
-  "reason": "brief explanation"
-}}"""
-
-            result = await asyncio.wait_for(
-                self.llm_client.aextract_json(
-                    prompt,
-                    0.3,
-                ),
-                timeout=self.timeout,
-            )
-
-            if result:
-                return (
-                    result.get("relation_type"),
-                    result.get("confidence", 0.0),
-                    result.get("reason", ""),
-                )
-            return (None, 0.0, "")
-        except asyncio.TimeoutError:
-            return (None, 0.0, "")
-        except Exception:
-            return (None, 0.0, "")
 
     async def detect_relations_batch(
         self,
