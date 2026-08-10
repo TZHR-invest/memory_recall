@@ -598,6 +598,7 @@ class DocumentStore:
         self,
         document_id: str,
         status: str,
+        error: Optional[str] = None,
     ) -> bool:
         valid_statuses = [
             "queued",
@@ -610,6 +611,19 @@ class DocumentStore:
         ]
         if status not in valid_statuses:
             raise ValueError(f"Invalid status: {status}")
+
+        if error is not None:
+            result = await db.execute(
+                """
+                UPDATE documents SET status = $1, updated_at = NOW(),
+                    metadata = metadata || jsonb_build_object('error', $2, 'failed_at', NOW()::text)
+                WHERE id = $3
+                """,
+                status,
+                error[:2000],
+                document_id,
+            )
+            return result == "UPDATE 1"
 
         result = await db.execute(
             """
@@ -647,7 +661,7 @@ class DocumentStore:
             chunk_config_dict = meta.pop("_pending_chunk_config", None)
 
             if not content:
-                await self.update_status(document_id, "failed")
+                await self.update_status(document_id, "failed", error="no pending content found")
                 _logger.error(f"Document {document_id}: no pending content found")
                 return
 
@@ -752,7 +766,7 @@ class DocumentStore:
 
         except Exception as e:
             try:
-                await self.update_status(document_id, "failed")
+                await self.update_status(document_id, "failed", error=str(e))
             except Exception:
                 pass
             _logger.error(f"Document {document_id}: async processing failed: {e}")
