@@ -658,6 +658,7 @@ class LLMEntityExtractor:
                 return {
                     "entities": entities,
                     "relations": relations,
+                    "is_static": result.get("is_static", False),
                     "confidence": result.get("confidence", 0.5),
                 }
 
@@ -704,8 +705,14 @@ class LLMEntityExtractor:
   ],
   "relations": [
     {{"from": "实体1", "to": "实体2", "type": "关系类型", "confidence": 0.9}}
-  ]
+  ],
+  "is_static": true
 }}
+
+【is_static 判断】
+- true: 永久特征/长期事实 (偏好、职业、身份、习惯)
+- false: 临时活动/一次性事件 (今天的操作、某次研究、某次对话)
+- 判断内容是否属于该用户长期稳定的特质
 
 【实体类型】
 - person: 人物
@@ -781,8 +788,14 @@ Return JSON format:
   ],
   "relations": [
     {{"from": "entity1", "to": "entity2", "type": "relation_type", "confidence": 0.9}}
-  ]
+  ],
+  "is_static": true
 }}
+
+is_static rules:
+- true: permanent trait / long-term fact (preference, occupation, identity, habit)
+- false: temporary activity / one-time event (today's operation, a one-off research)
+- Judge whether the content is a stable long-term characteristic of this user
 
 【Entity Types】
 - person: Person name
@@ -931,7 +944,7 @@ Output:
         existing_content: str,
     ) -> tuple[bool, float, str]:
         if not self.llm_client:
-            return (False, 0.0, "")
+            raise RuntimeError("LLM client unavailable")
 
         language = detect_language(new_content + existing_content)
 
@@ -965,11 +978,11 @@ Return JSON:
                     result.get("confidence", 0.0),
                     result.get("reason", ""),
                 )
-            return (False, 0.0, "")
+            raise RuntimeError("Empty LLM response")
         except asyncio.TimeoutError:
-            return (False, 0.0, "")
+            raise
         except Exception:
-            return (False, 0.0, "")
+            raise
 
     async def detect_topic_similarity(
         self,
@@ -1011,11 +1024,11 @@ Return JSON:
                     result.get("similarity", 0.0),
                     result.get("topic"),
                 )
-            return (False, 0.0, None)
+            raise RuntimeError("Empty LLM response")
         except asyncio.TimeoutError:
-            return (False, 0.0, None)
+            raise
         except Exception:
-            return (False, 0.0, None)
+            raise
 
     async def detect_relation(
         self,

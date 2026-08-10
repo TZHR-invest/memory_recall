@@ -168,6 +168,7 @@ class MemoryStore:
                             )
                             entities_to_store = extraction.get("entities", [])
                             relations_to_store = extraction.get("relations", [])
+                            extraction_is_static = extraction.get("is_static")
 
                             if entities_to_store:
                                 entities_dict = {}
@@ -179,6 +180,8 @@ class MemoryStore:
                                 final_metadata["entities"] = entities_dict
                                 final_metadata["_entities_to_store"] = entities_to_store
                                 final_metadata["_relations_to_store"] = relations_to_store
+                            if isinstance(extraction_is_static, bool):
+                                is_static = extraction_is_static
                         else:
                             llm_fact = await extractor.extract(content, entity_context)
                             if llm_fact.entities:
@@ -341,6 +344,7 @@ class MemoryStore:
             auto_relations = meta.pop("_pending_auto_relations", True)
 
             # Step 1: LLM 实体提取
+            llm_is_static = None
             if extract_entities:
                 if use_llm_extraction:
                     try:
@@ -352,6 +356,7 @@ class MemoryStore:
                             )
                             entities_to_store = extraction.get("entities", [])
                             relations_to_store = extraction.get("relations", [])
+                            llm_is_static = extraction.get("is_static")
 
                             if entities_to_store:
                                 entities_dict = {}
@@ -374,7 +379,7 @@ class MemoryStore:
                             llm_fact = await extractor.extract(content, entity_context)
                             if llm_fact.entities:
                                 meta["entities"] = llm_fact.entities
-                            # 更新 is_static（仅当 LLM 判断更准确时）
+                            llm_is_static = llm_fact.is_static
                     except Exception as e:
                         _logger.warning(f"Memory {memory_id}: LLM extraction failed: {e}")
                         # fallback to rule-based extraction
@@ -391,6 +396,18 @@ class MemoryStore:
                             meta["entities"] = entities
                     except Exception:
                         pass
+
+                # 用 LLM 的静态判断更新 is_static 列 (若 LLM 给出了判断)
+                if isinstance(llm_is_static, bool):
+                    is_static = llm_is_static
+                    try:
+                        await db.execute(
+                            "UPDATE memories SET is_static = $1 WHERE id = $2",
+                            is_static,
+                            memory_id,
+                        )
+                    except Exception as e:
+                        _logger.warning(f"Memory {memory_id}: is_static update failed: {e}")
 
             # Step 2: 自动关系创建
             if auto_relations:

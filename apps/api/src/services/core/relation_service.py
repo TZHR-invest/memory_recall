@@ -458,13 +458,19 @@ class RelationService:
             existing_is_static = row["is_static"]
 
             if use_llm:
-                (
-                    is_contradiction,
-                    contradiction_score,
-                    reason,
-                ) = await llm_entity_extractor.detect_contradiction(
-                    new_content, existing_content
-                )
+                try:
+                    (
+                        is_contradiction,
+                        contradiction_score,
+                        reason,
+                    ) = await llm_entity_extractor.detect_contradiction(
+                        new_content, existing_content
+                    )
+                except Exception:
+                    is_contradiction, contradiction_score = await self.detect_contradiction(
+                        new_content, existing_content
+                    )
+                    reason = ""
             else:
                 is_contradiction, contradiction_score = await self.detect_contradiction(
                     new_content, existing_content
@@ -484,13 +490,20 @@ class RelationService:
                 continue
 
             if use_llm:
-                (
-                    is_similar,
-                    similarity_score,
-                    topic,
-                ) = await llm_entity_extractor.detect_topic_similarity(
-                    new_content, existing_content
-                )
+                try:
+                    (
+                        is_similar,
+                        similarity_score,
+                        topic,
+                    ) = await llm_entity_extractor.detect_topic_similarity(
+                        new_content, existing_content
+                    )
+                except Exception:
+                    (
+                        is_similar,
+                        similarity_score,
+                        topic,
+                    ) = await self.detect_topic_similarity(new_content, existing_content)
             else:
                 (
                     is_similar,

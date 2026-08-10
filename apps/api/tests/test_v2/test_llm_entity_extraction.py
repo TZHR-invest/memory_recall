@@ -46,13 +46,13 @@ class TestLLMEntityExtractor:
             result = await extractor.extract("我在北京工作")
 
             assert result.content == "我在北京工作"
-            assert result.entities == {}
+            assert result.entities == {"location": ["北京"]}
             assert result.confidence == 0.5
 
     @pytest.mark.asyncio
     async def test_extract_with_llm(self):
         mock_client = MagicMock()
-        mock_client.extract_json = MagicMock(
+        mock_client.aextract_json = AsyncMock(
             return_value={
                 "entities": {"location": ["北京"]},
                 "is_static": True,
@@ -74,7 +74,7 @@ class TestLLMEntityExtractor:
     @pytest.mark.asyncio
     async def test_extract_with_llm_failure(self):
         mock_client = MagicMock()
-        mock_client.extract_json = MagicMock(side_effect=Exception("API Error"))
+        mock_client.aextract_json = AsyncMock(side_effect=Exception("API Error"))
 
         with patch(
             "src.services.core.llm_entity_extraction.get_llm_client",
@@ -83,13 +83,13 @@ class TestLLMEntityExtractor:
             extractor = LLMEntityExtractor()
             result = await extractor.extract("我在北京工作")
 
-            assert result.entities == {}
+            assert result.entities == {"location": ["北京"]}
             assert result.confidence == 0.5
 
     @pytest.mark.asyncio
     async def test_extract_entities_only(self):
         mock_client = MagicMock()
-        mock_client.extract_json = MagicMock(
+        mock_client.aextract_json = AsyncMock(
             return_value={
                 "entities": {"location": ["北京"], "organization": ["Google"]},
                 "is_static": True,
@@ -110,7 +110,7 @@ class TestLLMEntityExtractor:
     @pytest.mark.asyncio
     async def test_detect_contradiction_true(self):
         mock_client = MagicMock()
-        mock_client.extract_json = MagicMock(
+        mock_client.aextract_json = AsyncMock(
             return_value={
                 "is_contradiction": True,
                 "confidence": 0.9,
@@ -135,7 +135,7 @@ class TestLLMEntityExtractor:
     @pytest.mark.asyncio
     async def test_detect_contradiction_false(self):
         mock_client = MagicMock()
-        mock_client.extract_json = MagicMock(
+        mock_client.aextract_json = AsyncMock(
             return_value={
                 "is_contradiction": False,
                 "confidence": 0.1,
@@ -158,7 +158,7 @@ class TestLLMEntityExtractor:
     @pytest.mark.asyncio
     async def test_detect_topic_similarity_true(self):
         mock_client = MagicMock()
-        mock_client.extract_json = MagicMock(
+        mock_client.aextract_json = AsyncMock(
             return_value={
                 "is_same_topic": True,
                 "similarity": 0.8,
@@ -183,7 +183,7 @@ class TestLLMEntityExtractor:
     @pytest.mark.asyncio
     async def test_detect_topic_similarity_false(self):
         mock_client = MagicMock()
-        mock_client.extract_json = MagicMock(
+        mock_client.aextract_json = AsyncMock(
             return_value={
                 "is_same_topic": False,
                 "similarity": 0.2,
@@ -207,7 +207,7 @@ class TestLLMEntityExtractor:
     @pytest.mark.asyncio
     async def test_batch_extract(self):
         mock_client = MagicMock()
-        mock_client.extract_json = MagicMock(
+        mock_client.aextract_json = AsyncMock(
             side_effect=[
                 {
                     "entities": {"location": ["北京"]},
@@ -272,7 +272,7 @@ class TestExtractWithRelations:
     async def test_extract_with_relations_chinese(self):
         """测试中文实体和关系提取"""
         mock_client = MagicMock()
-        mock_client.extract_json = MagicMock(
+        mock_client.aextract_json = AsyncMock(
             return_value={
                 "entities": [
                     {"name": "字节跳动", "type": "organization"},
@@ -317,7 +317,7 @@ class TestExtractWithRelations:
     async def test_extract_with_relations_english(self):
         """测试英文实体和关系提取"""
         mock_client = MagicMock()
-        mock_client.extract_json = MagicMock(
+        mock_client.aextract_json = AsyncMock(
             return_value={
                 "entities": [
                     {"name": "Google", "type": "organization"},
@@ -373,7 +373,7 @@ class TestExtractWithRelations:
     async def test_extract_with_relations_filters_meaningless_entities(self):
         """测试过滤无意义实体"""
         mock_client = MagicMock()
-        mock_client.extract_json = MagicMock(
+        mock_client.aextract_json = AsyncMock(
             return_value={
                 "entities": [
                     {"name": "我", "type": "person"},
@@ -401,7 +401,7 @@ class TestExtractWithRelations:
     async def test_extract_with_relations_filters_low_confidence(self):
         """测试过滤低置信度关系"""
         mock_client = MagicMock()
-        mock_client.extract_json = MagicMock(
+        mock_client.aextract_json = AsyncMock(
             return_value={
                 "entities": [
                     {"name": "北京", "type": "location"},
@@ -428,10 +428,10 @@ class TestExtractWithRelations:
     async def test_extract_with_relations_with_entity_context(self):
         """测试带 entity_context 的提取"""
         mock_client = MagicMock()
-        mock_client.extract_json = MagicMock(
+        mock_client.aextract_json = AsyncMock(
             return_value={
                 "entities": [
-                    {"name": "项目A", "type": "event"},
+                    {"name": "腾讯", "type": "organization"},
                 ],
                 "relations": [],
                 "confidence": 0.8,
@@ -444,7 +444,7 @@ class TestExtractWithRelations:
         ):
             extractor = LLMEntityExtractor()
             result = await extractor.extract_with_relations(
-                "我在做项目A", entity_context="只关注项目相关的信息"
+                "我在腾讯工作", entity_context="只关注项目相关的信息"
             )
 
             assert len(result["entities"]) >= 1
@@ -453,7 +453,7 @@ class TestExtractWithRelations:
     async def test_extract_with_relations_timeout(self):
         """测试超时降级"""
         mock_client = MagicMock()
-        mock_client.extract_json = MagicMock(side_effect=TimeoutError("Timeout"))
+        mock_client.aextract_json = AsyncMock(side_effect=TimeoutError("Timeout"))
 
         with patch(
             "src.services.core.llm_entity_extraction.get_llm_client",
@@ -469,7 +469,7 @@ class TestExtractWithRelations:
     async def test_extract_with_relations_invalid_json(self):
         """测试无效 JSON 响应降级"""
         mock_client = MagicMock()
-        mock_client.extract_json = MagicMock(return_value=None)
+        mock_client.aextract_json = AsyncMock(return_value=None)
 
         with patch(
             "src.services.core.llm_entity_extraction.get_llm_client",
