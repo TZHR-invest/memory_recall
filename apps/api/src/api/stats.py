@@ -12,6 +12,7 @@ All endpoints reuse API key auth and container ownership checks.
 
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
@@ -52,6 +53,17 @@ def _scope_sql(col: str, exact_arg: str, prefix_arg: str, extra: str = "") -> st
     """Build a scope predicate matching exact container or key_id-prefixed containers."""
     base = f"({col} = ${exact_arg} OR {col} LIKE ${prefix_arg})"
     return base if not extra else f"{base} AND {extra}"
+
+
+def _resolve_tz(tz: Optional[str]) -> str:
+    """校验 IANA 时区名，非法输入回退到 UTC（避免 500）。"""
+    if not tz:
+        return "UTC"
+    try:
+        ZoneInfo(tz)
+        return tz
+    except Exception:
+        return "UTC"
 
 
 @router.get(
@@ -211,42 +223,38 @@ async def get_overview(
 @router.get(
     "/timeline",
     summary="记忆新增趋势",
-    description="近 N 天记忆新增数量，按天/周/月分组（缺数据日期补零）。",
+    description="近 N 天记忆新增数量，按天/周/月分组（缺数据日期补零）。tz 为 IANA 时区名（默认 UTC）。",
 )
 async def get_timeline(
     container_tag: Optional[str] = Query(None, description="Container tag (optional)"),
     days: int = Query(30, ge=1, le=365),
     group_by: str = Query("day", pattern="^(day|week|month)$"),
+    tz: str = Query("UTC", description="IANA 时区名，如 Asia/Shanghai"),
     current_user: dict = Depends(require_permission("read")),
     _: dict = Depends(check_rate_limit),
 ):
     c, exact, prefix = await _container_scope(container_tag, current_user)
-    now = datetime.now(timezone.utc)
-    start = now - timedelta(days=days - 1)
+    tz_name = _resolve_tz(tz)
+    zone = ZoneInfo(tz_name)
+    now = datetime.now(zone)
+    start = (now - timedelta(days=days - 1)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
 
     if group_by == "day":
-        sql = f"""
-            SELECT created_at::date AS bucket, COUNT(*) AS count
-            FROM memories
-            WHERE {_scope_sql('container_tag', 1, 2, 'is_latest = TRUE AND is_forgotten = FALSE AND created_at >= $3')}
-            GROUP BY created_at::date
-        """
+        bucket_expr = "(created_at AT TIME ZONE $4)::date"
     elif group_by == "week":
-        sql = f"""
-            SELECT DATE_TRUNC('week', created_at) AS bucket, COUNT(*) AS count
-            FROM memories
-            WHERE {_scope_sql('container_tag', 1, 2, 'is_latest = TRUE AND is_forgotten = FALSE AND created_at >= $3')}
-            GROUP BY DATE_TRUNC('week', created_at)
-        """
+        bucket_expr = "DATE_TRUNC('week', created_at AT TIME ZONE $4)::date"
     else:
-        sql = f"""
-            SELECT DATE_TRUNC('month', created_at) AS bucket, COUNT(*) AS count
-            FROM memories
-            WHERE {_scope_sql('container_tag', 1, 2, 'is_latest = TRUE AND is_forgotten = FALSE AND created_at >= $3')}
-            GROUP BY DATE_TRUNC('month', created_at)
-        """
+        bucket_expr = "DATE_TRUNC('month', created_at AT TIME ZONE $4)::date"
+    sql = f"""
+        SELECT {bucket_expr} AS bucket, COUNT(*) AS count
+        FROM memories
+        WHERE {_scope_sql('container_tag', 1, 2, 'is_latest = TRUE AND is_forgotten = FALSE AND created_at >= $3')}
+        GROUP BY {bucket_expr}
+    """
 
-    rows = await db.fetch(sql, exact, prefix, start)
+    rows = await db.fetch(sql, exact, prefix, start.astimezone(timezone.utc), tz_name)
     counts = {}
     for r in rows:
         b = r["bucket"]
@@ -254,27 +262,23 @@ async def get_timeline(
 
     points: List[Dict[str, Any]] = []
     if group_by == "day":
-        step = timedelta(days=1)
+        bucket = start.date()
+        while bucket <= now.date():
+            points.append({"date": bucket.isoformat(), "count": counts.get(bucket, 0)})
+            bucket += timedelta(days=1)
     elif group_by == "week":
-        step = timedelta(weeks=1)
-        start = start - timedelta(days=start.weekday())
+        bucket = start.date() - timedelta(days=start.date().weekday())
+        while bucket <= now.date():
+            points.append({"date": bucket.isoformat(), "count": counts.get(bucket, 0)})
+            bucket += timedelta(weeks=1)
     else:
-        step = None
-
-    if step is None:
-        # month: iterate from start month to now month
-        bucket = start.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        end_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        bucket = start.date().replace(day=1)
+        end_month = now.date().replace(day=1)
         while bucket <= end_month:
-            points.append({"date": bucket.date().isoformat(), "count": counts.get(bucket.date(), 0)})
+            points.append({"date": bucket.isoformat(), "count": counts.get(bucket, 0)})
             y = bucket.year + (1 if bucket.month == 12 else 0)
             m = 1 if bucket.month == 12 else bucket.month + 1
             bucket = bucket.replace(year=y, month=m)
-    else:
-        bucket = start
-        while bucket <= now:
-            points.append({"date": bucket.date().isoformat(), "count": counts.get(bucket.date(), 0)})
-            bucket = bucket + step
 
     total = sum(p["count"] for p in points)
     return {
@@ -360,11 +364,14 @@ async def get_entities(
 async def get_activity(
     container_tag: Optional[str] = Query(None, description="Container tag (optional)"),
     days: int = Query(7, ge=1, le=90),
+    tz: str = Query("UTC", description="IANA 时区名，如 Asia/Shanghai"),
     current_user: dict = Depends(require_permission("read")),
     _: dict = Depends(check_rate_limit),
 ):
     c, exact, prefix = await _container_scope(container_tag, current_user)
-    since = datetime.now(timezone.utc) - timedelta(days=days)
+    tz_name = _resolve_tz(tz)
+    zone = ZoneInfo(tz_name)
+    since = (datetime.now(zone) - timedelta(days=days)).astimezone(timezone.utc)
 
     trace_scope = (
         f"((container_tag = $1 OR container_tag LIKE $2)"
@@ -399,14 +406,15 @@ async def get_activity(
     )
     recall_trend = await db.fetch(
         f"""
-        SELECT created_at::date AS bucket, COUNT(*) AS count
+        SELECT (created_at AT TIME ZONE $4)::date AS bucket, COUNT(*) AS count
         FROM recall_traces
         WHERE {trace_scope} AND created_at >= $3
-        GROUP BY created_at::date ORDER BY bucket
+        GROUP BY (created_at AT TIME ZONE $4)::date ORDER BY bucket
         """,
         exact,
         prefix,
         since,
+        tz_name,
     )
     embeddings = await db.fetchrow(
         f"""
