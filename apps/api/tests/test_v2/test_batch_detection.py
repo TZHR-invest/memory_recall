@@ -25,9 +25,10 @@ class TestBatchRelationPrompt:
         prompt = get_batch_relation_prompt(new_content, candidates, "english")
 
         assert "I now work at Google" in prompt
-        assert "[ID: mem_1]" in prompt
-        assert "[ID: mem_2]" in prompt
-        assert "I work at Meta" in prompt
+        assert "1. I work at Meta" in prompt
+        assert "2. I like basketball" in prompt
+        assert "[ID:" not in prompt
+        assert "mem_1" not in prompt
 
     def test_get_batch_relation_prompt_truncation(self):
         new_content = "Test content"
@@ -36,7 +37,8 @@ class TestBatchRelationPrompt:
 
         prompt = get_batch_relation_prompt(new_content, candidates, "english")
 
-        assert len([line for line in prompt.split("\n") if "mem_1" in line][0]) < 300
+        candidate_line = [line for line in prompt.split("\n") if line.startswith("1. ")][0]
+        assert len(candidate_line) < 300
 
     def test_get_batch_relation_prompt_chinese(self):
         new_content = "我现在在谷歌工作"
@@ -47,7 +49,8 @@ class TestBatchRelationPrompt:
         prompt = get_batch_relation_prompt(new_content, candidates, "chinese")
 
         assert "我现在在谷歌工作" in prompt
-        assert "[ID: mem_1]" in prompt
+        assert "1. 我在Meta工作" in prompt
+        assert "[ID:" not in prompt
 
 
 class TestBatchRelationResult:
@@ -77,12 +80,12 @@ class TestDetectRelationsBatch:
     async def test_detect_relations_batch_success(self):
         extractor = LLMEntityExtractor()
         extractor.llm_client = MagicMock()
-        extractor.llm_client.extract_json = MagicMock(
+        extractor.llm_client.aextract_json = AsyncMock(
             return_value={
                 "relations": [
-                    {"id": "mem_1", "type": "updates", "confidence": 0.9},
-                    {"id": "mem_2", "type": "extends", "confidence": 0.8},
-                    {"id": "mem_3", "type": None},
+                    {"index": 1, "type": "updates", "confidence": 0.9},
+                    {"index": 2, "type": "extends", "confidence": 0.8},
+                    {"index": 3, "type": None},
                 ]
             }
         )
@@ -126,7 +129,7 @@ class TestDetectRelationsBatch:
     async def test_detect_relations_batch_fallback(self):
         extractor = LLMEntityExtractor()
         extractor.llm_client = MagicMock()
-        extractor.llm_client.extract_json = MagicMock(
+        extractor.llm_client.aextract_json = AsyncMock(
             side_effect=Exception("API Error")
         )
 
@@ -146,27 +149,70 @@ class TestDetectRelationsBatch:
 
 
 class TestParseBatchRelations:
-    def test_parse_batch_relations_valid(self):
+    def _candidates(self):
+        return [
+            {"id": "mem_1", "content": "I work at Meta"},
+            {"id": "mem_2", "content": "I like basketball"},
+        ]
+
+    def test_parse_batch_relations_valid_index(self):
+        extractor = LLMEntityExtractor()
+        relations_data = [
+            {"index": 1, "type": "updates", "confidence": 0.9},
+            {"index": 2, "type": "extends", "confidence": 0.8},
+            {"index": 3, "type": None, "confidence": 0.5},
+        ]
+
+        results = extractor._parse_batch_relations(relations_data, self._candidates())
+
+        assert len(results) == 2
+        assert results[0].memory_id == "mem_1"
+        assert results[0].relation_type == "updates"
+        assert results[1].memory_id == "mem_2"
+        assert results[1].relation_type == "extends"
+
+    def test_parse_batch_relations_index_out_of_range(self):
+        extractor = LLMEntityExtractor()
+        relations_data = [
+            {"index": 0, "type": "updates", "confidence": 0.9},
+            {"index": 5, "type": "extends", "confidence": 0.8},
+        ]
+
+        results = extractor._parse_batch_relations(relations_data, self._candidates())
+
+        assert len(results) == 0
+
+    def test_parse_batch_relations_index_non_integer(self):
+        extractor = LLMEntityExtractor()
+        relations_data = [
+            {"index": "one", "type": "updates", "confidence": 0.9},
+            {"index": 1.5, "type": "extends", "confidence": 0.8},
+        ]
+
+        results = extractor._parse_batch_relations(relations_data, self._candidates())
+
+        assert len(results) == 0
+
+    def test_parse_batch_relations_legacy_id(self):
         extractor = LLMEntityExtractor()
         relations_data = [
             {"id": "mem_1", "type": "updates", "confidence": 0.9},
-            {"id": "mem_2", "type": "extends", "confidence": 0.8},
-            {"id": "mem_3", "type": None, "confidence": 0.5},
+            {"id": "mem_fabricated", "type": "extends", "confidence": 0.8},
         ]
 
-        results = extractor._parse_batch_relations(relations_data)
+        results = extractor._parse_batch_relations(relations_data, self._candidates())
 
-        assert len(results) == 2
+        assert len(results) == 1
+        assert results[0].memory_id == "mem_1"
         assert results[0].relation_type == "updates"
-        assert results[1].relation_type == "extends"
 
     def test_parse_batch_relations_invalid_type(self):
         extractor = LLMEntityExtractor()
         relations_data = [
-            {"id": "mem_1", "type": "invalid_type", "confidence": 0.9},
+            {"index": 1, "type": "invalid_type", "confidence": 0.9},
         ]
 
-        results = extractor._parse_batch_relations(relations_data)
+        results = extractor._parse_batch_relations(relations_data, self._candidates())
 
         assert len(results) == 0
 

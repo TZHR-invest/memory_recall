@@ -427,14 +427,15 @@ Relation Types:
 Return JSON format:
 {{
   "relations": [
-    {{"id": "memory_id_1", "type": "updates", "confidence": 0.9}},
-    {{"id": "memory_id_2", "type": "extends", "confidence": 0.8}},
-    {{"id": "memory_id_3", "type": "derives", "confidence": 0.7}},
-    {{"id": "memory_id_4", "type": null}}
+    {{"index": 1, "type": "updates", "confidence": 0.9}},
+    {{"index": 2, "type": "extends", "confidence": 0.8}},
+    {{"index": 3, "type": "derives", "confidence": 0.7}},
+    {{"index": 4, "type": null}}
   ]
 }}
 
 Note:
+- "index" is the candidate number in the Candidate Memories list above, starting from 1
 - Only return memories with clear relations
 - Return type: null for no relation
 - Confidence range: 0.0-1.0
@@ -454,8 +455,7 @@ def get_batch_relation_prompt(
     language: str = "english",
 ) -> str:
     candidates_section = "\n".join(
-        f"{i + 1}. [ID: {c['id']}] {c['content'][:200]}"
-        for i, c in enumerate(candidates)
+        f"{i + 1}. {c['content'][:200]}" for i, c in enumerate(candidates)
     )
 
     if language == "chinese":
@@ -1114,8 +1114,7 @@ Return JSON:
             )
 
             if result and "relations" in result:
-                valid_ids = {c["id"] for c in candidates}
-                return self._parse_batch_relations(result["relations"], valid_ids)
+                return self._parse_batch_relations(result["relations"], candidates)
 
             # Fallback to rule-based detection if no valid response
             return self._fallback_batch_detection(new_content, candidates)
@@ -1128,24 +1127,49 @@ Return JSON:
             return self._fallback_batch_detection(new_content, candidates)
 
     def _parse_batch_relations(
-        self, relations_data: List[Dict[str, Any]], valid_ids: Optional[set] = None
+        self,
+        relations_data: List[Dict[str, Any]],
+        candidates: Optional[List[Dict[str, Any]]] = None,
     ) -> List[BatchRelationResult]:
         """Parse batch LLM response into BatchRelationResult objects.
 
-        LLM may fabricate or truncate candidate ids; only accept ids present
-        in the actual candidate set to avoid writing invalid/overlong foreign keys.
+        Two formats are accepted:
+        - New format: {"index": 1, "type": "...", "confidence": 0.9}
+          The LLM references candidates by their 1-based index instead of
+          touching real ids, which eliminates id fabrication/truncation.
+        - Legacy format: {"id": "mem_xxx", ...} with an explicit whitelist
+          check, kept for backward compatibility / defense in depth.
+
+        Invalid entries (bad index, fabricated id, unsupported type) are
+        silently skipped to avoid writing invalid or overlong foreign keys.
         """
+        valid_ids = {c["id"] for c in candidates} if candidates else set()
         results = []
         for item in relations_data:
-            memory_id = item.get("id", "")
             relation_type = item.get("type")
             confidence = item.get("confidence", 0.5)
 
             # Only include valid relation types
             if relation_type not in ("updates", "extends", "derives"):
                 continue
-            # Reject ids the LLM invented or mangled — must be a real candidate
-            if valid_ids is not None and memory_id not in valid_ids:
+
+            memory_id = None
+            if "index" in item and candidates:
+                raw = item["index"]
+                try:
+                    idx_float = float(raw)
+                except (TypeError, ValueError):
+                    idx_float = -1.0
+                if idx_float.is_integer():
+                    idx = int(idx_float)
+                    if 1 <= idx <= len(candidates):
+                        memory_id = candidates[idx - 1]["id"]
+            if memory_id is None:
+                raw_id = item.get("id", "")
+                if raw_id in valid_ids:
+                    memory_id = raw_id
+
+            if memory_id is None:
                 continue
 
             results.append(

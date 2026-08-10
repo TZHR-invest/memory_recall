@@ -153,14 +153,15 @@ CHINESE_BATCH_RELATION_PROMPT = """分析新记忆与以下候选记忆的关系
 返回JSON格式：
 {{
   "relations": [
-    {{"id": "记忆ID1", "type": "updates", "confidence": 0.9}},
-    {{"id": "记忆ID2", "type": "extends", "confidence": 0.8}},
-    {{"id": "记忆ID3", "type": "derives", "confidence": 0.7}},
-    {{"id": "记忆ID4", "type": null}}
+    {{"index": 1, "type": "updates", "confidence": 0.9}},
+    {{"index": 2, "type": "extends", "confidence": 0.8}},
+    {{"index": 3, "type": "derives", "confidence": 0.7}},
+    {{"index": 4, "type": null}}
   ]
 }}
 
 注意：
+- index 是上面候选记忆列表中的编号，从 1 开始
 - 只返回有明显关系的记忆
 - 无关系的记忆返回 type: null
 - confidence 范围 0.0-1.0
@@ -172,7 +173,7 @@ def get_chinese_batch_relation_prompt(
     candidates: list,
 ) -> str:
     candidates_section = "\n".join(
-        f"{i + 1}. [ID: {c['id']}] {c['content']}" for i, c in enumerate(candidates)
+        f"{i + 1}. {c['content']}" for i, c in enumerate(candidates)
     )
     return CHINESE_BATCH_RELATION_PROMPT.format(
         new_content=new_content,
