@@ -76,6 +76,7 @@ async def get_overview(
             COUNT(*) FILTER (WHERE is_forgotten = TRUE) AS forgotten,
             COUNT(*) FILTER (WHERE is_latest = FALSE) AS old_versions,
             COUNT(*) FILTER (WHERE embedding IS NOT NULL) AS with_embedding,
+            COUNT(*) FILTER (WHERE is_latest = TRUE AND is_forgotten = FALSE AND embedding IS NOT NULL) AS effective_embedding_count,
             COUNT(*) AS all_rows,
             COALESCE(AVG(confidence) FILTER (WHERE is_latest = TRUE AND is_forgotten = FALSE), 0) AS avg_confidence
         FROM memories
@@ -98,7 +99,7 @@ async def get_overview(
         f"""
         SELECT COUNT(*) FROM memory_relations mr
         JOIN memories m ON m.id = mr.from_memory_id
-        WHERE {_scope_sql('m.container_tag', 1, 2)}
+        WHERE {_scope_sql('m.container_tag', 1, 2, 'm.is_latest = TRUE')}
         """,
         exact,
         prefix,
@@ -143,7 +144,10 @@ async def get_overview(
     )
     containers = await db.fetch(
         f"""
-        SELECT container_tag, COUNT(*) AS count
+        SELECT container_tag,
+               COUNT(*) AS count,
+               COUNT(*) FILTER (WHERE is_latest = TRUE AND is_forgotten = FALSE) AS active_count,
+               COUNT(*) FILTER (WHERE is_forgotten = TRUE) AS forgotten_count
         FROM memories
         WHERE {_scope_sql('container_tag', 1, 2)}
         GROUP BY container_tag ORDER BY count DESC

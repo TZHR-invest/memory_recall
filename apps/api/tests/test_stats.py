@@ -2,6 +2,7 @@
 Tests for the personal data stats API:
 - timeline zero-filling logic
 - overview container resolution
+- overview response shape (effective-caliber fields)
 """
 
 import sys
@@ -14,7 +15,7 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 )
 
-from src.api.stats import get_timeline, _resolve_container
+from src.api.stats import get_timeline, get_overview, _resolve_container
 
 
 class TestResolveContainer:
@@ -89,3 +90,52 @@ class TestTimeline:
             )
         assert len(data["points"]) >= 12
         assert all(p["count"] == 0 for p in data["points"])
+
+
+class TestOverview:
+    @pytest.mark.asyncio
+    async def test_overview_effective_caliber_fields(self):
+        user = {"container_tag": "c", "key_id": "c"}
+        rows = [
+            {"container_tag": "c_hermes", "count": 1763, "active_count": 1129, "forgotten_count": 20},
+            {"container_tag": "c", "count": 112, "active_count": 111, "forgotten_count": 1},
+        ]
+        with (
+            patch("src.api.stats._resolve_container", new=AsyncMock(return_value="c")),
+            patch("src.api.stats.db.fetch") as mock_fetch,
+            patch("src.api.stats.db.fetchrow") as mock_fetchrow,
+            patch("src.api.stats.db.fetchval") as mock_fetchval,
+        ):
+            mock_fetchrow.side_effect = [
+                {
+                    "total": 1240,
+                    "static": 70,
+                    "dynamic": 1170,
+                    "inferred": 10,
+                    "forgotten": 66,
+                    "old_versions": 910,
+                    "with_embedding": 2497,
+                    "effective_embedding_count": 1239,
+                    "all_rows": 2498,
+                    "avg_confidence": 0.85,
+                },
+                {"total": 12, "done": 10, "total_tokens": 5000, "total_chunks": 100},
+                {"total": 50, "errors": 2},
+                {"total": 60, "ok": 58, "cache_hits": 40},
+            ]
+            mock_fetch.return_value = rows
+            mock_fetchval.side_effect = [9656, 123, 456]
+
+            data = await get_overview(
+                container_tag=None,
+                current_user=user,
+                _=None,
+            )
+
+        containers = data["containers"]
+        assert containers[0]["active_count"] == 1129
+        assert containers[0]["forgotten_count"] == 20
+        assert containers[1]["active_count"] == 111
+        assert sum(c["active_count"] for c in containers) == 1240
+        assert data["memories"]["effective_embedding_count"] == 1239
+        assert data["memories"]["with_embedding"] == 2497
