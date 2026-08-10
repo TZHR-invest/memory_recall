@@ -195,6 +195,9 @@ async def get_overview(
             COUNT(*) AS containers,
             COALESCE(SUM(jsonb_array_length(COALESCE(static_memories, '[]'::jsonb))), 0) AS static,
             COALESCE(SUM(jsonb_array_length(COALESCE(dynamic_memories, '[]'::jsonb))), 0) AS dynamic,
+            COALESCE(SUM(CASE WHEN container_tag = $1 THEN jsonb_array_length(COALESCE(static_memories, '[]'::jsonb)) ELSE 0 END), 0) AS main_static,
+            COALESCE(SUM(CASE WHEN container_tag = $1 THEN jsonb_array_length(COALESCE(dynamic_memories, '[]'::jsonb)) ELSE 0 END), 0) AS main_dynamic,
+            MAX(CASE WHEN container_tag = $1 THEN last_updated END) AS main_last_updated,
             MAX(last_updated) AS last_updated
         FROM memory_profiles
         WHERE {_scope_sql('container_tag', 1, 2)}
@@ -347,11 +350,23 @@ async def get_entities(
         exact,
         prefix,
     )
+    memory_relation_types = await db.fetch(
+        f"""
+        SELECT mr.relation_type, COUNT(*) AS count, ROUND(AVG(mr.confidence)::numeric, 3) AS avg_confidence
+        FROM memory_relations mr
+        JOIN memories m ON m.id = mr.from_memory_id
+        WHERE {_scope_sql('m.container_tag', 1, 2, 'm.is_latest = TRUE')}
+        GROUP BY mr.relation_type ORDER BY count DESC
+        """,
+        exact,
+        prefix,
+    )
 
     return {
         "by_type": [dict(r) for r in by_type],
         "top": [dict(r) for r in top],
         "relation_types": [dict(r) for r in relation_types],
+        "memory_relation_types": [dict(r) for r in memory_relation_types],
         "isolated_entities": isolated,
     }
 

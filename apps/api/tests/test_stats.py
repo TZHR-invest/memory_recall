@@ -15,7 +15,7 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 )
 
-from src.api.stats import get_timeline, get_overview, _resolve_container, _resolve_tz
+from src.api.stats import get_timeline, get_overview, get_entities, _resolve_container, _resolve_tz
 
 
 class TestResolveContainer:
@@ -166,7 +166,7 @@ class TestOverview:
                 {"total": 50, "errors": 2},
                 {"total": 60, "ok": 58, "cache_hits": 40},
                 {"processing": 0, "failed": 0},
-                {"containers": 2, "static": 15, "dynamic": 30, "last_updated": None},
+                {"containers": 2, "static": 15, "dynamic": 30, "main_static": 10, "main_dynamic": 20, "main_last_updated": None, "last_updated": None},
             ]
             mock_fetch.side_effect = [
                 [
@@ -195,3 +195,36 @@ class TestOverview:
         assert by_type == {"extends": 800, "updates": 300, "derives": 40}
         assert data["anomalies"]["processing"] == 0
         assert data["profiles"]["static"] == 15
+        assert data["profiles"]["main_static"] == 10
+        assert data["profiles"]["main_dynamic"] == 20
+
+
+class TestEntities:
+    @pytest.mark.asyncio
+    async def test_memory_relation_types_included(self):
+        user = {"container_tag": "c", "key_id": "c"}
+        with (
+            patch("src.api.stats._resolve_container", new=AsyncMock(return_value="c")),
+            patch("src.api.stats.db.fetch") as mock_fetch,
+            patch("src.api.stats.db.fetchval") as mock_fetchval,
+        ):
+            mock_fetch.side_effect = [
+                [{"type": "person", "count": 10}],
+                [{"name": "张三", "type": "person", "mention_count": 5}],
+                [{"relation_type": "works_at", "count": 3, "avg_weight": 0.9}],
+                [{"relation_type": "extends", "count": 2886, "avg_confidence": 0.85}],
+            ]
+            mock_fetchval.return_value = 2
+
+            data = await get_entities(
+                container_tag=None,
+                top_n=10,
+                current_user=user,
+                _=None,
+            )
+
+        assert [r["relation_type"] for r in data["memory_relation_types"]] == ["extends"]
+        assert data["memory_relation_types"][0]["count"] == 2886
+        assert data["memory_relation_types"][0]["avg_confidence"] == 0.85
+        assert data["relation_types"][0]["relation_type"] == "works_at"
+        assert data["isolated_entities"] == 2
