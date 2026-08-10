@@ -38,15 +38,22 @@ async def list_traces(
     current_user: dict = Depends(require_permission("read")),
     _: dict = Depends(check_rate_limit),
 ):
+    container_tag_was_given = container_tag is not None
     container_tag = container_tag or current_user["container_tag"]
     verify_container_ownership(container_tag, current_user["key_id"])
+
+    # 未指定容器时聚合 key 名下所有容器（含 project 作用域），避免遗漏
+    include_children = not container_tag_was_given
 
     traces = await recall_trace_service.list_traces_for_container(
         container_tag=container_tag,
         limit=limit,
         offset=offset,
+        include_children=include_children,
     )
-    total = await recall_trace_service.count_for_container(container_tag)
+    total = await recall_trace_service.count_for_container(
+        container_tag, include_children=include_children
+    )
 
     return {"traces": traces, "count": len(traces), "total": total}
 
@@ -128,15 +135,20 @@ async def list_embedding_logs(
     current_user: dict = Depends(require_permission("read")),
     _: dict = Depends(check_rate_limit),
 ):
+    container_tag_was_given = container_tag is not None
     container_tag = container_tag or current_user["container_tag"]
     verify_container_ownership(container_tag, current_user["key_id"])
 
+    include_children = not container_tag_was_given
     logs = await recall_embedding_service.list_logs(
         container_tag=container_tag,
         kind=kind,
         limit=limit,
         offset=offset,
+        include_children=include_children,
     )
-    total = await recall_embedding_service.count_for_container(container_tag, kind)
+    total = await recall_embedding_service.count_for_container(
+        container_tag, kind, include_children=include_children
+    )
 
     return {"logs": logs, "count": len(logs), "total": total}

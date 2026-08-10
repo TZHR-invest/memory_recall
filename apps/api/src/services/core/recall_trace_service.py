@@ -313,29 +313,38 @@ class RecallTraceService:
         container_tag: str,
         limit: int = 20,
         offset: int = 0,
+        include_children: bool = False,
     ) -> List[Dict[str, Any]]:
+        prefix_match = f"{container_tag}_%"
         rows = await db.fetch(
             """
             SELECT id, container_tag, mode, user_tag, project_tag, query,
                    total_ms, error, created_at, summary, elapsed_ms
             FROM recall_traces
-            WHERE container_tag = $1 OR user_tag = $1 OR project_tag = $1
+            WHERE (container_tag = $1 OR user_tag = $1 OR project_tag = $1)
+               OR ($4 = TRUE AND (container_tag LIKE $2 OR user_tag LIKE $2 OR project_tag LIKE $2))
             ORDER BY created_at DESC
-            LIMIT $2 OFFSET $3
+            LIMIT $3 OFFSET $5
             """,
             container_tag,
+            prefix_match,
             limit,
+            include_children,
             offset,
         )
         return [_row_to_trace_dict(r, include_detail=False) for r in rows]
 
-    async def count_for_container(self, container_tag: str) -> int:
+    async def count_for_container(self, container_tag: str, include_children: bool = False) -> int:
+        prefix_match = f"{container_tag}_%"
         row = await db.fetchrow(
             """
             SELECT COUNT(*) AS n FROM recall_traces
-            WHERE container_tag = $1 OR user_tag = $1 OR project_tag = $1
+            WHERE (container_tag = $1 OR user_tag = $1 OR project_tag = $1)
+               OR ($3 = TRUE AND (container_tag LIKE $2 OR user_tag LIKE $2 OR project_tag LIKE $2))
             """,
             container_tag,
+            prefix_match,
+            include_children,
         )
         return int(row["n"]) if row else 0
 

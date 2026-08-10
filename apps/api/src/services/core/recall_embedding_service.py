@@ -68,18 +68,21 @@ class RecallEmbeddingService:
         kind: Optional[str] = None,
         limit: int = 50,
         offset: int = 0,
+        include_children: bool = False,
     ) -> List[Dict[str, Any]]:
+        prefix_match = f"{container_tag}_%"
         if kind:
             rows = await db.fetch(
                 """
                 SELECT id, container_tag, kind, model, text_preview, text_len, ok,
                        cache_hit, error, elapsed_ms, output_dim, created_at
                 FROM recall_embedding_logs
-                WHERE container_tag = $1 AND kind = $2
+                WHERE kind = $1
+                  AND (container_tag = $2 OR ($3 = TRUE AND container_tag LIKE $4))
                 ORDER BY created_at DESC
-                LIMIT $3 OFFSET $4
+                LIMIT $5 OFFSET $6
                 """,
-                container_tag, kind, limit, offset,
+                kind, container_tag, include_children, prefix_match, limit, offset,
             )
         else:
             rows = await db.fetch(
@@ -87,24 +90,29 @@ class RecallEmbeddingService:
                 SELECT id, container_tag, kind, model, text_preview, text_len, ok,
                        cache_hit, error, elapsed_ms, output_dim, created_at
                 FROM recall_embedding_logs
-                WHERE container_tag = $1
+                WHERE container_tag = $1 OR ($2 = TRUE AND container_tag LIKE $3)
                 ORDER BY created_at DESC
-                LIMIT $2 OFFSET $3
+                LIMIT $4 OFFSET $5
                 """,
-                container_tag, limit, offset,
+                container_tag, include_children, prefix_match, limit, offset,
             )
         return [dict(r) for r in rows]
 
-    async def count_for_container(self, container_tag: str, kind: Optional[str] = None) -> int:
+    async def count_for_container(
+        self, container_tag: str, kind: Optional[str] = None, include_children: bool = False
+    ) -> int:
+        prefix_match = f"{container_tag}_%"
         if kind:
             row = await db.fetchrow(
-                "SELECT COUNT(*) AS n FROM recall_embedding_logs WHERE container_tag = $1 AND kind = $2",
-                container_tag, kind,
+                """SELECT COUNT(*) AS n FROM recall_embedding_logs
+                   WHERE kind = $1 AND (container_tag = $2 OR ($3 = TRUE AND container_tag LIKE $4))""",
+                kind, container_tag, include_children, prefix_match,
             )
         else:
             row = await db.fetchrow(
-                "SELECT COUNT(*) AS n FROM recall_embedding_logs WHERE container_tag = $1",
-                container_tag,
+                """SELECT COUNT(*) AS n FROM recall_embedding_logs
+                   WHERE container_tag = $1 OR ($2 = TRUE AND container_tag LIKE $3)""",
+                container_tag, include_children, prefix_match,
             )
         return row["n"] if row else 0
 
