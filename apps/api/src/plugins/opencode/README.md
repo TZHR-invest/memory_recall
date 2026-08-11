@@ -230,7 +230,7 @@ memory-recall(mode: "import-docs", force: true)
   "userName": "YourName",
   "keyId": "<your-key-id>",
   
-  "similarityThreshold": 0.3,
+  "similarityThreshold": 0.4,
   "maxMemories": 5,
   "maxProjectMemories": 10,
   "injectionStrategy": "smart"

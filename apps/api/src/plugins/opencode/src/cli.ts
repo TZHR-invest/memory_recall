@@ -638,7 +638,7 @@ function writeConfig(config: {
   "keyId": "${config.keyId}",
 
   // 检索配置
-  "similarityThreshold": 0.3,
+  "similarityThreshold": 0.4,
   "maxMemories": 5,
   "maxProjectMemories": 10,
   "injectProfile": true,
@@ -650,7 +650,7 @@ function writeConfig(config: {
   // Chunks 配置
   "enableChunksSearch": true,
   "maxChunks": 5,
-  "chunksSimilarityThreshold": 0.3,
+  "chunksSimilarityThreshold": 0.45,
 
   // Graph 和 Entity 召回
   "enableGraphRecall": true,

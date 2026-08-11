@@ -155,7 +155,7 @@ const DEFAULT_CONFIG: Omit<Config, "apiKey"> = {
   enableEventHandling: true,
   enableChunksSearch: true,
   maxChunks: 5,
-  chunksSimilarityThreshold: 0.3,
+  chunksSimilarityThreshold: 0.45,
   chunksDocTypes: [],
   enableGraphRecall: true,
   enableEntityRecall: true,
