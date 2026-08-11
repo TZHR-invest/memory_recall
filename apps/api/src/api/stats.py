@@ -49,7 +49,7 @@ async def _container_scope(
     return c, exact, prefix
 
 
-def _scope_sql(col: str, exact_arg: str, prefix_arg: str, extra: str = "") -> str:
+def _scope_sql(col: str, exact_arg: str | int, prefix_arg: str | int, extra: str = "") -> str:
     """Build a scope predicate matching exact container or key_id-prefixed containers."""
     base = f"({col} = ${exact_arg} OR {col} LIKE ${prefix_arg})"
     return base if not extra else f"{base} AND {extra}"
