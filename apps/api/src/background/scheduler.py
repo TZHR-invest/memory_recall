@@ -115,24 +115,6 @@ async def profile_rebuild_task() -> None:
             print(f"Failed to rebuild profile for {container_tag}: {e}")
 
 
-async def cache_cleanup_task() -> None:
-    """Clean up old cache entries."""
-    from src.database import db
-
-    old_threshold = datetime.utcnow() - timedelta(hours=1)
-
-    result = await db.execute(
-        """
-        UPDATE memory_profiles 
-        SET last_updated = '1970-01-01'::timestamp
-        WHERE last_updated < $1
-        """,
-        old_threshold,
-    )
-
-    print(f"Cache cleanup: {result}")
-
-
 async def trace_cleanup_task() -> None:
     """Delete recall traces older than retention window."""
     from src.config import settings
@@ -147,12 +129,6 @@ def setup_background_tasks() -> None:
         name="profile_rebuild",
         interval_seconds=300,
         task_func=profile_rebuild_task,
-    )
-
-    scheduler.register_task(
-        name="cache_cleanup",
-        interval_seconds=600,
-        task_func=cache_cleanup_task,
     )
 
     scheduler.register_task(
