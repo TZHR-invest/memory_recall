@@ -35,6 +35,7 @@ venv/bin/python -m uvicorn main:app --reload --port 8000
 - **Dead code — don't mine these for features**: `src/models/`, `src/services/{prompts,embedding_cache}.py`. (`query_parser`/`keyword_extractor`/`image`/`openclaw` 已删除.)
 - **Auth**: every endpoint requires `X-API-Key` (`rk_live_...` / `rk_test_...`). `verify_container_ownership` allows exact match or `{key_id}_*` prefix (project isolation). Keys via `POST /auth/api-keys` (admin key) or `install.py`.
 - `apps/api/scripts/` holds one-off maintenance scripts (db optimize, entity cleanup, backups) — not part of the app.
+- **两种"取代"语义并存（勿混淆/勿"修复"）**: ① 自动关系检测（`relation_service.auto_create_relations`, 检测到 contradiction/updates 时 `_mark_not_latest`）把旧记忆降级 `is_latest=FALSE` 但**不建版本链** —— N:1 取代语义（一条新记忆可同时取代多条旧记忆），被 `test_temporal_relations` 锁定。② 显式 `POST /memories/{id}/update`（`create_update_version`）建完整版本链（version+1, root_memory_id 链接）—— 1:1 修订语义。被降级的旧记忆仍可通过 updates 边被 `get_version_history` 追溯、被记忆图谱召回（`get_by_id` 不过滤 is_latest）。由此 `memories` 表会积累大量 `is_latest=FALSE, version=1, root_memory_id=NULL` 的"孤儿旧版本"（主容器实测 937 行）—— 这是设计产物不是数据损坏，stats 的 `old_versions` 计数含它们。`memory_store.get_version_chain` 是零调用死代码；真实历史走 `relation_service.get_version_history`（updates 边遍历）。
 
 ## Testing
 

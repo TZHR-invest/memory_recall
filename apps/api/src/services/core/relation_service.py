@@ -430,6 +430,16 @@ class RelationService:
         return relations
 
     async def _mark_not_latest(self, memory_id: str) -> None:
+        """将记忆降级为非最新版本（is_latest=FALSE）。
+
+        设计意图（2026-03 引入，勿当作 bug 修复）：
+        - 自动关系检测的"取代"语义是 N:1（一条新记忆可同时取代多条旧记忆），
+          用 updates 关系 + is_latest=FALSE 表达，**不建版本链**。
+        - 1:1 的显式修订走 create_update_version（memory_store.py），
+          那里维护完整版本链（version+1, root_memory_id 链接）。
+        - 被降级的旧记忆仍可通过 updates 边被 get_version_history 追溯、
+          被记忆图谱召回（get_by_id 不过滤 is_latest），旧内容有意保留。
+        """
         await db.execute(
             """
             UPDATE memories 
