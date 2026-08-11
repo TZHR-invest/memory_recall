@@ -130,7 +130,7 @@ class MemoryStore:
 
         if check_merge and not parent_memory_id and embedding:
             similar = await self._check_similar_memory(
-                content, container_tag, embedding=embedding
+                content, container_tag, embedding=embedding, exclude_id=None
             )
             if similar:
                 logger.info(
@@ -297,7 +297,8 @@ class MemoryStore:
                 )
                 try:
                     similar = await self._check_similar_memory(
-                        memory.content, memory.container_tag, embedding=embedding
+                        memory.content, memory.container_tag,
+                        embedding=embedding, exclude_id=memory_id,
                     )
                     if similar:
                         _logger.info(f"Merging memory {memory_id} into {similar['id']}")
@@ -807,6 +808,7 @@ class MemoryStore:
         container_tag: str,
         threshold: Optional[float] = None,
         embedding: Optional[List[float]] = None,
+        exclude_id: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
         if threshold is None:
             threshold = settings.MEMORY_MERGE_THRESHOLD
@@ -826,6 +828,7 @@ class MemoryStore:
             WHERE container_tag = $2
             AND is_latest = TRUE
             AND is_forgotten = FALSE
+            AND ($4::text IS NULL OR id != $4)
             AND 1 - (embedding <=> $1::vector) >= $3
             ORDER BY similarity DESC
             LIMIT 1
@@ -833,6 +836,7 @@ class MemoryStore:
             self._embedding_to_str(query_embedding),
             container_tag,
             threshold,
+            exclude_id,
         )
 
         if row:
