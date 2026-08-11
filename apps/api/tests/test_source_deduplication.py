@@ -76,7 +76,7 @@ class TestSourceDeduplication:
             content=new_content,
             container_tag=container_tag,
             source=source,
-            title="Updated Title",
+            title="Original Title",
         )
 
         assert is_dup2 is False
