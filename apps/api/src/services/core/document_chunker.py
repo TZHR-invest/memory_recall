@@ -21,6 +21,10 @@ from .chunking.types import (
 from .chunking.content_detector import ContentDetector
 from .chunking.factory import ChunkingStrategyFactory
 
+# HTML 标记噪音（README 等文档中的 <div>/<table>/<img> 等标签会被切成无意义 chunk，
+# 如 "<div align=center>" 曾被注入上下文 37 次）。剥离标签但保留标签内文本。
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
+
 
 @dataclass
 class ChunkConfig:
@@ -83,6 +87,8 @@ class DocumentChunker:
     ) -> List[TextChunk]:
         if not text or not text.strip():
             return []
+
+        text = _HTML_TAG_RE.sub("", text)
 
         if self.config.enable_ast:
             return self._chunk_with_strategy(

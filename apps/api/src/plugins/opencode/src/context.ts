@@ -900,7 +900,7 @@ export async function injectContextFromBackend(
     entity_graph_nodes: config.graphMaxNodes ?? 5,
     language: config.language === "auto" ? "auto" : (config.language === "zh_CN" ? "zh_CN" : "en_US"),
     enable_chunks_search: config.enableChunksSearch ?? true,
-    chunks_similarity_threshold: config.chunksSimilarityThreshold ?? 0.3,
+    chunks_similarity_threshold: config.chunksSimilarityThreshold ?? 0.45,
   };
 
   try {

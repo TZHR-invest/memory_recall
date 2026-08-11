@@ -34,12 +34,12 @@ class ContextInjectConfig(BaseModel):
         3, ge=1, le=20, description="Entity Graph 最大节点数"
     )
     memory_similarity_threshold: float = Field(
-        0.3, ge=0.0, le=1.0, description="记忆相似度阈值"
+        0.40, ge=0.0, le=1.0, description="记忆相似度阈值"
     )
     language: str = Field("auto", description="语言设置")
     enable_chunks_search: bool = Field(True, description="启用文档片段搜索")
     chunks_similarity_threshold: float = Field(
-        0.3, ge=0.0, le=1.0, description="文档片段相似度阈值"
+        0.45, ge=0.0, le=1.0, description="文档片段相似度阈值"
     )
 
 
