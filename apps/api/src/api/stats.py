@@ -197,7 +197,7 @@ async def get_overview(
             COALESCE(SUM(jsonb_array_length(COALESCE(dynamic_memories, '[]'::jsonb))), 0) AS dynamic,
             COALESCE(SUM(CASE WHEN container_tag = $1 THEN jsonb_array_length(COALESCE(static_memories, '[]'::jsonb)) ELSE 0 END), 0) AS main_static,
             COALESCE(SUM(CASE WHEN container_tag = $1 THEN jsonb_array_length(COALESCE(dynamic_memories, '[]'::jsonb)) ELSE 0 END), 0) AS main_dynamic,
-            MAX(CASE WHEN container_tag = $1 THEN last_updated END) AS main_last_updated,
+            MAX(CASE WHEN container_tag = $1 AND last_updated > '1970-01-01'::timestamp THEN last_updated END) AS main_last_updated,
             MAX(last_updated) AS last_updated
         FROM memory_profiles
         WHERE {_scope_sql('container_tag', 1, 2)}
