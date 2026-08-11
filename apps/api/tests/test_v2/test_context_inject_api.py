@@ -645,7 +645,26 @@ class TestContextInjectAPI:
             mock_memory.get_by_container = AsyncMock(
                 side_effect=get_by_container_side_effect
             )
-            mock_memory.search = AsyncMock(return_value=[])
+            def search_side_effect(query, container_tag, limit=5, threshold=0.3):
+                if "user" in str(container_tag):
+                    return [
+                        {
+                            "id": "mem_user_001",
+                            "content": "用户记忆",
+                            "embedding": [0.1] * 1024,
+                            "similarity": 0.9,
+                        }
+                    ]
+                return [
+                    {
+                        "id": "mem_project_001",
+                        "content": "项目记忆",
+                        "embedding": [0.5] * 1024,
+                        "similarity": 0.9,
+                    }
+                ]
+
+            mock_memory.search = AsyncMock(side_effect=search_side_effect)
             mock_memory.traverse_memory_relations = AsyncMock(return_value=[])
             mock_memory.get_entities_for_memories = AsyncMock(return_value=[])
             mock_memory.traverse_entity_relations = AsyncMock(return_value=[])

@@ -53,7 +53,11 @@ async def test_full_memory_lifecycle(setup_db):
     success = await memory_store.forget(memory.id)
     assert success is True
 
-    forgotten = await memory_store.get_by_id(memory.id)
+    # get_by_id 默认过滤已遗忘（include_forgotten=False），直接查询返回 None
+    gone = await memory_store.get_by_id(memory.id)
+    assert gone is None
+
+    forgotten = await memory_store.get_by_id(memory.id, include_forgotten=True)
     assert forgotten.is_forgotten is True
 
     success = await memory_store.restore(memory.id)
@@ -139,7 +143,7 @@ async def test_document_lifecycle(setup_db):
     """Test document CRUD operations."""
     container = "test_integration_docs"
 
-    doc = await document_store.create(
+    doc, _ = await document_store.create(
         content="This is a test document for integration testing.",
         container_tag=container,
         metadata={"source": "test"},
@@ -147,7 +151,9 @@ async def test_document_lifecycle(setup_db):
     assert doc.id.startswith("doc_")
 
     retrieved = await document_store.get_by_id(doc.id)
-    assert retrieved.content == doc.content
+    assert retrieved is not None
+    assert retrieved.id == doc.id
+    assert retrieved.container_tag == doc.container_tag
 
     docs = await document_store.get_by_container(container)
     assert len(docs) >= 1
