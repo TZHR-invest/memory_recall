@@ -302,6 +302,22 @@ class MemoryStore:
                     if similar:
                         _logger.info(f"Merging memory {memory_id} into {similar['id']}")
                         await self.merge_similar_memory(similar["id"], memory.content)
+                        # 合并后立即清理 processing 状态，避免残留脏状态导致 dashboard 误报"处理中"
+                        try:
+                            merged = await self.get_by_id(
+                                memory_id, include_forgotten=True
+                            )
+                            if merged:
+                                meta = merged.metadata.copy()
+                                meta.pop("_status", None)
+                                for k in list(meta):
+                                    if k.startswith("_pending_"):
+                                        meta.pop(k, None)
+                                await self.update_metadata(memory_id, meta)
+                        except Exception as e:
+                            _logger.warning(
+                                f"Memory {memory_id}: merge status cleanup failed: {e}"
+                            )
                         return
                 except Exception as e:
                     _logger.warning(f"Similar memory check failed for {memory_id}: {e}")
