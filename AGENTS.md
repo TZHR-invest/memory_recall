@@ -48,6 +48,7 @@ venv/bin/python -m uvicorn main:app --reload --port 8000
 - **Env**: there is NO `TEST_DATABASE_URL`. `src/database.py` connects via `DATABASE_HOST/PORT/NAME/USER/PASSWORD` only (`DATABASE_URL` is declared in config but never parsed). Point tests at a scratch DB by overriding those vars, e.g. `DATABASE_NAME=memory_recall_test`.
 - `test_document_deduplication.py` / `test_source_deduplication.py` use `@pytest.mark.order`, but `pytest-order` is NOT in `requirements.txt` — install it if ordering matters.
 - Integration tests don't clean up their test data (containers like `test_integration_*`, `test_perf_*`).
+- **pytest.ini keeps `asyncio_default_test_loop_scope = module`** — pytest-asyncio 1.x defaults test functions to a per-function loop, but async fixtures/db use the module loop, so asyncpg connections die with "attached to a different loop". Don't remove it; without it the whole integration suite fails (0/7).
 
 ```bash
 cd apps/api
