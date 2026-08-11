@@ -11,7 +11,7 @@ class Settings(BaseSettings):
 
     # 应用配置
     APP_NAME: str = "Memory Recall API"
-    APP_VERSION: str = "5.2.2"
+    APP_VERSION: str = "5.2.3"
     APP_ENV: str = "development"
     APP_DEBUG: bool = True
     LOG_LEVEL: str = "INFO"

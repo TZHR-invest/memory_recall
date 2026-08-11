@@ -88,7 +88,8 @@ class DocumentChunker:
         if not text or not text.strip():
             return []
 
-        text = _HTML_TAG_RE.sub("", text)
+        # 剥离 HTML 标记但保护代码块（JSX/泛型 <T>/<div> 等不应被误剥）
+        text = self._strip_html_preserving_code(text)
 
         if self.config.enable_ast:
             return self._chunk_with_strategy(
@@ -96,6 +97,21 @@ class DocumentChunker:
             )
 
         return self._chunk_legacy(text, metadata, document_title, document_summary)
+
+    def _strip_html_preserving_code(self, text: str) -> str:
+        """Strip HTML tags while preserving markdown code block content."""
+        code_blocks: List[str] = []
+        placeholder = "\x00CODE_BLOCK_{}\x00"
+
+        def _save_block(m: Any) -> str:
+            code_blocks.append(m.group(0))
+            return placeholder.format(len(code_blocks) - 1)
+
+        protected = self._code_block.sub(_save_block, text)
+        protected = _HTML_TAG_RE.sub("", protected)
+        for i, block in enumerate(code_blocks):
+            protected = protected.replace(placeholder.format(i), block)
+        return protected
 
     def _chunk_with_strategy(
         self,
