@@ -2,6 +2,16 @@
 
 All notable changes to Memory Recall will be documented in this file.
 
+## [5.2.3] - 2026-08-11
+
+### Changed
+- 召回质量优化（trace 实证驱动）：`memory_similarity_threshold` 默认 0.3→0.40、`chunks_similarity_threshold` 默认 0.3→0.45（低相关命中 0.30-0.39 抽样 8/10 不相关，过滤后上下文更精准）
+- 文档分块剥离 HTML 标记（`<div>` 等噪音 chunk 曾注入上下文 37 次）
+- opencode 插件 1.8.2：默认阈值同步 0.4/0.45；install 时检测旧默认阈值(0.3)并交互式提示迁移；`similarityThreshold`/`chunksSimilarityThreshold` 配置模板同步
+
+### Fixed
+- context-inject API Pydantic 模型默认阈值与 service 不一致（Pydantic 缺省填 0.3 覆盖 service 默认 0.40）
+
 ## [5.2.2] - 2026-08-11
 
 ### Added

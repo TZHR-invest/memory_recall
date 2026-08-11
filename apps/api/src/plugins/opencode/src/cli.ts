@@ -818,6 +818,26 @@ async function doInstall(): Promise<void> {
         console.log(`  API 地址: ${existingConfig.baseUrl || 'http://localhost:8000'}`);
         console.log(`  用户名: ${existingConfig.userName || 'User'}`);
         
+        // v1.8.2 召回质量优化: 检测旧默认阈值(0.3)并提示迁移到推荐值(0.4/0.45)
+        const legacyThreshold =
+          (existingConfig.similarityThreshold as number) === 0.3 ||
+          (existingConfig.chunksSimilarityThreshold as number) === 0.3;
+        if (legacyThreshold) {
+          const migrate = await confirm(
+            rl,
+            "\n检测到旧版默认阈值 (similarityThreshold=0.3 / chunksSimilarityThreshold=0.3)。\nv1.8.2 召回质量优化推荐 0.4 / 0.45 以过滤低相关记忆，是否更新阈值配置? (y/n)"
+          );
+          if (migrate) {
+            const updated = {
+              ...existingConfig,
+              similarityThreshold: 0.4,
+              chunksSimilarityThreshold: 0.45,
+            };
+            writeFileSync(PLUGIN_CONFIG_FILE, JSON.stringify(updated, null, 2));
+            console.log("✓ 阈值已更新: similarityThreshold=0.4, chunksSimilarityThreshold=0.45");
+          }
+        }
+        
         const reconfigure = await confirm(rl, "\n是否重新配置? (y/n)");
         if (!reconfigure) {
           console.log("\n╔════════════════════════════════════════════╗");
