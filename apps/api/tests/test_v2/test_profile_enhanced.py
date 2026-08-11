@@ -151,21 +151,24 @@ class TestProfileWithMetadata:
         ]
 
         with patch.object(service, "_get_cached_profile") as mock_cache:
-            with patch("src.services.core.profile_service.memory_store") as mock_store:
-                mock_cache.return_value = None
-                mock_store.get_static_memories = AsyncMock(return_value=mock_memories)
-                mock_store.get_dynamic_memories = AsyncMock(return_value=[])
+            with patch("src.services.core.profile_service.db") as mock_db:
+                mock_db.execute = AsyncMock(return_value="UPDATE 1")
+                mock_db.fetchrow = AsyncMock(return_value=None)
+                with patch("src.services.core.profile_service.memory_store") as mock_store:
+                    mock_cache.return_value = None
+                    mock_store.get_static_memories = AsyncMock(return_value=mock_memories)
+                    mock_store.get_dynamic_memories = AsyncMock(return_value=[])
 
-                result = await service.get_profile(
-                    container_tag="user_001",
-                    include_metadata=True,
-                )
+                    result = await service.get_profile(
+                        container_tag="user_001",
+                        include_metadata=True,
+                    )
 
-                assert "profile" in result
-                assert "static" in result["profile"]
-                if result["profile"]["static"]:
-                    assert "metadata" in result["profile"]["static"][0]
-                    assert "version" in result["profile"]["static"][0]
+                    assert "profile" in result
+                    assert "static" in result["profile"]
+                    if result["profile"]["static"]:
+                        assert "metadata" in result["profile"]["static"][0]
+                        assert "version" in result["profile"]["static"][0]
 
 
 class TestProfileServiceMethods:

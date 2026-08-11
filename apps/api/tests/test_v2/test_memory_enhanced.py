@@ -35,6 +35,7 @@ class TestMemoryVersionControl:
                             "relations": {"updates": [], "extends": [], "derives": []}
                         },
                         "confidence": 0.8,
+                        "similarity": 0.8,
                         "created_at": None,
                         "is_forgotten": False,
                         "version": 1,
@@ -77,6 +78,7 @@ class TestMemoryVersionControl:
                             }
                         },
                         "confidence": 0.8,
+                        "similarity": 0.8,
                         "created_at": None,
                         "is_forgotten": False,
                         "version": 2,
@@ -101,6 +103,8 @@ class TestMemoryVersionControl:
                     content="Updated content",
                     container_tag="user_001",
                     parent_memory_id="mem_001",
+                    auto_relations=False,
+                    entity_context="",
                 )
 
                 assert memory.version == 2
@@ -128,6 +132,7 @@ class TestMemoryEmbeddedRelations:
                             "relations": {"updates": [], "extends": [], "derives": []}
                         },
                         "confidence": 0.8,
+                        "similarity": 0.8,
                         "created_at": None,
                         "is_forgotten": False,
                         "version": 1,
@@ -165,6 +170,7 @@ class TestMemoryEmbeddedRelations:
                         "relations": {"updates": [], "extends": [], "derives": []}
                     },
                     "confidence": 0.8,
+                    "similarity": 0.8,
                     "created_at": None,
                     "is_forgotten": False,
                     "version": 1,
@@ -243,17 +249,16 @@ class TestLLMExtractionIntegration:
         store = MemoryStore()
 
         with patch.object(store, "_generate_embedding", return_value=[0.1] * 1024):
-            with patch(
-                "src.services.core.memory_store.llm_entity_extractor"
-            ) as mock_llm:
-                mock_llm.extract = AsyncMock(
-                    return_value=MagicMock(
-                        content="Test",
-                        entities={"location": ["北京"]},
-                        is_static=True,
-                        confidence=0.9,
-                    )
+            with patch.object(store, "_get_llm_extractor") as mock_get_extractor:
+                mock_llm = MagicMock()
+                mock_llm.extract_with_relations = AsyncMock(
+                    return_value={
+                        "entities": [{"name": "北京", "type": "location"}],
+                        "relations": [],
+                        "is_static": True,
+                    }
                 )
+                mock_get_extractor.return_value = mock_llm
 
                 with patch("src.services.core.memory_store.db") as mock_db:
                     mock_db.fetchrow = AsyncMock(
@@ -275,6 +280,7 @@ class TestLLMExtractionIntegration:
                                 },
                             },
                             "confidence": 0.9,
+                            "similarity": 0.8,
                             "created_at": None,
                             "is_forgotten": False,
                             "version": 1,
@@ -289,6 +295,9 @@ class TestLLMExtractionIntegration:
                         content="我在北京工作",
                         container_tag="user_001",
                         use_llm_extraction=True,
+                        check_merge=False,
+                        auto_relations=False,
+                        entity_context="",
                     )
 
-                    mock_llm.extract.assert_called_once()
+                    mock_llm.extract_with_relations.assert_called_once()

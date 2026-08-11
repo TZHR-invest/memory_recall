@@ -92,6 +92,8 @@ class TestMemoryStoreAsync:
                         content="Test content",
                         container_tag="user_001",
                         is_static=True,
+                        auto_relations=False,
+                        entity_context="",
                     )
 
                     assert memory.id == "mem_test123"
@@ -168,6 +170,7 @@ class TestMemoryStoreAsync:
                             "confidence": 0.8,
                             "created_at": None,
                             "similarity": 0.9,
+                            "embedding": None,
                         },
                         {
                             "id": "mem_test2",
@@ -176,6 +179,7 @@ class TestMemoryStoreAsync:
                             "confidence": 0.7,
                             "created_at": None,
                             "similarity": 0.8,
+                            "embedding": None,
                         },
                     ]
                 )

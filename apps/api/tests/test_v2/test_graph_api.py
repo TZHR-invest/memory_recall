@@ -33,7 +33,7 @@ class TestGraphAPI:
             )()
         ]
 
-        mock_user = {"user_id": "user_001", "permissions": ["read"]}
+        mock_user = {"user_id": "user_001", "key_id": "user_001", "permissions": ["read"]}
 
         with patch("src.api.graph.memory_store") as mock_store:
             mock_store.get_by_container = AsyncMock(return_value=mock_memories)
@@ -76,7 +76,7 @@ class TestGraphAPI:
             for i in range(105)
         ]
 
-        mock_user = {"user_id": "user_001", "permissions": ["read"]}
+        mock_user = {"user_id": "user_001", "key_id": "user_001", "permissions": ["read"]}
 
         with patch("src.api.graph.memory_store") as mock_store:
             mock_store.get_by_container = AsyncMock(return_value=mock_memories)
@@ -133,7 +133,7 @@ class TestGraphAPI:
             )(),
         ]
 
-        mock_user = {"user_id": "user_001", "permissions": ["read"]}
+        mock_user = {"user_id": "user_001", "key_id": "user_001", "permissions": ["read"]}
 
         with patch("src.api.graph.memory_store") as mock_store:
             mock_store.get_by_container = AsyncMock(return_value=mock_memories)
@@ -194,7 +194,7 @@ class TestGraphAPI:
             )(),
         ]
 
-        mock_user = {"user_id": "user_001", "permissions": ["read"]}
+        mock_user = {"user_id": "user_001", "key_id": "user_001", "permissions": ["read"]}
 
         with patch("src.api.graph.memory_store") as mock_store:
             mock_store.get_by_container = AsyncMock(return_value=mock_memories)
@@ -219,7 +219,7 @@ class TestGraphAPI:
 
     @pytest.mark.asyncio
     async def test_get_graph_container_ownership_mismatch(self):
-        mock_user = {"user_id": "user_other", "permissions": ["read"]}
+        mock_user = {"user_id": "user_other", "key_id": "user_other", "permissions": ["read"]}
 
         from fastapi import HTTPException
 
