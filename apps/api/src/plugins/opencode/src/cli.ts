@@ -4,6 +4,7 @@ import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, cpSync, sym
 import { join, dirname, resolve } from "node:path";
 import { homedir } from "node:os";
 import * as readline from "node:readline";
+import { execSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -156,9 +157,32 @@ function installPluginFiles(): { success: boolean; error?: string } {
     }
     
     console.log(`✓ 插件已安装到: ${PLUGIN_INSTALL_DIR}`);
-    return { success: true };
   } catch (error) {
     return { success: false, error: `复制插件文件失败: ${error}` };
+  }
+
+  // dist 依赖外部 @opencode-ai/plugin 等运行时包，需安装到插件目录保证本地解析
+  const depsOk = installPluginDependencies(PLUGIN_INSTALL_DIR);
+  if (!depsOk) {
+    console.log(`⚠ 运行时依赖安装失败，重启 OpenCode 时将尝试通过 ~/.config/opencode/package.json 自动安装`);
+  }
+
+  return { success: true };
+}
+
+function installPluginDependencies(dir: string): boolean {
+  try {
+    try {
+      execSync("bun install --production --no-save", { cwd: dir, stdio: "ignore", timeout: 120000 });
+      console.log(`✓ 已安装运行时依赖 (bun install)`);
+      return true;
+    } catch {
+      execSync("npm install --omit=dev", { cwd: dir, stdio: "ignore", timeout: 180000 });
+      console.log(`✓ 已安装运行时依赖 (npm install)`);
+      return true;
+    }
+  } catch {
+    return false;
   }
 }
 
@@ -1017,13 +1041,17 @@ function printHelp(): void {
 Memory Recall OpenCode 插件
 
 用法:
-  node dist/cli.js install          安装插件（生产模式）
-  node dist/cli.js install --dev    安装插件（开发模式，直接加载源码）
+  node dist/cli.js install          安装插件（生产模式：复制 dist 到 ~/.config/opencode/plugins/）
+  node dist/cli.js install --dev    已废弃（不执行，仅提示改用源码直连）
   node dist/cli.js uninstall        卸载插件（交互式）
   node dist/cli.js uninstall --force 卸载插件（无需确认）
   node dist/cli.js reinstall        重新安装
   node dist/cli.js status           查看状态
   node dist/cli.js --help           显示帮助
+
+开发模式（推荐，无需构建）:
+  在 opencode 配置中直接指向源码，例如:
+  "plugin": ["file://<本仓库>/apps/api/src/plugins/opencode/src/index.ts"]
 
 安装位置:
   ~/.config/opencode/plugins/memory-recall-opencode/
@@ -1153,6 +1181,15 @@ async function main(): Promise<void> {
   
   DEV_MODE = args.includes("--dev") || args.includes("-d");
   FORCE_MODE = args.includes("--force") || args.includes("-f");
+
+  // --dev 已废弃：不再执行任何安装，仅提示新开发模式
+  if (DEV_MODE && (command === "install" || command === "i" || command === "reinstall" || command === "r")) {
+    console.log("\n✗ install --dev 已废弃，不再执行。");
+    console.log("  开发模式（推荐）：在 opencode 配置中直接指向源码，无需构建、无需安装:");
+    console.log('  "plugin": ["file://<本仓库>/apps/api/src/plugins/opencode/src/index.ts"]');
+    console.log("  生产模式：node dist/cli.js install\n");
+    return;
+  }
 
   switch (command) {
     case "install":

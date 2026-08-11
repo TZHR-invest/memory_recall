@@ -1,5 +1,4 @@
 import { tool } from "@opencode-ai/plugin";
-import { z } from "zod";
 import * as path from "path";
 import type { ApiClient, SearchResult } from "./client";
 import type { Config } from "./config";
@@ -18,21 +17,21 @@ const MEMORY_TYPES = [
 ] as const;
 
 const toolSchema = {
-  mode: z.enum(["add", "search", "profile", "list", "forget", "import-docs", "status", "retry", "help"]).describe("Operation mode"),
-  content: z.string().optional().describe("Content to store (for add mode)"),
-  query: z.string().optional().describe("Search query (for search mode)"),
-  type: z.enum(MEMORY_TYPES).optional().describe("Memory type (for add mode)"),
-  scope: z.enum(["user", "project"]).optional().describe("Memory scope: user (cross-project) or project (current project)"),
-  isStatic: z.boolean().optional().describe("Whether this is a permanent trait (default: false)"),
-  memoryId: z.string().optional().describe("Memory ID to forget (for forget mode)"),
-  limit: z.number().optional().describe("Max results (default: 10)"),
-  force: z.boolean().optional().describe("Force re-import all documents (for import-docs mode)"),
-  taskId: z.string().optional().describe("Task ID to query or retry (for status/retry mode)"),
+  mode: tool.schema.enum(["add", "search", "profile", "list", "forget", "import-docs", "status", "retry", "help"]).describe("Operation mode"),
+  content: tool.schema.string().optional().describe("Content to store (for add mode)"),
+  query: tool.schema.string().optional().describe("Search query (for search mode)"),
+  type: tool.schema.enum(MEMORY_TYPES).optional().describe("Memory type (for add mode)"),
+  scope: tool.schema.enum(["user", "project"]).optional().describe("Memory scope: user (cross-project) or project (current project)"),
+  isStatic: tool.schema.boolean().optional().describe("Whether this is a permanent trait (default: false)"),
+  memoryId: tool.schema.string().optional().describe("Memory ID to forget (for forget mode)"),
+  limit: tool.schema.number().optional().describe("Max results (default: 10)"),
+  force: tool.schema.boolean().optional().describe("Force re-import all documents (for import-docs mode)"),
+  taskId: tool.schema.string().optional().describe("Task ID to query or retry (for status/retry mode)"),
   // 图谱召回增强参数（search mode）
-  enableMemoryGraph: z.boolean().optional().describe("Enable Memory Graph recall - traverses memory evolution relations (updates/extends/derives)"),
-  enableEntityGraph: z.boolean().optional().describe("Enable Entity Graph recall - traverses entity relations (friend/colleague/works_at etc.)"),
-  graphDepth: z.number().optional().describe("Graph traversal depth (default: 2, max: 5)"),
-  graphNodes: z.number().optional().describe("Max nodes to traverse per graph (default: 5, max: 20)"),
+  enableMemoryGraph: tool.schema.boolean().optional().describe("Enable Memory Graph recall - traverses memory evolution relations (updates/extends/derives)"),
+  enableEntityGraph: tool.schema.boolean().optional().describe("Enable Entity Graph recall - traverses entity relations (friend/colleague/works_at etc.)"),
+  graphDepth: tool.schema.number().optional().describe("Graph traversal depth (default: 2, max: 5)"),
+  graphNodes: tool.schema.number().optional().describe("Max nodes to traverse per graph (default: 5, max: 20)"),
 };
 
 type ToolArgs = {

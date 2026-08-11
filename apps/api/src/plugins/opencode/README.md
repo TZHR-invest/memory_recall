@@ -6,7 +6,7 @@
 
 ```bash
 # 1. 解压
-tar -xzf memory-recall-opencode-1.8.1.tar.gz
+tar -xzf memory-recall-opencode-1.8.2.tar.gz
 
 # 2. 进入目录并运行安装
 cd memory-recall-opencode
@@ -56,17 +56,86 @@ node dist/cli.js install
 
 ## 开发模式
 
+**推荐：在 opencode 配置中直接指向源码，无需构建、无需安装。**
+
+opencode 的插件加载器（Bun 运行时）原生支持直接加载 TypeScript 源码文件，因此开发时可以绕过构建和安装，改 `src/*.ts` 保存后重启 opencode 即生效：
+
+```jsonc
+// ~/.config/opencode/opencode.jsonc（全局）或项目 .opencode/opencode.jsonc（项目级）
+"plugin": [
+  "file:///Users/wusisu/repo/memory_recall/apps/api/src/plugins/opencode/src/index.ts"
+]
+```
+
+- 路径必须是**绝对路径**（`file://` URL 或绝对路径均可），opencode 会将其解析为插件入口
+- 源码中的相对 import（`./config`、`./client` 等）由 Bun 直接处理，无需构建
+- 不需要 `dist/`、不需要 node_modules 解析链、不需要软链
+- 同时启用多个项目时，可分别指向各自仓库的源码文件
+
+> **为什么不推荐 `install --dev`（软链模式）**：旧版脚本用软链把插件目录连到 `~/.config/opencode/node_modules` 并依赖那里的 `@opencode-ai/plugin`（版本陈旧）。opencode 加载插件前会 `realpathSync` 解析软链，再从真实路径（仓库内）向上查找依赖——软链路径侧的 node_modules 根本不会被命中，导致 `Cannot find module '@opencode-ai/plugin'`。源码直连没有这个问题，且省去构建步骤。
+
+## 发布 / 安装到用户环境
+
+发布或安装给其他用户时，构建并复制到 opencode 插件目录：
+
 ```bash
 cd apps/api/src/plugins/opencode
 bun run build
-node dist/cli.js install --dev
+node dist/cli.js install        # 生产模式：复制 dist + package.json 到 ~/.config/opencode/plugins/
 ```
+
+- `dist/index.js` 外部引用 `@opencode-ai/plugin` / `@opencode-ai/sdk`（与 host opencode 版本天然对齐），安装时会自动在插件目录执行 `bun install`（或 `npm install`）安装运行时依赖
+- 同时会把依赖声明到 `~/.config/opencode/package.json` 作为兜底（OpenCode 启动时自动安装）
+- 若依赖安装失败，安装向导会给出提示，插件仍会注册，重启 OpenCode 后由兜底机制补齐
+
+> `node dist/cli.js install --dev` 是遗留的软链安装方式，**已废弃不再执行**，仅打印提示。开发请使用上面的「开发模式」章节。
+
+## 后续计划：发布到 npm
+
+**本次迭代仍以 `node dist/cli.js install` 方式分发**（已确认，不改动）。将 `memory-recall-opencode` 发布到 npm 是后续计划，落地后用户安装方式简化为 opencode 配置直接引用：
+
+```jsonc
+// ~/.config/opencode/opencode.jsonc
+"plugin": ["memory-recall-opencode"]
+```
+
+opencode 启动时自动从 npm 安装插件到 `~/.cache/opencode/packages/`（arborist），用户无需下载 tar 包、无需运行 cli install。
+
+**版本管理约定**：
+
+- 语义化版本：`package.json` `version` 随功能变更递增（当前 1.8.2）
+- `prepublishOnly` 已配置（`bun run build`），发布前自动构建
+- `files` 字段已限定发布内容：`dist/`、`dist/i18n`、`README.md`
+- 发布命令（插件目录下执行）：`npm publish`（或 `bun publish`）
+
+**发布后需同步更新**：本文档「安装」章节改为用户配置方式；AGENTS.md 安装说明同步为 npm 安装。
+
+**依赖契约不变**：仍 `--external @opencode-ai/plugin @opencode-ai/sdk`，运行时依赖由宿主 opencode 安装（见下节）。
+
+## 依赖架构
+
+本插件的依赖策略遵循 opencode 官方推荐（[opencode.ai/docs/plugins](https://opencode.ai/docs/plugins/) 与 v2 文档 "include every runtime import in `dependencies`"）及生态主流做法：
+
+**源码只直接依赖 2 个包**（`package.json` `dependencies`）：
+
+| 包 | 使用位置 | 方式 |
+|---|---|---|
+| `@opencode-ai/plugin` | `src/tool.ts` | 运行时：`tool()` 注册工具 + `tool.schema.*` 定义参数 schema |
+| `@opencode-ai/sdk` | `src/compaction.ts` | 仅 `import type`（编译期擦除） |
+
+**关键约定**：
+
+1. **参数 schema 一律用 `tool.schema.*`，不要直接 `import { z } from "zod"`**。`tool.schema` 是官方暴露的 zod 命名空间（`typeof z`），它随 `@opencode-ai/plugin` 使用 zod v4，与宿主 opencode 同实例。直接依赖 zod（尤其低版本）会产生双 zod 实例，导致 schema 校验崩溃（社区真实踩坑：oh-my-opencode-slim commit `e5e1f9b`，`TypeError: n._zod.def is not an object`）。
+2. **构建时 `--external @opencode-ai/plugin --external @opencode-ai/sdk`，不打包**。opencode 加载 npm 插件时会自动安装插件及其生产依赖（`@npmcli/arborist`，缓存于 `~/.cache/opencode/packages/`），运行时从插件自身 node_modules 解析，与宿主版本天然对齐。打包会引入 ~1MB 的 effect/zod 副本与双实例风险，且任何知名插件都不这么做。
+
+> **缓存目录说明（2026-08 定稿）**：官方文档（opencode.ai/docs/plugins）仍写 "npm 插件由 Bun 启动时自动安装，缓存于 `~/.cache/opencode/node_modules/`"——该表述描述的是 **v1.4.3 之前的旧机制**（`bun add --cwd ~/.cache/opencode` 扁平安装，版本写进缓存目录顶层 package.json）。源码自 commit `c9326fc19`（2026-04-01，首个含此机制的 release v1.4.3）起一律用 `@npmcli/arborist` 按包安装到 `~/.cache/opencode/packages/<pkg>/`（每包独立 node_modules + package-lock.json），dev 分支（2026-08-12）与此一致，**以源码为准**。本机 `~/.cache/opencode/node_modules/`（bun.lock 4月17日）即旧机制遗留产物，当前版本不会再写入。
+3. **zod/effect 不直接声明**：它们是 `@opencode-ai/plugin` 的传递依赖，由宿主安装。
 
 ## 命令
 
 ```bash
 node dist/cli.js install           # 安装插件
-node dist/cli.js install --dev     # 开发模式
+node dist/cli.js install --dev     # 已废弃，不再执行（仅打印提示）
 node dist/cli.js uninstall         # 卸载插件（交互式）
 node dist/cli.js uninstall --force # 卸载插件（无需确认）
 node dist/cli.js status            # 查看状态
