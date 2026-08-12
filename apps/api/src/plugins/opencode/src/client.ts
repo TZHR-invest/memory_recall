@@ -84,6 +84,7 @@ export interface ProfileResponse {
 export interface ContextInjectConfig {
   inject_profile?: boolean;
   max_profile_items?: number;
+  max_static_profile_items?: number;
   max_memories?: number;
   max_chunks?: number;
   enable_semantic_dedup?: boolean;

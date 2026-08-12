@@ -197,6 +197,7 @@ async function server(input: PluginInput, options: Record<string, unknown> = {})
         result = await injectContextFromBackend(client, userMessage, userTag, projectTag, {
           injectProfile: isInitialInjection ? config.initialInjection.profile : false,
           maxProfileItems: config.maxProfileItems,
+          maxStaticProfileItems: config.maxStaticProfileItems,
           maxProjectMemories: isInitialInjection ? config.maxProjectMemories : config.smartRecall.maxAdditionalMemories,
           maxMemories: dynamicMaxMemories,
           maxChunks: maxChunksToUse,
@@ -213,6 +214,7 @@ async function server(input: PluginInput, options: Record<string, unknown> = {})
         result = await injectContext(client, userMessage, userTag, projectTag, {
           injectProfile: isInitialInjection ? config.initialInjection.profile : false,
           maxProfileItems: config.maxProfileItems,
+          maxStaticProfileItems: config.maxStaticProfileItems,
           maxProjectMemories: isInitialInjection ? config.maxProjectMemories : config.smartRecall.maxAdditionalMemories,
           maxMemories: dynamicMaxMemories,
           language: config.language,

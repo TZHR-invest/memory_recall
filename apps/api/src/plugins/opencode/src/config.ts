@@ -97,6 +97,7 @@ export interface Config {
   maxMemories: number;
   maxProjectMemories: number;
   maxProfileItems: number;
+  maxStaticProfileItems: number;
   injectProfile: boolean;
   compactionThreshold: number;
   enableSummaryCapture: boolean;
@@ -139,6 +140,7 @@ const DEFAULT_CONFIG: Omit<Config, "apiKey"> = {
   maxMemories: 5,
   maxProjectMemories: 10,
   maxProfileItems: 5,
+  maxStaticProfileItems: 20,
   injectProfile: true,
   compactionThreshold: 0.8,
   enableSummaryCapture: true,
@@ -296,6 +298,10 @@ function buildRawConfig(
       (overrides.maxProfileItems as number) ||
       (fileConfig.maxProfileItems as number) ||
       DEFAULT_CONFIG.maxProfileItems,
+    maxStaticProfileItems:
+      (overrides.maxStaticProfileItems as number) ||
+      (fileConfig.maxStaticProfileItems as number) ||
+      DEFAULT_CONFIG.maxStaticProfileItems,
     injectProfile:
       (overrides.injectProfile as boolean) ??
       (fileConfig.injectProfile as boolean) ??

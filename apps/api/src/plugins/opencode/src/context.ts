@@ -497,6 +497,7 @@ export interface ContextOptions {
   projectChunks: ChunkSearchResult[];
   locale: string;
   maxProfileItems: number;
+  maxStaticProfileItems: number;
   maxProjectItems: number;
   maxUserItems: number;
   maxChunksItems: number;
@@ -618,7 +619,7 @@ export function getAiGuidance(isZh: boolean): string[] {
 }
 
 export function formatContext(options: ContextOptions): string {
-  const { profile, projectMemories, userMemories, projectChunks, locale, maxProfileItems, maxProjectItems, maxUserItems, maxChunksItems, dedupedResult } = options;
+  const { profile, projectMemories, userMemories, projectChunks, locale, maxProfileItems, maxStaticProfileItems, maxProjectItems, maxUserItems, maxChunksItems, dedupedResult } = options;
   
   const isZh = locale === "zh_CN";
   const lines: string[] = [];
@@ -653,7 +654,7 @@ export function formatContext(options: ContextOptions): string {
   if (staticFacts.length > 0) {
     const staticTitle = isZh ? "### 永久特征" : "### Static Facts";
     lines.push(staticTitle);
-    staticFacts.slice(0, maxProfileItems).forEach((fact) => lines.push("- " + fact));
+    staticFacts.slice(0, maxStaticProfileItems).forEach((fact) => lines.push("- " + fact));
     lines.push("");
   }
 
@@ -724,6 +725,7 @@ export async function injectContext(
   config: {
     injectProfile: boolean;
     maxProfileItems: number;
+    maxStaticProfileItems: number;
     maxProjectMemories: number;
     maxMemories: number;
     language: string;
@@ -739,7 +741,6 @@ export async function injectContext(
   }
 ): Promise<ContextResult> {
   const locale = detectLocale(userMessage, config.language);
-
   let profile: Profile | null = null;
   if (config.injectProfile) {
     try {
@@ -826,7 +827,7 @@ export async function injectContext(
   }
 
   const profileCount = profile 
-    ? Math.min(profile.static.length, config.maxProfileItems) + Math.min(profile.dynamic.length, config.maxProfileItems)
+    ? Math.min(profile.static.length, config.maxStaticProfileItems) + Math.min(profile.dynamic.length, config.maxProfileItems)
     : 0;
   const projectCount = Math.min(projectMemories.length, config.maxProjectMemories);
   const userCount = Math.min(mergedMemories.length, config.maxMemories);
@@ -841,6 +842,7 @@ export async function injectContext(
     projectChunks,
     locale,
     maxProfileItems: config.maxProfileItems,
+    maxStaticProfileItems: config.maxStaticProfileItems,
     maxProjectItems: config.maxProjectMemories,
     maxUserItems: config.maxMemories,
     maxChunksItems: config.maxChunks,
@@ -872,6 +874,7 @@ export async function injectContextFromBackend(
   config: {
     injectProfile: boolean;
     maxProfileItems: number;
+    maxStaticProfileItems: number;
     maxProjectMemories: number;
     maxMemories: number;
     maxChunks: number;
@@ -888,6 +891,8 @@ export async function injectContextFromBackend(
   const apiConfig: ContextInjectConfig = {
     inject_profile: config.injectProfile,
     max_profile_items: config.maxProfileItems,
+    max_static_profile_items: config.maxStaticProfileItems,
+    max_static_profile_items: config.maxStaticProfileItems,
     max_memories: config.maxMemories,
     max_chunks: config.maxChunks,
     enable_semantic_dedup: config.semanticDedup?.enabled ?? true,

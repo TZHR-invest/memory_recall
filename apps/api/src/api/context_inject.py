@@ -18,7 +18,10 @@ router = APIRouter(tags=["Context Injection"])
 
 class ContextInjectConfig(BaseModel):
     inject_profile: bool = Field(False, description="是否注入用户画像")
-    max_profile_items: int = Field(10, ge=1, le=50, description="最大画像条目数")
+    max_profile_items: int = Field(10, ge=1, le=50, description="最大画像条目数（dynamic 动态记忆上限）")
+    max_static_profile_items: int = Field(
+        20, ge=1, le=100, description="最大静态画像条目数（static 永久特征，量少应尽量全量注入）"
+    )
     max_memories: int = Field(5, ge=1, le=20, description="最大记忆数")
     max_chunks: int = Field(3, ge=1, le=10, description="最大文档片段数")
     enable_semantic_dedup: bool = Field(True, description="启用语义去重")
