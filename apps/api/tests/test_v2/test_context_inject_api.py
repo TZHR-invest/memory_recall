@@ -320,12 +320,11 @@ class TestContextInjectAPI:
                 )
             )
 
-        # 上下文渲染：memory 20 → cap 12；chunk 8 → cap 4
+        # cap 统一在去重后应用：context/stats/trace.final 三者一致
         assert result["context"].count("- 记忆内容") == 12
         assert result["context"].count("- 文档内容") == 4
-        # stats 反映去重后总量（不裁剪），context 才是 cap 后的
-        assert result["stats"]["memories_count"] == 20
-        assert result["stats"]["chunks_count"] == 8
+        assert result["stats"]["memories_count"] == 12
+        assert result["stats"]["chunks_count"] == 4
 
     def test_subagent_query_downscale(
         self, mock_profile_service, mock_memory_store, mock_document_store

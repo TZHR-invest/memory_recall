@@ -75,12 +75,14 @@ class ContextInjectService:
             )
             trace.mark_dedup()
 
-            context = self._format_context(deduped_items, config.get("language", "auto"))
-            trace.record_final(deduped_items)
+            capped_items = self._apply_injection_caps(deduped_items)
+
+            context = self._format_context(capped_items, config.get("language", "auto"))
+            trace.record_final(capped_items)
             trace.mark_format()
 
-            sources = self._build_sources(profile, memories, chunks, deduped_items)
-            stats = self._build_stats(all_items, deduped_items)
+            sources = self._build_sources(profile, memories, chunks, capped_items)
+            stats = self._build_stats(all_items, capped_items)
 
             if await recall_trace_service.should_record(force=include_trace):
                 await recall_trace_service.save(trace)
@@ -157,10 +159,12 @@ class ContextInjectService:
             )
             trace.mark_dedup()
 
+            capped_items = self._apply_injection_caps(deduped_items)
+
             context = self._format_context_with_tags(
-                deduped_items, config.get("language", "auto")
+                capped_items, config.get("language", "auto")
             )
-            trace.record_final(deduped_items)
+            trace.record_final(capped_items)
             trace.mark_format()
 
             sources = self._build_sources_with_tags(
@@ -169,9 +173,9 @@ class ContextInjectService:
                 project_memories,
                 user_chunks,
                 project_chunks,
-                deduped_items,
+                capped_items,
             )
-            stats = self._build_stats_with_tags(all_items, deduped_items)
+            stats = self._build_stats_with_tags(all_items, capped_items)
 
             if await recall_trace_service.should_record(force=include_trace):
                 await recall_trace_service.save(trace)
@@ -740,6 +744,19 @@ class ContextInjectService:
 
         return items
 
+    def _apply_injection_caps(self, items: List[DedupItem]) -> List[DedupItem]:
+        """最终注入分层 cap：profile 不裁剪；memory(project+user 合并) 12 条；chunk 4 条。
+
+        在去重后、渲染前统一应用，保证 context/stats/trace.final 三者一致。
+        截断按 dedup 输出顺序（来源优先级：profile > projectMemory > userMemory > chunk）。
+        """
+        memory_items = [i for i in items if i.source in ("projectMemory", "userMemory")][
+            :12
+        ]
+        chunk_items = [i for i in items if i.source == "chunk"][:4]
+        profile_items = [i for i in items if i.source == "profile"]
+        return profile_items + memory_items + chunk_items
+
     def _format_context(
         self,
         items: List[DedupItem],
@@ -754,10 +771,8 @@ class ContextInjectService:
         lines.append("")
 
         profile_items = [i for i in items if i.source == "profile"]
-        memory_items = [i for i in items if i.source in ("userMemory", "projectMemory")][
-            :12
-        ]
-        chunk_items = [i for i in items if i.source == "chunk"][:4]
+        memory_items = [i for i in items if i.source in ("userMemory", "projectMemory")]
+        chunk_items = [i for i in items if i.source == "chunk"]
 
         if profile_items:
             lines.append("### 永久特征" if is_zh else "### Static Facts")
@@ -809,12 +824,9 @@ class ContextInjectService:
         lines.append("")
 
         profile_items = [i for i in items if i.source == "profile"]
-        memory_items = [
-            i for i in items if i.source in ("projectMemory", "userMemory")
-        ][:12]
-        project_memory_items = [i for i in memory_items if i.source == "projectMemory"]
-        user_memory_items = [i for i in memory_items if i.source == "userMemory"]
-        chunk_items = [i for i in items if i.source == "chunk"][:4]
+        project_memory_items = [i for i in items if i.source == "projectMemory"]
+        user_memory_items = [i for i in items if i.source == "userMemory"]
+        chunk_items = [i for i in items if i.source == "chunk"]
 
         if profile_items:
             lines.append("### 永久特征" if is_zh else "### Static Facts")
