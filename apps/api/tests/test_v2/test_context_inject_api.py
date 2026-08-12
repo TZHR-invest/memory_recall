@@ -531,6 +531,42 @@ class TestContextInjectAPI:
         assert items[0].source == "userMemory"
         assert items[0].priority == 1  # userMemory 默认 2，降 1 级
 
+    def test_extract_query_keywords_jieba(self):
+        """jieba 关键词提取统一小写，英文/中文均保留"""
+        from src.services.core.context_inject_service import context_inject_service
+
+        kw = context_inject_service._extract_query_keywords(
+            "帮我更新 memory recall 插件"
+        )
+        assert "memory" in kw and "recall" in kw and "插件" in kw
+
+    def test_edge_keyword_hit_not_low_confidence(
+        self, mock_profile_service, mock_memory_store, mock_document_store
+    ):
+        """边缘命中但 query 关键词与内容有交集时不应标记 low_confidence
+        （避免"最近的热点研究"这类长内容相关记忆被降级截断）"""
+        from src.services.core.context_inject_service import context_inject_service
+
+        mock_memory_store.search = AsyncMock(
+            return_value=[
+                {
+                    "id": "m_hot",
+                    "content": "2026-07-15热点研究：中际旭创70亿美元香港上市计划接近获批",
+                    "embedding": [1.0, 0.0],
+                    "similarity": 0.44,
+                }
+            ]
+        )
+        mock_memory_store.get_by_container = AsyncMock(return_value=[])
+        mock_memory_store.get_by_id = AsyncMock(return_value=None)
+
+        # 直接验证关键词交集判定：query 含"热点研究"，content 也含，交集命中
+        qk = context_inject_service._extract_query_keywords("最近的热点研究")
+        ck = context_inject_service._extract_query_keywords(
+            "2026-07-15热点研究：中际旭创70亿美元香港上市计划接近获批"
+        )
+        assert qk & ck  # 交集非空 → 不降级
+
     def test_entity_chunk_similarity_gate(
         self, mock_profile_service, mock_memory_store, mock_document_store
     ):

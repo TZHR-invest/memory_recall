@@ -327,21 +327,35 @@ class ContextInjectService:
                             full_candidate=full_candidate,
                         )
 
+                    # 边缘命中（0.40-0.45）二段验证：query 关键词与内容有交集才算低置信降级，
+                    # 否则保留——避免"最近的热点研究"这类长内容记忆被误伤（trace 实测 4/5 被截）
+                    edge_low, edge_high = config.get(
+                        "memory_similarity_threshold", 0.40
+                    ), config.get("memory_similarity_threshold", 0.40) + 0.05
+                    if query:
+                        _qk = self._extract_query_keywords(query)
+                    else:
+                        _qk = set()
+
                     for r in search_results:
                         mem_id = r.get("id")
                         if mem_id and mem_id not in seen_ids:
                             seen_ids.add(mem_id)
+                            sim = r.get("similarity", 0.0)
+                            in_edge = edge_low <= sim < edge_high
+                            kw_hit = False
+                            if in_edge:
+                                _ck = self._extract_query_keywords(r.get("content", ""))
+                                kw_hit = bool(_qk & _ck)
                             all_memories.append(
                                 {
                                     "id": mem_id,
                                     "content": r.get("content", ""),
                                     "embedding": r.get("embedding"),
                                     "is_static": False,
-                                    "similarity": r.get("similarity", 0.0),
-                                    # 边缘命中（0.40-0.45）标记为低置信：注入时降优先级，让 cap 优先保留高分记忆
-                                    "low_confidence": 0.0
-                                    < r.get("similarity", 0.0)
-                                    < config.get("memory_similarity_threshold", 0.40) + 0.05,
+                                    "similarity": sim,
+                                    # 仅"边缘命中且关键词无交集"标记低置信：降级让 cap 截断
+                                    "low_confidence": in_edge and not kw_hit,
                                 }
                             )
 
@@ -658,6 +672,19 @@ class ContextInjectService:
             )
         except Exception:
             return 0.0
+
+    def _extract_query_keywords(self, text: str) -> set:
+        """jieba 提取关键词用于边缘命中二段验证；jieba 不可用时回退到正则切分"""
+        try:
+            from src.services.jieba_service import extract_keywords
+
+            words = extract_keywords(text)
+        except ImportError:
+            import re as _re
+
+            tokens = _re.split(r"[，。！？、；：\s,.;!?]+", text)
+            words = [t for t in tokens if len(t) >= 2 and not t.isdigit()]
+        return {w.lower() for w in words}
 
     def _is_subagent_query(self, query: Optional[str]) -> bool:
         if not query:
