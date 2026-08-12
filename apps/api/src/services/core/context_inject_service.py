@@ -132,11 +132,18 @@ class ContextInjectService:
             trace.mark_profile()
 
             user_memories = await self._get_memories(user_tag, query, config, trace, scope="user")
-            project_memories = await self._get_memories(project_tag, query, config, trace, scope="project")
+            if user_tag == project_tag:
+                # user/project 指向同一容器时复用结果，避免重复 embedding 搜索
+                project_memories = user_memories
+            else:
+                project_memories = await self._get_memories(project_tag, query, config, trace, scope="project")
             trace.mark_memories()
 
             user_chunks = await self._get_chunks(user_tag, query, config, trace, scope="user")
-            project_chunks = await self._get_chunks(project_tag, query, config, trace, scope="project")
+            if user_tag == project_tag:
+                project_chunks = user_chunks
+            else:
+                project_chunks = await self._get_chunks(project_tag, query, config, trace, scope="project")
             trace.mark_chunks()
 
             all_items = self._collect_items_with_tags(

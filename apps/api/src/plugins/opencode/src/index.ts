@@ -224,8 +224,6 @@ async function server(input: PluginInput, options: Record<string, unknown> = {})
           maxChunks: maxChunksToUse,
           chunksSimilarityThreshold: config.chunksSimilarityThreshold,
           chunksDocTypes: config.chunksDocTypes,
-          similarityThreshold: config.similarityThreshold,
-          entityChunkThreshold: config.entityChunkThreshold,
           enableGraphRecall: config.enableGraphRecall,
           enableEntityRecall: config.enableEntityRecall,
           graphMaxDepth: config.graphMaxDepth,

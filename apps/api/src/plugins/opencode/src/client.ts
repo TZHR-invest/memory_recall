@@ -287,10 +287,10 @@ export class ApiClient {
       params.append("query", query);
     }
     if (maxStatic !== undefined) {
-      params.append("max_static", maxStatic.toString());
+      params.append("max_static", Math.min(maxStatic, 50).toString());
     }
     if (maxDynamic !== undefined) {
-      params.append("max_dynamic", maxDynamic.toString());
+      params.append("max_dynamic", Math.min(maxDynamic, 50).toString());
     }
     return this.request<ProfileResponse>(`/profile?${params.toString()}`);
   }

@@ -204,18 +204,12 @@ export function createTool(client: ApiClient, config: Config, documentTracker: D
             scope: scope,
           }));
           
-          const userChunkResults = (response.sources.user_chunks || []).slice(0, limit).map((c) => ({
-            id: c.id,
-            content: c.content,
-            type: "document",
-            scope: scope === "project" ? "project" : "user",
-          }));
-          
+          // 后端 _build_sources_with_tags 恒返回 user_chunks=[]（用户文档已并入 chunks 桶），
+          // 故不单独合并 userChunkResults
           const allResults = [
             ...memoryResults,
             ...userMemoryResults,
             ...chunkResults,
-            ...userChunkResults,
           ];
           
           return {
@@ -224,7 +218,7 @@ export function createTool(client: ApiClient, config: Config, documentTracker: D
             count: allResults.length,
             results: allResults,
             breakdown: {
-              memories: memoryResults.length,
+              memories: memoryResults.length + userMemoryResults.length,
               documents: chunkResults.length,
             },
             graphRecall: {
