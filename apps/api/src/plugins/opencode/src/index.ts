@@ -209,6 +209,8 @@ async function server(input: PluginInput, options: Record<string, unknown> = {})
           graphMaxNodes: config.graphMaxNodes,
           enableChunksSearch: config.enableChunksSearch,
           chunksSimilarityThreshold: config.chunksSimilarityThreshold,
+          similarityThreshold: config.similarityThreshold,
+          entityChunkThreshold: config.entityChunkThreshold,
         });
       } else {
         result = await injectContext(client, userMessage, userTag, projectTag, {
@@ -218,10 +220,12 @@ async function server(input: PluginInput, options: Record<string, unknown> = {})
           maxProjectMemories: isInitialInjection ? config.maxProjectMemories : config.smartRecall.maxAdditionalMemories,
           maxMemories: dynamicMaxMemories,
           language: config.language,
-          enableChunksSearch: true,
+          enableChunksSearch: config.enableChunksSearch,
           maxChunks: maxChunksToUse,
           chunksSimilarityThreshold: config.chunksSimilarityThreshold,
           chunksDocTypes: config.chunksDocTypes,
+          similarityThreshold: config.similarityThreshold,
+          entityChunkThreshold: config.entityChunkThreshold,
           enableGraphRecall: config.enableGraphRecall,
           enableEntityRecall: config.enableEntityRecall,
           graphMaxDepth: config.graphMaxDepth,

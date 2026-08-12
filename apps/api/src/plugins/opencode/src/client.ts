@@ -99,6 +99,7 @@ export interface ContextInjectConfig {
   language?: string;
   enable_chunks_search?: boolean;
   chunks_similarity_threshold?: number;
+  entity_chunk_threshold?: number;
 }
 
 export interface ContextInjectSource {
@@ -277,11 +278,19 @@ export class ApiClient {
 
   async getProfile(
     containerTag: string,
-    query?: string
+    query?: string,
+    maxStatic?: number,
+    maxDynamic?: number
   ): Promise<ProfileResponse> {
     const params = new URLSearchParams({ container_tag: containerTag });
     if (query) {
       params.append("query", query);
+    }
+    if (maxStatic !== undefined) {
+      params.append("max_static", maxStatic.toString());
+    }
+    if (maxDynamic !== undefined) {
+      params.append("max_dynamic", maxDynamic.toString());
     }
     return this.request<ProfileResponse>(`/profile?${params.toString()}`);
   }

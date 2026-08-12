@@ -744,7 +744,12 @@ export async function injectContext(
   let profile: Profile | null = null;
   if (config.injectProfile) {
     try {
-      const response = await client.getProfile(userTag, userMessage);
+      const response = await client.getProfile(
+        userTag,
+        userMessage,
+        config.maxStaticProfileItems,
+        config.maxProfileItems
+      );
       profile = response.profile;
     } catch {}
   }
@@ -886,6 +891,9 @@ export async function injectContextFromBackend(
     graphMaxNodes?: number;
     enableChunksSearch?: boolean;
     chunksSimilarityThreshold?: number;
+    similarityThreshold?: number;
+    entityChunkThreshold?: number;
+    chunksDocTypes?: string[];
   }
 ): Promise<ContextResult> {
   const apiConfig: ContextInjectConfig = {
@@ -905,6 +913,8 @@ export async function injectContextFromBackend(
     language: config.language === "auto" ? "auto" : (config.language === "zh_CN" ? "zh_CN" : "en_US"),
     enable_chunks_search: config.enableChunksSearch ?? true,
     chunks_similarity_threshold: config.chunksSimilarityThreshold ?? 0.45,
+    memory_similarity_threshold: config.similarityThreshold,
+    entity_chunk_threshold: config.entityChunkThreshold,
   };
 
   try {
@@ -945,9 +955,9 @@ export async function injectContextFromBackend(
     console.warn("Backend context injection failed, falling back to frontend:", error);
     return injectContext(client, userMessage, userTag, projectTag, {
       ...config,
-      enableChunksSearch: true,
-      chunksSimilarityThreshold: 0.5,
-      chunksDocTypes: [],
+      enableChunksSearch: config.enableChunksSearch ?? true,
+      chunksSimilarityThreshold: config.chunksSimilarityThreshold ?? 0.45,
+      chunksDocTypes: config.chunksDocTypes ?? [],
       enableGraphRecall: config.enableGraphRecall ?? false,
       enableEntityRecall: config.enableEntityRecall ?? false,
     });

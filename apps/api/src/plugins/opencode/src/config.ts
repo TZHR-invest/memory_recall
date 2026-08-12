@@ -110,6 +110,7 @@ export interface Config {
   enableChunksSearch: boolean;
   maxChunks: number;
   chunksSimilarityThreshold: number;
+  entityChunkThreshold: number;
   chunksDocTypes: string[];
   enableGraphRecall: boolean;
   enableEntityRecall: boolean;
@@ -158,6 +159,7 @@ const DEFAULT_CONFIG: Omit<Config, "apiKey"> = {
   enableChunksSearch: true,
   maxChunks: 5,
   chunksSimilarityThreshold: 0.45,
+  entityChunkThreshold: 0.30,
   chunksDocTypes: [],
   enableGraphRecall: true,
   enableEntityRecall: true,
@@ -351,6 +353,10 @@ function buildRawConfig(
       (overrides.chunksSimilarityThreshold as number) ||
       (fileConfig.chunksSimilarityThreshold as number) ||
       DEFAULT_CONFIG.chunksSimilarityThreshold,
+    entityChunkThreshold:
+      (overrides.entityChunkThreshold as number) ??
+      (fileConfig.entityChunkThreshold as number) ??
+      DEFAULT_CONFIG.entityChunkThreshold,
     chunksDocTypes:
       (overrides.chunksDocTypes as string[]) ||
       (fileConfig.chunksDocTypes as string[]) ||

@@ -190,6 +190,13 @@ export function createTool(client: ApiClient, config: Config, documentTracker: D
             scope: scope,
           }));
           
+          const userMemoryResults = (response.sources.user_memories || []).slice(0, limit).map((m) => ({
+            id: m.id,
+            content: m.content,
+            type: "memory",
+            scope: scope === "project" ? "project" : "user",
+          }));
+          
           const chunkResults = (response.sources.chunks || []).slice(0, limit).map((c) => ({
             id: c.id,
             content: c.content,
@@ -197,7 +204,19 @@ export function createTool(client: ApiClient, config: Config, documentTracker: D
             scope: scope,
           }));
           
-          const allResults = [...memoryResults, ...chunkResults];
+          const userChunkResults = (response.sources.user_chunks || []).slice(0, limit).map((c) => ({
+            id: c.id,
+            content: c.content,
+            type: "document",
+            scope: scope === "project" ? "project" : "user",
+          }));
+          
+          const allResults = [
+            ...memoryResults,
+            ...userMemoryResults,
+            ...chunkResults,
+            ...userChunkResults,
+          ];
           
           return {
             success: true,
