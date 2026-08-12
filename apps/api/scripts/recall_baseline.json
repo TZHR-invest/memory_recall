@@ -1,0 +1,11 @@
+{
+  "queries": 10,
+  "totals": {
+    "profile": 230,
+    "project_memory": 17,
+    "user_memory": 29,
+    "chunk": 5
+  },
+  "avg_total_per_query": 28.1,
+  "errors": []
+}

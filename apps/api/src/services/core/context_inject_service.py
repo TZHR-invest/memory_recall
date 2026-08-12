@@ -206,17 +206,18 @@ class ContextInjectService:
             return {"static": [], "dynamic": []}
 
         try:
-            profile_data = await profile_service.get_profile(container_tag)
+            max_static = config.get("max_static_profile_items", 20)
+            max_dynamic = config.get("max_profile_items", 10)
+            # 将配置上限透传给 profile_service，避免其默认 20/10 先截断导致配置失效
+            profile_data = await profile_service.get_profile(
+                container_tag, max_static=max_static, max_dynamic=max_dynamic
+            )
             profile = profile_data.get("profile", {})
             # static 为永久特征（量少、价值与时间无关），按 max_static_profile_items 全量注入；
             # dynamic 为近期活动（时效即价值），按 max_profile_items 取最新
             return {
-                "static": profile.get("static", [])[
-                    : config.get("max_static_profile_items", 20)
-                ],
-                "dynamic": profile.get("dynamic", [])[
-                    : config.get("max_profile_items", 10)
-                ],
+                "static": profile.get("static", [])[:max_static],
+                "dynamic": profile.get("dynamic", [])[:max_dynamic],
             }
         except Exception:
             return {"static": [], "dynamic": []}

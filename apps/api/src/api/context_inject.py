@@ -89,6 +89,7 @@ class ContextStats(BaseModel):
     total_items: int = Field(0, description="总条目数")
     after_dedup: int = Field(0, description="去重后条目数")
     deduped_count: int = Field(0, description="被去重的条目数")
+    capped_count: int = Field(0, description="最终注入条目数（cap 后）")
     profile_count: int = Field(0, description="画像条目数")
     project_memories_count: int = Field(0, description="项目记忆条目数")
     user_memories_count: int = Field(0, description="用户记忆条目数")
