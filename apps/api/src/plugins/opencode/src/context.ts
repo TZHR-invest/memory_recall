@@ -892,7 +892,6 @@ export async function injectContextFromBackend(
     inject_profile: config.injectProfile,
     max_profile_items: config.maxProfileItems,
     max_static_profile_items: config.maxStaticProfileItems,
-    max_static_profile_items: config.maxStaticProfileItems,
     max_memories: config.maxMemories,
     max_chunks: config.maxChunks,
     enable_semantic_dedup: config.semanticDedup?.enabled ?? true,

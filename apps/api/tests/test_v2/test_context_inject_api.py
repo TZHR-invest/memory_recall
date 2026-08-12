@@ -136,6 +136,79 @@ class TestContextInjectAPI:
         assert result["stats"]["memories_count"] == 0
         assert result["stats"]["chunks_count"] == 0
 
+    def test_profile_static_dynamic_split_truncation(
+        self, mock_profile_service, mock_memory_store, mock_document_store
+    ):
+        """static 按 max_static_profile_items 全量注入，dynamic 按 max_profile_items 截断"""
+        from src.services.core.context_inject_service import context_inject_service
+
+        mock_profile_service.get_profile = AsyncMock(
+            return_value={
+                "profile": {
+                    "static": [f"静态偏好{i}" for i in range(15)],
+                    "dynamic": [f"动态活动{i}" for i in range(8)],
+                }
+            }
+        )
+        mock_memory_store.get_by_container = AsyncMock(return_value=[])
+
+        result = asyncio.run(
+            context_inject_service.inject(
+                container_tag="user_test",
+                query=None,
+                config={
+                    "inject_profile": True,
+                    "max_profile_items": 3,
+                    "max_static_profile_items": 20,
+                    "max_memories": 0,
+                    "max_chunks": 0,
+                    "enable_semantic_dedup": False,
+                    "language": "zh_CN",
+                },
+                include_trace=True,
+            )
+        )
+
+        trace = result["trace"]["channels"]["profile"]
+        assert trace["static_count"] == 15
+        assert trace["dynamic_count"] == 3
+
+    def test_profile_static_default_cap(
+        self, mock_profile_service, mock_memory_store, mock_document_store
+    ):
+        """未传 max_static_profile_items 时，static 走 service 默认 20 而非 max_profile_items"""
+        from src.services.core.context_inject_service import context_inject_service
+
+        mock_profile_service.get_profile = AsyncMock(
+            return_value={
+                "profile": {
+                    "static": [f"静态偏好{i}" for i in range(25)],
+                    "dynamic": ["动态活动"],
+                }
+            }
+        )
+        mock_memory_store.get_by_container = AsyncMock(return_value=[])
+
+        result = asyncio.run(
+            context_inject_service.inject(
+                container_tag="user_test",
+                query=None,
+                config={
+                    "inject_profile": True,
+                    "max_profile_items": 5,
+                    "max_memories": 0,
+                    "max_chunks": 0,
+                    "enable_semantic_dedup": False,
+                    "language": "zh_CN",
+                },
+                include_trace=True,
+            )
+        )
+
+        trace = result["trace"]["channels"]["profile"]
+        assert trace["static_count"] == 20
+        assert trace["dynamic_count"] == 1
+
     def test_context_inject_no_profile(
         self, mock_profile_service, mock_memory_store, mock_document_store
     ):
