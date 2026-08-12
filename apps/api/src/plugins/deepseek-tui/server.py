@@ -217,15 +217,15 @@ async def _delete_doc(args):
     return [TextContent(type="text", text=f"✅ Deleted doc {args['documentId']}")]
 
 async def _hybrid_search(args):
-    r = (await api("POST", "/hybrid-search", body={"query": args["query"], "container_tag": _tag(args.get("scope","project")), "limit": args.get("limit",10)})).get("results", [])
+    r = (await api("POST", "/search/hybrid", body={"query": args["query"], "container_tag": _tag(args.get("scope","project")), "limit": args.get("limit",10)})).get("results", [])
     if not r: return [TextContent(type="text", text="No results.")]
     lines = [f"Hybrid search ({len(r)}):\n"]
     for i, m in enumerate(r, 1): lines.append(f"{i}. [{m.get('source','?')}] [{int(m.get('similarity',0)*100)}%] {m.get('content','')[:200]}")
     return [TextContent(type="text", text="\n".join(lines))]
 
 async def _extract_memory(args):
-    body = {"content": args["summary"], "container_tag": _tag(args.get("scope","project")), "extract_only": True, "async_process": args.get("asyncProcess", True)}
-    extracted = (await api("POST", "/memories/extract", body=body)).get("memories", [])
+    body = {"summary": args["summary"], "language": args.get("language", "zh_CN")}
+    extracted = (await api("POST", "/extract-memory", body=body)).get("memories", [])
     if not extracted: return [TextContent(type="text", text="No worth-saving memories found.")]
     lines = [f"Extracted {len(extracted)}:\n"]
     for i, m in enumerate(extracted, 1): lines.append(f"{i}. {m.get('content','')[:150]}")
