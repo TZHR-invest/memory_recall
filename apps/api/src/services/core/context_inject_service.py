@@ -3,10 +3,13 @@
 统一处理用户画像、记忆、文档片段的获取和语义去重
 """
 
+import logging
 from typing import Dict, Any, List, Optional
 import time
 import re
 import random
+
+logger = logging.getLogger(__name__)
 
 from src.config import settings
 from src.database import db
@@ -468,6 +471,18 @@ class ContextInjectService:
                                             limit=max_memories,
                                         )
                                     )
+                                    new_ids = [
+                                        m.id
+                                        for m in entity_memories
+                                        if m.id not in seen_ids
+                                    ]
+                                    logger.info(
+                                        "entity_graph: %d entity_ids -> %d memories (%d new: %s)",
+                                        len(entity_ids),
+                                        len(entity_memories),
+                                        len(new_ids),
+                                        new_ids[:5],
+                                    )
 
                                     for m in entity_memories:
                                         if m.id not in seen_ids:
@@ -486,8 +501,14 @@ class ContextInjectService:
                                                     {"id": m.id, "content": m.content},
                                                     scope=scope,
                                                 )
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logger.error(
+                                "entity_graph injection failed (entities=%s, entity_ids=%d): %s",
+                                [en.name for en in entities[:5]] if entities else [],
+                                len(entity_ids) if "entity_ids" in dir() else -1,
+                                e,
+                                exc_info=True,
+                            )
 
             # 2026-04-24: 移除 recent_memories 填充逻辑
             # 原逻辑在语义搜索结果不足时用"最近记忆"补位，
