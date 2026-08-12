@@ -885,6 +885,8 @@ class ContextInjectService:
 
     def _detect_chinese(self, items: List[DedupItem]) -> bool:
         for item in items:
+            if not item.content:
+                continue
             chinese_chars = sum(1 for c in item.content if "\u4e00" <= c <= "\u9fff")
             if chinese_chars / len(item.content) > 0.3:
                 return True
