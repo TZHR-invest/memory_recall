@@ -224,9 +224,14 @@ class ContextInjectService:
         try:
             max_static = config.get("max_static_profile_items", 30)
             max_dynamic = config.get("max_profile_items", 10)
-            # 将配置上限透传给 profile_service，避免其默认 20/10 先截断导致配置失效
+            # 请求上限取缓存构建上限（100/50），避免 profile_service 的 max_static 预截断
+            # 在分层分类之前丢弃老行为规则——cap 必须在分层之后施加
+            fetch_static = max(max_static, 100)
+            fetch_dynamic = max(max_dynamic, 50)
             profile_data = await profile_service.get_profile(
-                container_tag, max_static=max_static, max_dynamic=max_dynamic
+                container_tag,
+                max_static=fetch_static,
+                max_dynamic=fetch_dynamic,
             )
             profile = profile_data.get("profile", {})
             # static 分层注入：行为规则（无临时标记）全量注入永不截断，

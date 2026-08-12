@@ -257,6 +257,49 @@ class TestContextInjectAPI:
         injected = [i for i in trace["items"] if "行为规则" in i]
         assert len(injected) == 10
 
+    def test_get_profile_requests_full_static_for_layering(
+        self, mock_profile_service, mock_memory_store, mock_document_store
+    ):
+        """分层注入请求 profile_service 时必须取全量（fetch=缓存上限），cap 在分层后施加"""
+        from src.services.core.context_inject_service import context_inject_service
+        from src.services.core.profile_service import profile_service as real_ps
+
+        captured = {}
+
+        async def fake_get_profile(container_tag, max_static, max_dynamic):
+            captured["max_static"] = max_static
+            captured["max_dynamic"] = max_dynamic
+            return {
+                "profile": {
+                    "static": [f"规则{i}" for i in range(35)],
+                    "dynamic": ["动态活动"],
+                }
+            }
+
+        mock_profile_service.get_profile = fake_get_profile
+        mock_memory_store.get_by_container = AsyncMock(return_value=[])
+
+        asyncio.run(
+            context_inject_service.inject(
+                container_tag="user_test",
+                query=None,
+                config={
+                    "inject_profile": True,
+                    "max_static_profile_items": 30,
+                    "max_profile_items": 5,
+                    "max_memories": 0,
+                    "max_chunks": 0,
+                    "enable_semantic_dedup": False,
+                    "language": "zh_CN",
+                },
+                include_trace=True,
+            )
+        )
+
+        # fetch 取缓存构建上限 100，而非 cap 30——防止 profile_service 预截断丢弃老行为规则
+        assert captured["max_static"] == real_ps._CACHE_STATIC_LIMIT
+        assert captured["max_dynamic"] == real_ps._CACHE_DYNAMIC_LIMIT
+
     def test_is_transient_static_classification(
         self, mock_profile_service, mock_memory_store, mock_document_store
     ):

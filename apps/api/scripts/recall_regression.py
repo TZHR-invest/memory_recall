@@ -92,7 +92,7 @@ async def run_query(query: str, config: dict, user_tag: str, project_tag: str) -
         config={
             "inject_profile": True,
             "max_profile_items": 5,
-            "max_static_profile_items": 20,
+            "max_static_profile_items": 30,
             "max_memories": 5,
             "max_chunks": 3,
             "enable_memory_graph": True,
