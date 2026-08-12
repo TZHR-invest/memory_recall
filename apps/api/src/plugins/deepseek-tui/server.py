@@ -193,14 +193,15 @@ async def _restore(args):
     return [TextContent(type="text", text=f"✅ Restored {args['memoryId']}")]
 
 async def _import_docs(args):
-    body = {"content": args["content"], "doc_type": args.get("doc_type","text")}
+    scope = args.get("scope", "project")
+    body = {"content": args["content"], "doc_type": args.get("doc_type","text"), "container_tag": _tag(scope)}
     if args.get("title"): body["title"] = args["title"]
     if args.get("source"): body["source"] = args["source"]
     r = await api("POST", "/documents", body=body)
-    return [TextContent(type="text", text=f"✅ Imported doc\nID: {r.get('id','N/A')}")]
+    return [TextContent(type="text", text=f"✅ Imported doc\nID: {r.get('id','N/A')}\nScope: {scope}")]
 
 async def _list_docs(args):
-    r = (await api("GET", "/documents", params={"limit": args.get("limit",20)})).get("documents", [])
+    r = (await api("GET", "/documents", params={"container_tag": _tag(args.get("scope","project")), "limit": args.get("limit",20)})).get("documents", [])
     if not r: return [TextContent(type="text", text="No documents.")]
     lines = [f"Total {len(r)} docs:\n"]
     for i, d in enumerate(r, 1): lines.append(f"{i}. [{d.get('doc_type','text')}] {d.get('title','N/A')} ({d['id'][:12]}...)")
