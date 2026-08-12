@@ -110,6 +110,22 @@ class TestRecallTrace:
         trace.record_vector([{"id": "m", "content": "c", "similarity": 0.8}], 0.4)
         assert "full_candidate" not in trace.channels["vector"]
 
+    def test_record_profile_enabled_derived_from_items(self):
+        """enabled 未显式传入时按实际注入结果推导——修复'已关闭但 final 有 profile'分裂"""
+        trace = RecallTrace("tags", "proj", "user", "proj", "q", {})
+        # 有数据 → enabled 应推导为 True（此前默认 False 导致 trace 显示已关闭但实际注入了）
+        trace.record_profile(["静态规则1", "静态规则2"], ["动态1"])
+        assert trace.channels["profile"]["enabled"] is True
+        assert trace.channels["profile"]["static_count"] == 2
+        # 无数据 → enabled 推导为 False
+        trace2 = RecallTrace("tags", "proj", "user", "proj", "q", {})
+        trace2.record_profile([], [])
+        assert trace2.channels["profile"]["enabled"] is False
+        # 显式传入仍尊重调用方
+        trace3 = RecallTrace("tags", "proj", "user", "proj", "q", {})
+        trace3.record_profile([], [], enabled=True)
+        assert trace3.channels["profile"]["enabled"] is True
+
     def test_record_final_and_summary(self):
         trace = RecallTrace("single", "c", "c", None, "q", {})
         items = [

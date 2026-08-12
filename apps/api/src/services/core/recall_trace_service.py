@@ -69,7 +69,16 @@ class RecallTrace:
 
     # ---------- channel recorders (read-only instrumentation) ----------
 
-    def record_profile(self, static: List[str], dynamic: List[str], enabled: bool) -> None:
+    def record_profile(
+        self,
+        static: List[str],
+        dynamic: List[str],
+        enabled: Optional[bool] = None,
+    ) -> None:
+        # enabled 未显式传入时按实际注入结果推导，保证 trace 与 final 一致
+        # （此前默认值 False 与 _get_profile 的 True 不一致，导致"已关闭但 final 有 profile"）
+        if enabled is None:
+            enabled = bool(static) or bool(dynamic)
         self.channels["profile"].update(
             {
                 "enabled": enabled,

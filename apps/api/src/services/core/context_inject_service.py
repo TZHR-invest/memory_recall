@@ -58,7 +58,8 @@ class ContextInjectService:
             trace.record_profile(
                 profile.get("static", []),
                 profile.get("dynamic", []),
-                enabled=config.get("inject_profile", False),
+                # enabled 由实际注入结果推导（修复默认值 False 与 _get_profile True 不一致）
+                enabled=None,
             )
             trace.mark_profile()
 
@@ -138,7 +139,8 @@ class ContextInjectService:
             trace.record_profile(
                 profile.get("static", []),
                 profile.get("dynamic", []),
-                enabled=config.get("inject_profile", False),
+                # enabled 由实际注入结果推导（修复默认值 False 与 _get_profile True 不一致）
+                enabled=None,
             )
             trace.mark_profile()
 
