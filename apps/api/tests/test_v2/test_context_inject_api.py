@@ -265,6 +265,101 @@ class TestContextInjectAPI:
 
         assert result["stats"]["chunks_count"] > 0
 
+    def test_final_injection_cap(
+        self, mock_profile_service, mock_memory_store, mock_document_store
+    ):
+        """最终注入 cap：memory 12 条 + chunk 4 条，profile 不裁剪"""
+        from src.services.core.context_inject_service import context_inject_service
+
+        mock_memory_store.get_by_container = AsyncMock(return_value=[])
+        with (
+            patch.object(
+                context_inject_service,
+                "_get_chunks",
+                AsyncMock(
+                    return_value=[
+                        {
+                            "id": f"chunk_{i}",
+                            "content": f"文档内容{i}",
+                            "embedding": [0.3] * 1024,
+                            "document_id": "doc_001",
+                            "similarity": 0.8,
+                        }
+                        for i in range(8)
+                    ]
+                ),
+            ),
+            patch.object(
+                context_inject_service,
+                "_get_memories",
+                AsyncMock(
+                    return_value=[
+                        {
+                            "id": f"mem_{i}",
+                            "content": f"记忆内容{i}",
+                            "embedding": [0.5] * 1024,
+                            "similarity": 0.7,
+                        }
+                        for i in range(20)
+                    ]
+                ),
+            ),
+        ):
+            result = asyncio.run(
+                context_inject_service.inject(
+                    container_tag="user_test",
+                    query="测试",
+                    config={
+                        "inject_profile": True,
+                        "max_profile_items": 10,
+                        "max_memories": 5,
+                        "max_chunks": 3,
+                        "enable_semantic_dedup": False,
+                        "language": "zh_CN",
+                    },
+                )
+            )
+
+        # 上下文渲染：memory 20 → cap 12；chunk 8 → cap 4
+        assert result["context"].count("- 记忆内容") == 12
+        assert result["context"].count("- 文档内容") == 4
+        # stats 反映去重后总量（不裁剪），context 才是 cap 后的
+        assert result["stats"]["memories_count"] == 20
+        assert result["stats"]["chunks_count"] == 8
+
+    def test_subagent_query_downscale(
+        self, mock_profile_service, mock_memory_store, mock_document_store
+    ):
+        """子代理 query（[CONTEXT] 前缀/超长）识别信号"""
+        from src.services.core.context_inject_service import context_inject_service
+
+        assert context_inject_service._is_subagent_query(
+            "[CONTEXT] I'm investigating the codebase structure to understand"
+        ) is True
+        assert context_inject_service._is_subagent_query(
+            "[analyze-mode] ANALYSE this project architecture"
+        ) is True
+        assert context_inject_service._is_subagent_query("[System: Resuming task]") is True
+        assert context_inject_service._is_subagent_query("x" * 900) is True
+        assert context_inject_service._is_subagent_query("用户正常查询") is False
+        assert context_inject_service._is_subagent_query(None) is False
+
+    def test_entity_chunk_similarity_gate(
+        self, mock_profile_service, mock_memory_store, mock_document_store
+    ):
+        """实体 chunk 相似度低于阈值应被过滤"""
+        from src.services.core.context_inject_service import context_inject_service
+
+        # 构造 _get_chunks 内部使用的依赖
+        mock_memory_store.get_by_container = AsyncMock(return_value=[])
+
+        # query_embedding 与 chunk embedding 相似度 < 0.45 的情况
+        # 用 _chunk_similarity 直接验证门控逻辑
+        low = context_inject_service._chunk_similarity([1.0, 0.0], [0.0, 1.0])
+        high = context_inject_service._chunk_similarity([1.0, 0.0], [0.9, 0.1])
+        assert low < 0.45
+        assert high >= 0.45
+
     def test_context_inject_english_language(
         self, mock_profile_service, mock_memory_store, mock_document_store
     ):

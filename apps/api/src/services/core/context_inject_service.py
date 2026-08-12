@@ -229,6 +229,8 @@ class ContextInjectService:
             enable_memory_graph = config.get("enable_memory_graph", True)
             enable_entity_graph = config.get("enable_entity_graph", True)
             max_memories = config.get("max_memories", 5)
+            if self._is_subagent_query(query):
+                max_memories = min(max_memories, 3)
 
             all_memories = []
             seen_ids = set()
@@ -452,10 +454,14 @@ class ContextInjectService:
             if query_embedding is None:
                 return []
 
+            max_chunks = config.get("max_chunks", 3)
+            if self._is_subagent_query(query):
+                max_chunks = min(max_chunks, 2)
+
             chunks = await document_store.search_chunks(
                 query_embedding=query_embedding,
                 container_tag=container_tag,
-                limit=config.get("max_chunks", 3),
+                limit=max_chunks,
                 threshold=config.get("chunks_similarity_threshold", 0.45),
             )
 
@@ -516,7 +522,7 @@ class ContextInjectService:
                             entity_chunks = await document_store.find_chunks_by_entities(
                                 entity_ids=entity_ids,
                                 container_tag=container_tag,
-                                limit=config.get("max_chunks", 2),
+                                limit=max_chunks,
                             )
 
                             for c in entity_chunks:
@@ -530,7 +536,9 @@ class ContextInjectService:
                                             "document_id": c.get("document_id"),
                                             "title": c.get("title"),
                                             "source": c.get("source"),
-                                            "similarity": 0.0,
+                                            "similarity": self._chunk_similarity(
+                                                query_embedding, c.get("embedding")
+                                            ),
                                         }
                                     )
                                     if trace:
@@ -538,9 +546,39 @@ class ContextInjectService:
                 except Exception:
                     pass
 
-            return all_chunks
+            threshold = config.get("chunks_similarity_threshold", 0.45)
+            return [c for c in all_chunks if c.get("similarity", 0.0) >= threshold]
         except Exception:
             return []
+
+    def _chunk_similarity(
+        self,
+        query_embedding: List[float],
+        chunk_embedding: Optional[List[float]],
+    ) -> float:
+        if not query_embedding or not chunk_embedding:
+            return 0.0
+        try:
+            from src.services.core.semantic_dedup_service import semantic_dedup_service
+
+            return semantic_dedup_service.compute_cosine_similarity(
+                query_embedding, chunk_embedding
+            )
+        except Exception:
+            return 0.0
+
+    def _is_subagent_query(self, query: Optional[str]) -> bool:
+        if not query:
+            return False
+        q = query.strip()
+        if q.startswith("["):
+            head = q[:200]
+            if any(
+                marker in head
+                for marker in ("CONTEXT", "analyze-mode", "search-mode", "SYSTEM", "System:")
+            ):
+                return True
+        return len(q) > 800
 
     def _collect_items(
         self,
@@ -716,8 +754,10 @@ class ContextInjectService:
         lines.append("")
 
         profile_items = [i for i in items if i.source == "profile"]
-        memory_items = [i for i in items if i.source in ("userMemory", "projectMemory")]
-        chunk_items = [i for i in items if i.source == "chunk"]
+        memory_items = [i for i in items if i.source in ("userMemory", "projectMemory")][
+            :12
+        ]
+        chunk_items = [i for i in items if i.source == "chunk"][:4]
 
         if profile_items:
             lines.append("### 永久特征" if is_zh else "### Static Facts")
@@ -769,9 +809,12 @@ class ContextInjectService:
         lines.append("")
 
         profile_items = [i for i in items if i.source == "profile"]
-        project_memory_items = [i for i in items if i.source == "projectMemory"]
-        user_memory_items = [i for i in items if i.source == "userMemory"]
-        chunk_items = [i for i in items if i.source == "chunk"]
+        memory_items = [
+            i for i in items if i.source in ("projectMemory", "userMemory")
+        ][:12]
+        project_memory_items = [i for i in memory_items if i.source == "projectMemory"]
+        user_memory_items = [i for i in memory_items if i.source == "userMemory"]
+        chunk_items = [i for i in items if i.source == "chunk"][:4]
 
         if profile_items:
             lines.append("### 永久特征" if is_zh else "### Static Facts")
