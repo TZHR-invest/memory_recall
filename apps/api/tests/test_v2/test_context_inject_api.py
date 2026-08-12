@@ -279,7 +279,7 @@ class TestContextInjectAPI:
         mock_profile_service.get_profile = fake_get_profile
         mock_memory_store.get_by_container = AsyncMock(return_value=[])
 
-        asyncio.run(
+        result = asyncio.run(
             context_inject_service.inject(
                 container_tag="user_test",
                 query=None,
@@ -299,6 +299,10 @@ class TestContextInjectAPI:
         # fetch 取缓存构建上限 100，而非 cap 30——防止 profile_service 预截断丢弃老行为规则
         assert captured["max_static"] == real_ps._CACHE_STATIC_LIMIT
         assert captured["max_dynamic"] == real_ps._CACHE_DYNAMIC_LIMIT
+        # over-cap 契约：35 条行为规则（无临时标记）全部注入，即使超 max_static=30——
+        # "行为规则永不截断"是设计意图，max_static_profile_items 是临时额度而非硬上限
+        trace = result["trace"]["channels"]["profile"]
+        assert trace["static_count"] == 35
 
     def test_is_transient_static_classification(
         self, mock_profile_service, mock_memory_store, mock_document_store

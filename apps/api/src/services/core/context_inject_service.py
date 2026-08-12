@@ -14,7 +14,7 @@ from src.database import db
 # 注意：'已修复'/'API' 单独不判（OMO 迁移修复是行为教训、EmQuantAPI 规范是行为规则）。
 TRANSIENT_STATIC_MARKERS = [
     r"已吊销", r"已改为", r"已保存", r"已删除", r"已变更", r"已迁移",
-    r"机器主机名", r"hostnamectl", r"热点研究\d{4}",
+    r"机器主机名", r"hostnamectl", r"热点研究",
     r"关键bug已修复", r"bug\s*已修复",
 ]
 from src.services.core.semantic_dedup_service import (

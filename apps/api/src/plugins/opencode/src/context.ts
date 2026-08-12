@@ -744,6 +744,9 @@ export async function injectContext(
   let profile: Profile | null = null;
   if (config.injectProfile) {
     try {
+      // 注意：前端回退路径走 /profile 是纯 created_at DESC 截断，无后端的分层注入
+      // （行为规则永不截断仅在 /context-inject 后端路径生效）。回退场景规则可能被截断，
+      // 属可接受的降级——主路径 useBackendDedup=true 默认走后端。
       const response = await client.getProfile(
         userTag,
         userMessage,
