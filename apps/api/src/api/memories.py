@@ -175,6 +175,22 @@ async def create_memory(
     if not is_static and request.metadata.get("type") == "preference":
         is_static = True
 
+    # 写入分类标记（审计用，不改 is_static）：行为规则 vs 临时记录（配置/热点研究等）
+    # 与 context_inject_service.TRANSIENT_STATIC_MARKERS 共用同一套标记，防读/写漂移
+    if is_static:
+        import re
+        from src.services.core.context_inject_service import (
+            TRANSIENT_STATIC_MARKERS,
+        )
+
+        request.metadata["_classification"] = (
+            "config_record"
+            if any(
+                re.search(m, request.content) for m in TRANSIENT_STATIC_MARKERS
+            )
+            else "behavior_rule"
+        )
+
     entity_context = request.entity_context
 
     if entity_context:

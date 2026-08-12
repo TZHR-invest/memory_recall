@@ -176,7 +176,7 @@ class TestContextInjectAPI:
     def test_profile_static_default_cap(
         self, mock_profile_service, mock_memory_store, mock_document_store
     ):
-        """未传 max_static_profile_items 时，static 走 service 默认 20 而非 max_profile_items"""
+        """未传 max_static_profile_items 时，static 走 service 默认 30（25 条全量，不截断）"""
         from src.services.core.context_inject_service import context_inject_service
 
         mock_profile_service.get_profile = AsyncMock(
@@ -206,8 +206,80 @@ class TestContextInjectAPI:
         )
 
         trace = result["trace"]["channels"]["profile"]
-        assert trace["static_count"] == 20
+        assert trace["static_count"] == 25
         assert trace["dynamic_count"] == 1
+
+    def test_profile_static_layered_injection(
+        self, mock_profile_service, mock_memory_store, mock_document_store
+    ):
+        """static 分层注入：行为规则全量 + 临时记录（配置/热点研究）填剩余额度"""
+        from src.services.core.context_inject_service import context_inject_service
+
+        static_facts = (
+            [f"行为规则{i}" for i in range(10)]
+            + [
+                "机器主机名已改为 ai-agent",
+                "Volcengine API Key 已吊销",
+                "热点研究2026-08-09",
+                "auto_publish关键bug已修复",
+            ]
+        )
+        mock_profile_service.get_profile = AsyncMock(
+            return_value={
+                "profile": {
+                    "static": static_facts,
+                    "dynamic": ["动态活动"],
+                }
+            }
+        )
+        mock_memory_store.get_by_container = AsyncMock(return_value=[])
+
+        result = asyncio.run(
+            context_inject_service.inject(
+                container_tag="user_test",
+                query=None,
+                config={
+                    "inject_profile": True,
+                    "max_profile_items": 5,
+                    "max_static_profile_items": 12,
+                    "max_memories": 0,
+                    "max_chunks": 0,
+                    "enable_semantic_dedup": False,
+                    "language": "zh_CN",
+                },
+                include_trace=True,
+            )
+        )
+
+        trace = result["trace"]["channels"]["profile"]
+        # 10 条行为规则全量 + 2 条临时（填满 12 上限，最新优先）
+        assert trace["static_count"] == 12
+        injected = [i for i in trace["items"] if "行为规则" in i]
+        assert len(injected) == 10
+
+    def test_is_transient_static_classification(
+        self, mock_profile_service, mock_memory_store, mock_document_store
+    ):
+        """分类启发式：临时标记命中 vs 行为规则保留（保守策略）"""
+        from src.services.core.context_inject_service import context_inject_service
+
+        transient = [
+            "机器主机名已从 wbaifan-openclaw 改为 ai-agent",
+            "Volcengine API Key 7e4a4d80 已吊销",
+            "GitHub PAT token已保存在 ~/.config/gh/hosts.yml",
+            "auto_publish_article.py关键bug已修复",
+            "热点研究2026-08-09",
+        ]
+        behavior = [
+            "始终用中文回复用户的问题和请求",
+            "OMO (OhMyOpenCode) 4.19.4 配置半迁移缺陷及修复",  # 含"修复"但不含"已修复"
+            "EmQuantAPI 使用规范：不要凭记忆写 API 调用代码",  # 含"API"但不是临时
+            "用户偏好定期代码库审查和清理，保持整洁",
+        ]
+        for c in transient:
+            assert context_inject_service._is_transient_static(c), c
+        for c in behavior:
+            assert not context_inject_service._is_transient_static(c), c
 
     def test_context_inject_no_profile(
         self, mock_profile_service, mock_memory_store, mock_document_store

@@ -24,7 +24,7 @@ class ProfileService:
         self,
         container_tag: str,
         query: Optional[str] = None,
-        max_static: int = 20,
+        max_static: int = 30,
         max_dynamic: int = 10,
         include_metadata: bool = False,
     ) -> Dict[str, Any]:

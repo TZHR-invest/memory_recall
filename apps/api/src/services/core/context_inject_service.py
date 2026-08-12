@@ -8,6 +8,15 @@ import time
 
 from src.config import settings
 from src.database import db
+
+# static 临时性标记：命中即视为"配置记录/热点研究等一次性事件"，而非永久行为规则。
+# 保守策略：宁误判为行为规则（多注入 token）也不误判为临时（不丢失规则）。
+# 注意：'已修复'/'API' 单独不判（OMO 迁移修复是行为教训、EmQuantAPI 规范是行为规则）。
+TRANSIENT_STATIC_MARKERS = [
+    r"已吊销", r"已改为", r"已保存", r"已删除", r"已变更", r"已迁移",
+    r"机器主机名", r"hostnamectl", r"热点研究\d{4}",
+    r"关键bug已修复", r"bug\s*已修复",
+]
 from src.services.core.semantic_dedup_service import (
     semantic_dedup_service,
     DedupItem,
@@ -213,21 +222,41 @@ class ContextInjectService:
             return {"static": [], "dynamic": []}
 
         try:
-            max_static = config.get("max_static_profile_items", 20)
+            max_static = config.get("max_static_profile_items", 30)
             max_dynamic = config.get("max_profile_items", 10)
             # 将配置上限透传给 profile_service，避免其默认 20/10 先截断导致配置失效
             profile_data = await profile_service.get_profile(
                 container_tag, max_static=max_static, max_dynamic=max_dynamic
             )
             profile = profile_data.get("profile", {})
-            # static 为永久特征（量少、价值与时间无关），按 max_static_profile_items 全量注入；
+            # static 分层注入：行为规则（无临时标记）全量注入永不截断，
+            # 临时事实（配置记录/热点研究等）填剩余额度（列表已按 created_at DESC 排序，最新优先）
+            static_facts = profile.get("static", [])
+            behavior_rules = [
+                f for f in static_facts if not self._is_transient_static(f)
+            ]
+            transient_facts = [
+                f for f in static_facts if self._is_transient_static(f)
+            ]
+            remaining = max(0, max_static - len(behavior_rules))
+            static = behavior_rules + transient_facts[:remaining]
             # dynamic 为近期活动（时效即价值），按 max_profile_items 取最新
             return {
-                "static": profile.get("static", [])[:max_static],
+                "static": static,
                 "dynamic": profile.get("dynamic", [])[:max_dynamic],
             }
         except Exception:
             return {"static": [], "dynamic": []}
+
+    def _is_transient_static(self, content: str) -> bool:
+        """判定 static 事实是否为临时性记录（配置记录/热点研究等），而非永久行为规则。
+
+        保守策略：宁误判为行为规则（多注入 token）也不误判为临时（不丢失规则）。
+        标记表见模块级 TRANSIENT_STATIC_MARKERS（与写入路径共用，防漂移）。
+        """
+        import re
+
+        return any(re.search(m, content) for m in TRANSIENT_STATIC_MARKERS)
 
     async def _get_memories(
         self,

@@ -141,7 +141,7 @@ const DEFAULT_CONFIG: Omit<Config, "apiKey"> = {
   maxMemories: 5,
   maxProjectMemories: 10,
   maxProfileItems: 5,
-  maxStaticProfileItems: 20,
+  maxStaticProfileItems: 30,
   injectProfile: true,
   compactionThreshold: 0.8,
   enableSummaryCapture: true,
