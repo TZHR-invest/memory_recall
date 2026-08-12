@@ -220,7 +220,7 @@ class TestContextInjectAPI:
             + [
                 "机器主机名已改为 ai-agent",
                 "Volcengine API Key 已吊销",
-                "热点研究2026-08-09",
+                "数据库迁移文件顺序已变更",
                 "auto_publish关键bug已修复",
             ]
         )
@@ -315,13 +315,13 @@ class TestContextInjectAPI:
             "Volcengine API Key 7e4a4d80 已吊销",
             "GitHub PAT token已保存在 ~/.config/gh/hosts.yml",
             "auto_publish_article.py关键bug已修复",
-            "热点研究2026-08-09",
         ]
         behavior = [
             "始终用中文回复用户的问题和请求",
             "OMO (OhMyOpenCode) 4.19.4 配置半迁移缺陷及修复",  # 含"修复"但不含"已修复"
             "EmQuantAPI 使用规范：不要凭记忆写 API 调用代码",  # 含"API"但不是临时
             "用户偏好定期代码库审查和清理，保持整洁",
+            "热点研究2026-08-09",  # 热点研究不在临时标记表（dynamic 已按时间截断），不应误判
         ]
         for c in transient:
             assert context_inject_service._is_transient_static(c), c
