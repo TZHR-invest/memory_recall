@@ -236,6 +236,7 @@ class ContextInjectService:
             profile = profile_data.get("profile", {})
             # static 分层注入：行为规则（无临时标记）全量注入永不截断，
             # 临时事实（配置记录/一次性事件）填剩余额度（列表已按 created_at DESC 排序，最新优先）
+            # 注："永不截断"的保证范围是最新 100 条 static 内（_CACHE_STATIC_LIMIT 硬边界，超过后最老规则被预取丢弃）
             static_facts = profile.get("static", [])
             behavior_rules = [
                 f for f in static_facts if not self._is_transient_static(f)
