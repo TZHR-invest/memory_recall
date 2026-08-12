@@ -1,6 +1,6 @@
 # Memory Recall 已知问题清单（索引）
 
-> 状态: ACTIVE · 版本: v1.2 · 最后更新: 2026-08-13
+> 状态: ACTIVE · 版本: v1.3 · 最后更新: 2026-08-13
 >
 > 本文件是问题清单**索引**（进知识库，Agent 一眼看到当前有哪些坑）；
 > 每个问题的详情在 `docs/issues/MR-xxx-短slug.md`。
@@ -33,6 +33,7 @@
 | MR-015 | 死代码与设计残留 | P2 | [详情](issues/MR-015-dead-code.md) |
 | MR-016 | DATABASE_URL 配置误导 | P2 | [详情](issues/MR-016-database-url.md) |
 | MR-017 | 注入 cap 硬编码 6/6/4 + 插件 maxProjectMemories 静默丢弃 | P2 | [详情](issues/MR-017-injection-caps.md) |
+| MR-018 | profile 写入路径无 embedding，semantic_dedup 对画像失效 | P2 | [详情](issues/MR-018-profile-dedup.md) |
 
 ## 已解决
 
@@ -50,4 +51,4 @@
 2. **再定知识对象**（MR-006/007）：统一"当前事实"的存储与语义，这是架构层关键决策，越晚越难改。
 3. **同时做产品面最小闭环**（MR-011）：让用户看到并纠正系统记住了什么，这是信任与留存的基础。
 
-*状态: ACTIVE · 版本: v1.2 · 最后更新: 2026-08-13*
+*状态: ACTIVE · 版本: v1.3 · 最后更新: 2026-08-13*
