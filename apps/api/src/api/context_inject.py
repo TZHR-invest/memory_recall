@@ -44,6 +44,12 @@ class ContextInjectConfig(BaseModel):
     chunks_similarity_threshold: float = Field(
         0.45, ge=0.0, le=1.0, description="文档片段相似度阈值"
     )
+    entity_chunk_threshold: float = Field(
+        0.30,
+        ge=0.0,
+        le=1.0,
+        description="实体匹配文档片段相似度阈值（实体匹配是精确证据，阈值应低于向量检索）",
+    )
 
 
 class ContextInjectRequest(BaseModel):

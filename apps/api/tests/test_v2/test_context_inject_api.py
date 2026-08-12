@@ -321,10 +321,38 @@ class TestContextInjectAPI:
             )
 
         # cap 统一在去重后应用：context/stats/trace.final 三者一致
-        assert result["context"].count("- 记忆内容") == 12
+        # 单容器路径所有 memory 均为 userMemory → cap 6
+        assert result["context"].count("- 记忆内容") == 6
         assert result["context"].count("- 文档内容") == 4
-        assert result["stats"]["memories_count"] == 12
+        assert result["stats"]["memories_count"] == 6
         assert result["stats"]["chunks_count"] == 4
+
+    def test_cap_project_user_balanced(
+        self, mock_profile_service, mock_memory_store, mock_document_store
+    ):
+        """project/user 分开 cap：project 12 条时 user 仍保留 6 条不被挤占"""
+        from src.services.core.context_inject_service import context_inject_service
+
+        mock_memory_store.get_by_container = AsyncMock(return_value=[])
+        project_items = [
+            DedupItem(content=f"项目记忆{i}", source="projectMemory", priority=3)
+            for i in range(12)
+        ]
+        user_items = [
+            DedupItem(content=f"用户记忆{i}", source="userMemory", priority=2)
+            for i in range(4)
+        ]
+        profile_items = [
+            DedupItem(content="静态偏好", source="profile", priority=4)
+        ]
+
+        capped = context_inject_service._apply_injection_caps(
+            project_items + user_items + profile_items
+        )
+        sources = [i.source for i in capped]
+        assert sources.count("projectMemory") == 6
+        assert sources.count("userMemory") == 4
+        assert sources.count("profile") == 1
 
     def test_subagent_query_downscale(
         self, mock_profile_service, mock_memory_store, mock_document_store

@@ -82,7 +82,7 @@ class ContextInjectService:
             trace.mark_format()
 
             sources = self._build_sources(profile, memories, chunks, capped_items)
-            stats = self._build_stats(all_items, capped_items)
+            stats = self._build_stats(all_items, deduped_items, capped_items)
 
             if await recall_trace_service.should_record(force=include_trace):
                 await recall_trace_service.save(trace)
@@ -175,7 +175,7 @@ class ContextInjectService:
                 project_chunks,
                 capped_items,
             )
-            stats = self._build_stats_with_tags(all_items, capped_items)
+            stats = self._build_stats_with_tags(all_items, deduped_items, capped_items)
 
             if await recall_trace_service.should_record(force=include_trace):
                 await recall_trace_service.save(trace)
@@ -543,15 +543,37 @@ class ContextInjectService:
                                             "similarity": self._chunk_similarity(
                                                 query_embedding, c.get("embedding")
                                             ),
+                                            "_entity_hit": True,
                                         }
                                     )
-                                    if trace:
-                                        trace.record_chunk_entity_hit(c, scope=scope)
                 except Exception:
                     pass
 
             threshold = config.get("chunks_similarity_threshold", 0.45)
-            return [c for c in all_chunks if c.get("similarity", 0.0) >= threshold]
+            entity_threshold = config.get("entity_chunk_threshold", 0.30)
+            filtered = []
+            for c in all_chunks:
+                if c.get("_entity_hit"):
+                    if c.get("embedding") is None or c.get("similarity", 0.0) >= entity_threshold:
+                        filtered.append(c)
+                elif c.get("similarity", 0.0) >= threshold:
+                    filtered.append(c)
+            if trace:
+                for c in filtered:
+                    if c.get("_entity_hit"):
+                        trace.record_chunk_entity_hit(
+                            {
+                                "id": c["id"],
+                                "content": c["content"],
+                                "document_id": c.get("document_id"),
+                                "title": c.get("title"),
+                                "source": c.get("source"),
+                            },
+                            scope=scope,
+                        )
+            for c in filtered:
+                c.pop("_entity_hit", None)
+            return filtered
         except Exception:
             return []
 
@@ -745,17 +767,19 @@ class ContextInjectService:
         return items
 
     def _apply_injection_caps(self, items: List[DedupItem]) -> List[DedupItem]:
-        """最终注入分层 cap：profile 不裁剪；memory(project+user 合并) 12 条；chunk 4 条。
+        """最终注入分层 cap：profile 不裁剪；memory 12 条（project 6 + user 6）；chunk 4 条。
 
         在去重后、渲染前统一应用，保证 context/stats/trace.final 三者一致。
+        project/user 分开 cap 防止一方挤占另一方（project 记忆量大时 user 偏好不应被挤出）；
         截断按 dedup 输出顺序（来源优先级：profile > projectMemory > userMemory > chunk）。
         """
-        memory_items = [i for i in items if i.source in ("projectMemory", "userMemory")][
-            :12
-        ]
+        project_memory_items = [i for i in items if i.source == "projectMemory"][:6]
+        user_memory_items = [i for i in items if i.source == "userMemory"][:6]
         chunk_items = [i for i in items if i.source == "chunk"][:4]
         profile_items = [i for i in items if i.source == "profile"]
-        return profile_items + memory_items + chunk_items
+        return (
+            profile_items + project_memory_items + user_memory_items + chunk_items
+        )
 
     def _format_context(
         self,
@@ -871,16 +895,18 @@ class ContextInjectService:
         profile: Dict[str, List[str]],
         memories: List[Dict[str, Any]],
         chunks: List[Dict[str, Any]],
-        deduped_items: List[DedupItem],
+        capped_items: List[DedupItem],
     ) -> Dict[str, Any]:
+        capped_memories = [
+            i for i in capped_items if i.source in ("userMemory", "projectMemory")
+        ]
+        capped_chunks = [i for i in capped_items if i.source == "chunk"]
         return {
             "profile": profile.get("static", []) + profile.get("dynamic", []),
             "memories": [
-                {"id": m.get("id"), "content": m.get("content")} for m in memories
+                {"id": i.id, "content": i.content} for i in capped_memories
             ],
-            "chunks": [
-                {"id": c.get("id"), "content": c.get("content")} for c in chunks
-            ],
+            "chunks": [{"id": i.id, "content": i.content} for i in capped_chunks],
         }
 
     def _build_sources_with_tags(
@@ -890,65 +916,72 @@ class ContextInjectService:
         project_memories: List[Dict[str, Any]],
         user_chunks: List[Dict[str, Any]],
         project_chunks: List[Dict[str, Any]],
-        deduped_items: List[DedupItem],
+        capped_items: List[DedupItem],
     ) -> Dict[str, Any]:
         return {
             "profile": profile.get("static", []) + profile.get("dynamic", []),
             "memories": [
-                {"id": m.get("id"), "content": m.get("content")}
-                for m in project_memories
+                {"id": i.id, "content": i.content}
+                for i in capped_items
+                if i.source == "projectMemory"
             ],
             "user_memories": [
-                {"id": m.get("id"), "content": m.get("content")} for m in user_memories
+                {"id": i.id, "content": i.content}
+                for i in capped_items
+                if i.source == "userMemory"
             ],
             "chunks": [
-                {"id": c.get("id"), "content": c.get("content")} for c in project_chunks
+                {"id": i.id, "content": i.content}
+                for i in capped_items
+                if i.source == "chunk"
             ],
-            "user_chunks": [
-                {"id": c.get("id"), "content": c.get("content")} for c in user_chunks
-            ],
+            "user_chunks": [],
         }
 
     def _build_stats(
         self,
         all_items: List[DedupItem],
         deduped_items: List[DedupItem],
+        capped_items: List[DedupItem],
     ) -> Dict[str, int]:
         memories_count = len(
-            [i for i in deduped_items if i.source in ("userMemory", "projectMemory")]
+            [i for i in capped_items if i.source in ("userMemory", "projectMemory")]
         )
         return {
             "total_items": len(all_items),
             "after_dedup": len(deduped_items),
             "deduped_count": len(all_items) - len(deduped_items),
-            "profile_count": len([i for i in deduped_items if i.source == "profile"]),
+            "capped_count": len(capped_items),
+            "profile_count": len([i for i in capped_items if i.source == "profile"]),
             "memories_count": memories_count,
             "project_memories_count": len(
-                [i for i in deduped_items if i.source == "projectMemory"]
+                [i for i in capped_items if i.source == "projectMemory"]
             ),
             "user_memories_count": len(
-                [i for i in deduped_items if i.source == "userMemory"]
+                [i for i in capped_items if i.source == "userMemory"]
             ),
-            "chunks_count": len([i for i in deduped_items if i.source == "chunk"]),
+            "chunks_count": len([i for i in capped_items if i.source == "chunk"]),
         }
 
     def _build_stats_with_tags(
         self,
         all_items: List[DedupItem],
         deduped_items: List[DedupItem],
+        capped_items: List[DedupItem],
     ) -> Dict[str, int]:
         return {
             "total_items": len(all_items),
             "after_dedup": len(deduped_items),
             "deduped_count": len(all_items) - len(deduped_items),
-            "profile_count": len([i for i in deduped_items if i.source == "profile"]),
+            "capped_count": len(capped_items),
+            "profile_count": len([i for i in capped_items if i.source == "profile"]),
             "project_memories_count": len(
-                [i for i in deduped_items if i.source == "projectMemory"]
+                [i for i in capped_items if i.source == "projectMemory"]
             ),
             "user_memories_count": len(
-                [i for i in deduped_items if i.source == "userMemory"]
+                [i for i in capped_items if i.source == "userMemory"]
             ),
-            "chunks_count": len([i for i in deduped_items if i.source == "chunk"]),
+            "chunks_count": len([i for i in capped_items if i.source == "chunk"]),
         }
 
 
