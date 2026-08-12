@@ -490,6 +490,47 @@ class TestContextInjectAPI:
         assert context_inject_service._is_subagent_query("用户正常查询") is False
         assert context_inject_service._is_subagent_query(None) is False
 
+    def test_low_confidence_edge_memory_priority_down(self):
+        """边缘命中（low_confidence）记忆在 _collect_items 中 priority 应降 1 级，
+        使 dedup 排序后排在同 source 末尾、被 cap 优先截断（减少 0.40-0.45 噪音注入）"""
+        from src.services.core.context_inject_service import context_inject_service
+
+        normal = [
+            {"id": "m1", "content": "高分记忆", "embedding": [1.0], "similarity": 0.6}
+        ]
+        edge = [
+            {
+                "id": "m2",
+                "content": "边缘记忆",
+                "embedding": [1.0],
+                "similarity": 0.42,
+                "low_confidence": True,
+            }
+        ]
+        normal_items = context_inject_service._collect_items({}, normal, [])
+        edge_items = context_inject_service._collect_items({}, edge, [])
+        assert normal_items[0].priority == 2  # userMemory 默认 2
+        assert edge_items[0].priority == 1  # 降 1 级
+        # 高分记忆应在去重排序时优先于边缘记忆
+        assert normal_items[0].priority > edge_items[0].priority
+
+    def test_edge_memory_injected_via_tags_priority_down(
+        self, mock_profile_service, mock_memory_store, mock_document_store
+    ):
+        """inject_with_tags 路径同样对 low_confidence 记忆降 priority"""
+        from src.services.core.context_inject_service import context_inject_service
+
+        edge = {
+            "id": "m3",
+            "content": "边缘记忆",
+            "embedding": [1.0],
+            "similarity": 0.43,
+            "low_confidence": True,
+        }
+        items = context_inject_service._collect_items_with_tags({}, [edge], [], [], [])
+        assert items[0].source == "userMemory"
+        assert items[0].priority == 1  # userMemory 默认 2，降 1 级
+
     def test_entity_chunk_similarity_gate(
         self, mock_profile_service, mock_memory_store, mock_document_store
     ):
