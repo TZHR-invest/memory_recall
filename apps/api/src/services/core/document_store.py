@@ -794,7 +794,7 @@ class DocumentStore:
             JOIN documents d ON c.document_id = d.id
             WHERE d.container_tag = $2
             AND d.status = 'done'
-            AND 1 - (c.embedding <=> $1::vector) > $3
+            AND 1 - (c.embedding <=> $1::vector) >= $3
             ORDER BY similarity DESC
             LIMIT $4
             """,

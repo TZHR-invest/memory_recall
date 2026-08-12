@@ -5,6 +5,7 @@
 
 from typing import Dict, Any, List, Optional
 import time
+import re
 
 from src.config import settings
 from src.database import db
@@ -594,6 +595,12 @@ class ContextInjectService:
 
             threshold = config.get("chunks_similarity_threshold", 0.45)
             entity_threshold = config.get("entity_chunk_threshold", 0.30)
+            # 防御性兜底：丢弃 HTML 噪音 chunk（存量修复 6d9d1b8 前的遗留/导入侧漏网），
+            # 避免 `<div align=...>` 这类纯标记片段被注入上下文
+            html_noise = re.compile(r"^\s*<[a-zA-Z/!]")
+            all_chunks = [
+                c for c in all_chunks if not html_noise.match(c.get("content") or "")
+            ]
             filtered = []
             for c in all_chunks:
                 if c.get("_entity_hit"):

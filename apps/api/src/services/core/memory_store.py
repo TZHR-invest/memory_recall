@@ -664,7 +664,7 @@ class MemoryStore:
             WHERE container_tag = $2
             AND is_latest = TRUE
             AND is_forgotten = FALSE
-            AND 1 - (embedding <=> $1::vector) > $3
+            AND 1 - (embedding <=> $1::vector) >= $3
             ORDER BY similarity DESC
             LIMIT $4
             """,
