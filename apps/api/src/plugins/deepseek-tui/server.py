@@ -234,20 +234,25 @@ async def _extract_memory(args):
 async def _context_inject(args):
     scope = args.get("scope", "project")
     body = {
-        "user_container_tag": USER_TAG, "project_container_tag": _tag(scope),
-        "query": args["query"], "inject_profile": args.get("injectProfile", True),
-        "max_profile_items": CONFIG["max_memories"],
-        "max_memories": args.get("maxMemories", CONFIG["max_memories"]),
-        "max_chunks": args.get("maxChunks", CONFIG["max_chunks"]),
-        "memory_similarity_threshold": CONFIG["similarity_threshold"],
-        "chunks_similarity_threshold": CONFIG["similarity_threshold"],
-        "enable_memory_graph": CONFIG["enable_graph_recall"],
-        "enable_entity_graph": CONFIG["enable_entity_recall"],
-        "memory_graph_depth": CONFIG["graph_max_depth"],
-        "memory_graph_nodes": CONFIG["graph_max_nodes"],
-        "entity_graph_depth": CONFIG["graph_max_depth"],
-        "entity_graph_nodes": CONFIG["graph_max_nodes"],
-        "enable_semantic_dedup": True, "dedup_threshold": 0.85,
+        "user_tag": USER_TAG,
+        "project_tag": _tag(scope),
+        "query": args["query"],
+        "config": {
+            "inject_profile": args.get("injectProfile", True),
+            "max_profile_items": CONFIG["max_memories"],
+            "max_memories": args.get("maxMemories", CONFIG["max_memories"]),
+            "max_chunks": args.get("maxChunks", CONFIG["max_chunks"]),
+            "memory_similarity_threshold": CONFIG["similarity_threshold"],
+            "chunks_similarity_threshold": CONFIG["similarity_threshold"],
+            "enable_memory_graph": CONFIG["enable_graph_recall"],
+            "enable_entity_graph": CONFIG["enable_entity_recall"],
+            "memory_graph_depth": CONFIG["graph_max_depth"],
+            "memory_graph_nodes": CONFIG["graph_max_nodes"],
+            "entity_graph_depth": CONFIG["graph_max_depth"],
+            "entity_graph_nodes": CONFIG["graph_max_nodes"],
+            "enable_semantic_dedup": True,
+            "dedup_threshold": 0.85,
+        },
     }
     r = await api("POST", "/context-inject", body=body)
     ctx = r.get("context", ""); stats = r.get("stats", {})

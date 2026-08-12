@@ -11,6 +11,11 @@ from src.services.core.memory_store import memory_store
 
 
 class ProfileService:
+    # 缓存构建上限必须覆盖所有配置请求（对应 context_inject.py Pydantic le 上限），
+    # 否则首次以小上限构建的缓存会在 5 分钟 TTL 内截断后续更大的配置请求
+    _CACHE_STATIC_LIMIT = 100
+    _CACHE_DYNAMIC_LIMIT = 50
+
     def __init__(self):
         self.static_limit = 50
         self.dynamic_limit = 20
@@ -27,7 +32,9 @@ class ProfileService:
         if cached and self._is_cache_valid(cached):
             profile = cached
         else:
-            profile = await self._build_profile(container_tag)
+            profile = await self._build_profile(
+                container_tag, max_static=max_static, max_dynamic=max_dynamic
+            )
             await self._cache_profile(container_tag, profile)
 
         static = profile.get("static_memories", [])[:max_static]
@@ -268,14 +275,25 @@ class ProfileService:
         )
         return row["entity_context"] if row else None
 
-    async def _build_profile(self, container_tag: str) -> Dict[str, Any]:
+    async def _build_profile(
+        self,
+        container_tag: str,
+        max_static: Optional[int] = None,
+        max_dynamic: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        # 缓存构建上限取 max(默认, 请求值, 配置上限)——缓存是 5 分钟快照，
+        # 若构建上限低于后续配置请求，缓存命中时会静默截断
+        static_limit = max(self.static_limit, max_static or 0, self._CACHE_STATIC_LIMIT)
+        dynamic_limit = max(
+            self.dynamic_limit, max_dynamic or 0, self._CACHE_DYNAMIC_LIMIT
+        )
         static_memories = await memory_store.get_static_memories(
             container_tag=container_tag,
-            limit=self.static_limit,
+            limit=static_limit,
         )
         dynamic_memories = await memory_store.get_dynamic_memories(
             container_tag=container_tag,
-            limit=self.dynamic_limit,
+            limit=dynamic_limit,
         )
 
         return {

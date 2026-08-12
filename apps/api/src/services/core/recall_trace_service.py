@@ -75,7 +75,7 @@ class RecallTrace:
                 "enabled": enabled,
                 "static_count": len(static),
                 "dynamic_count": len(dynamic),
-                "items": [_truncate(s) for s in static[:50]] + [_truncate(d) for d in dynamic[:50]],
+                "items": [_truncate(s) for s in static[:100]] + [_truncate(d) for d in dynamic[:50]],
             }
         )
 
