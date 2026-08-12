@@ -338,6 +338,10 @@ class ContextInjectService:
                                     "embedding": r.get("embedding"),
                                     "is_static": False,
                                     "similarity": r.get("similarity", 0.0),
+                                    # 边缘命中（0.40-0.45）标记为低置信：注入时降优先级，让 cap 优先保留高分记忆
+                                    "low_confidence": 0.0
+                                    < r.get("similarity", 0.0)
+                                    < config.get("memory_similarity_threshold", 0.40) + 0.05,
                                 }
                             )
 
@@ -699,7 +703,9 @@ class ContextInjectService:
                 DedupItem(
                     content=m.get("content", ""),
                     source="userMemory",
-                    priority=SOURCE_PRIORITY["userMemory"],
+                    # 边缘命中（low_confidence）降 1 级：让 cap 优先保留高分记忆，减少 0.40-0.45 噪音注入
+                    priority=SOURCE_PRIORITY["userMemory"]
+                    - (1 if m.get("low_confidence") else 0),
                     embedding=m.get("embedding"),
                     id=m.get("id"),
                     relation_type=m.get("relation_type"),
@@ -763,7 +769,9 @@ class ContextInjectService:
                 DedupItem(
                     content=m.get("content", ""),
                     source="projectMemory",
-                    priority=SOURCE_PRIORITY["projectMemory"],
+                    # 边缘命中（low_confidence）降 1 级：让 cap 优先保留高分记忆，减少 0.40-0.45 噪音注入
+                    priority=SOURCE_PRIORITY["projectMemory"]
+                    - (1 if m.get("low_confidence") else 0),
                     embedding=m.get("embedding"),
                     id=m.get("id"),
                     relation_type=m.get("relation_type"),
@@ -775,7 +783,9 @@ class ContextInjectService:
                 DedupItem(
                     content=m.get("content", ""),
                     source="userMemory",
-                    priority=SOURCE_PRIORITY["userMemory"],
+                    # 边缘命中（low_confidence）降 1 级：让 cap 优先保留高分记忆，减少 0.40-0.45 噪音注入
+                    priority=SOURCE_PRIORITY["userMemory"]
+                    - (1 if m.get("low_confidence") else 0),
                     embedding=m.get("embedding"),
                     id=m.get("id"),
                     relation_type=m.get("relation_type"),
