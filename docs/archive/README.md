@@ -63,7 +63,23 @@
 - `add_relation_by_text.md` - 自然语言添加关系
 - `multi_relation_parsing.md` - 多关系解析
 
+### 2026-08-12 新增归档（文档体系重整）
+
+本次归档原因：docs/ 根目录只保留"当前为真"的活文档（见 `docs/README.md` 文档生命周期规范），
+以下文档因描述已实现/已废弃的功能而被移入 archive：
+
+| 文档 | 原位置 | 归档原因 |
+|------|--------|---------|
+| `SMART_RECALL.md` | docs/ | 智能召回路由（Function Calling 选策略）已并入统一 `/context-inject` 召回，文档描述的是旧入口 |
+| `MULTI_USER_GUIDE.md` | docs/ | 描述 v1 的 schema 隔离 + `/api/v1/users/init`；当前实现为 container_tag + API Key 隔离（`verify_container_ownership`） |
+| `RECALL_TRACE_DESIGN.md` | docs/ | Recall Trace 功能已落地（recall_traces 表 + `/debug/traces` API），设计稿失去"当前为真"地位 |
+| `RECALL_TRACE_DEV.md` | docs/ | 同上，落地实现说明见代码 `src/services/core/recall_trace_service.py` |
+
+Recall Trace 的现状入口：`/debug/traces`、`/debug/traces/{id}`、`/debug/traces/run`，
+配置项 `TRACE_ENABLED/TRACE_SAMPLE_RATE/TRACE_RETENTION_DAYS/TRACE_CONTENT_MAX_LEN`。
+
 ---
 
 *归档日期: 2026-03-31*  
+*更新: 2026-08-12（新增 4 篇归档 + 索引）*  
 *当前版本: v5.0.0*

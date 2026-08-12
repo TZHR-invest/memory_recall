@@ -71,3 +71,27 @@ Three independent sub-projects. Build artifacts are gitignored (`dist/`, `*.tgz`
 - `opencode/` — TypeScript/Bun plugin (`memory-recall-opencode`, main entry `dist/index.js`). Build with `bun run build` (NOT tsc — tsconfig has `noEmit: true`); install via `bunx memory-recall-opencode install`. Config written to `~/.config/opencode/memory-recall.jsonc`. **Dependency contract**: runtime imports are `@opencode-ai/plugin` (tool registration + `tool.schema.*` for args — never import `zod` directly, it causes dual-instance crashes) and `@opencode-ai/sdk` (type-only); build externalizes both (`--external`) per opencode official docs — do not bundle them or `zod`. `install --dev` (symlink mode) is deprecated and prints a notice only. npm 插件缓存：opencode 自 v1.4.3 起用 `@npmcli/arborist` 安装到 `~/.cache/opencode/packages/<pkg>@latest/`（官方文档 "node_modules/" 表述滞后，描述 v1.4.3 前旧机制，以源码为准；详见 README → 依赖架构）。See `apps/api/src/plugins/opencode/README.md` → 依赖架构.
 - `deepseek-tui/`, `hermes/` — standalone Python MCP stdio servers (`python server.py`), configured via `MEMORY_RECALL_*` env vars. `deepseek-tui`'s documented `install.sh` is gitignored/missing — only manual setup works.
 - Tag convention: `userTag = keyId` (cross-project), `projectTag = {keyId}_project-<dirName>`. Backend contract: `X-API-Key` header, `GET /auth/verify` → keyId, unified recall via `POST /context-inject` with `user_tag` + `project_tag`.
+
+## 文档沉淀规范（Docs-as-Records，强制）
+
+**所有工作信息必须落成文档，禁止只存在于对话里。** 完整规范见
+[`docs/DOCUMENTATION_GUIDE.md`](docs/DOCUMENTATION_GUIDE.md)，下面是要点：
+
+- 目录分工：
+  - `docs/` 根目录 — 当前为真的知识（PROJECT_PLAN / ENTITY_DESIGN / ISSUES / DEPLOYMENT）；
+  - `docs/decisions/` — 决策记录 ADR：**只记已明确的取舍**，无 Proposed/Rejected；
+    讨论过程在 notes，结论明确后落 ADR；编号递增，Accepted 后决策正文冻结，
+    只能新 ADR 取代；新 ADR 写 `Supersedes: 00XX`，旧 ADR 同步标 `Superseded by: 00XX`；
+    被否决但值得记录的方案写 Accepted 的"不采用 X" ADR，否则留在 notes；
+  - `docs/notes/` — 讨论/调研/方向探讨：大型主题用 `YYYY-MM-DD-短slug.md` 独立文件，
+    细碎信息按日汇总到 `YYYY-MM-DD-note.md`（骨架：背景/要点/结论/下一步/未决）；
+  - `docs/designs/` — 产品设计（版本化，同主题只能有一个生效版本）；
+  - `docs/ISSUES.md` — 问题索引；详情在 `docs/issues/MR-xxx.md`（每问题一文件）；
+    修复后从 open 表移入已解决表并记录版本，**详情文件保留并标已解决**（不删除问题史）；
+  - `docs/archive/` — 过时内容（git mv 归档并登记原因，不直接删除）。
+- 文档头部必须有：状态（ACTIVE/ACCEPTED/SUPERSEDED/ARCHIVED）、版本、最后更新日期。
+- 每个任务按此 checklist 收尾：新讨论→notes；新决策→ADR；新设计/变更→designs 或更新生效文档；
+  新问题→ISSUES.md；修改后更新 `docs/README.md` 索引；commit 时文档与代码一起提交（`docs:` 前缀）。
+- 注意：opencode 插件默认只导入 `docs/*.md` 根目录一层作为知识；decisions/notes/designs/archive
+  不进注入上下文，需要时通过搜索 API 获取。这是有意的边界，不要靠改插件绕过。
+- 相关既有问题：`docs/ISSUES.md`（MR-xxx）；任务开始前先查它，避免重复劳动。

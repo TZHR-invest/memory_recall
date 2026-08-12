@@ -88,6 +88,7 @@ embedding 模型 ← PostgreSQL + pgvector                              Token �
 
 ```
 memory_recall/
+├── docs/                 # 文档中心（规划 / 实体设计 / 问题清单 / 部署）
 ├── apps/api/              # 核心后端（FastAPI + PostgreSQL + pgvector）
 │   ├── src/
 │   │   ├── api/           # API 端点（memories, auth, graph）

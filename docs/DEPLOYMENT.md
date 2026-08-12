@@ -1,334 +1,136 @@
 # Memory Recall 部署文档
 
-> 版本: v1  
-> 更新时间: 2026-03-20
+> 状态: ACTIVE · 版本: v1.0 · 最后更新: 2026-08-12
 
-## 系统要求
+## 部署方式概览
 
-### 硬件要求
+| 方式 | 适用场景 | 说明 |
+|------|---------|------|
+| Docker Compose（推荐） | 本地试用/快速部署 | API + PostgreSQL(pgvector) + Adminer + Web 静态页 |
+| 手动 venv | 开发/调试 | macOS/Ubuntu 本地直跑，schema 手动初始化 |
 
-- CPU: 2 核+
-- 内存: 4GB+
-- 存储: 20GB+
-
-### 软件要求
-
-- 操作系统: Ubuntu 20.04+ / CentOS 8+ / macOS
-- Python: 3.10+
-- PostgreSQL: 14+ (with pgvector 扩展)
-- Git
-
----
-
-## 安装步骤
-
-### 1. 克隆项目
+## 方式一：Docker Compose
 
 ```bash
-cd /path/to/workspace
-git clone <repository_url> memory_recall
-cd memory_recall
+cd apps/api
+cp .env.example .env
+# 编辑 .env：至少填 VOLC_API_KEY（LLM + embedding 必需）
+docker compose up -d
 ```
 
-### 2. 安装系统依赖
+启动内容：
 
-**Ubuntu/Debian:**
+- API：http://localhost:8000（Swagger: /docs）
+- PostgreSQL：localhost:5432（pgvector/pgvector:pg16）
+- Adminer：http://localhost:8888
+- Web 仪表盘：http://localhost:3000
 
-```bash
-# 安装 PostgreSQL
-sudo apt-get update
-sudo apt-get install -y postgresql postgresql-contrib
+首次启动时 `docker-entrypoint-initdb.d/` 自动建库建表；已有卷时不会重复执行。
+改 schema 后需要重建卷或手动执行迁移（见"数据库初始化"）。
 
-# 安装 pgvector 扩展
-sudo apt-get install -y postgresql-14-pgvector
+## 方式二：手动部署（venv）
 
-# 安装 Python 开发包
-sudo apt-get install -y python3-dev python3-venv
-```
+### 1. 环境要求
 
-**macOS:**
+- Python 3.10+（macOS 系统自带 3.9 过旧，无法安装 fastapi==0.135.1 等依赖，必须建 venv）；
+- PostgreSQL 14+ 且启用 pgvector 扩展；
+- 火山引擎 API Key（`VOLC_API_KEY`，LLM 与 embedding 共用）。
 
-```bash
-# 安装 PostgreSQL
-brew install postgresql@14
-
-# 安装 pgvector
-brew install pgvector
-```
-
-### 3. 配置数据库
-
-```bash
-# 启动 PostgreSQL
-sudo systemctl start postgresql
-
-# 创建数据库用户
-sudo -u postgres createuser -s memory_user
-
-# 创建数据库
-sudo -u postgres createdb -O memory_user memory_recall
-
-# 启用 pgvector 扩展
-sudo -u postgres psql -d memory_recall -c "CREATE EXTENSION vector;"
-```
-
-### 4. 创建虚拟环境
+### 2. 安装依赖
 
 ```bash
 cd apps/api
 python3 -m venv venv
-source venv/bin/activate
+venv/bin/pip install -r requirements.txt
 ```
 
-### 5. 安装 Python 依赖
+### 3. 配置环境变量
 
 ```bash
-pip install --upgrade pip
-pip install -r requirements.txt
+cp .env.example .env
 ```
 
-### 6. 配置环境变量
-
-创建 `.env` 文件：
+实际生效的数据库变量是 **五件套**：
 
 ```bash
-# 应用配置
-APP_NAME=Memory Recall API
-APP_VERSION=1.0.0
-APP_DEBUG=false
-
-# 数据库配置
-DATABASE_URL=postgresql://memory_user@localhost:5432/memory_recall
-
-# 火山引擎 API
-VOLC_API_KEY=your_api_key_here
-
-# 服务器配置
-HOST=0.0.0.0
-PORT=8000
+DATABASE_HOST=localhost
+DATABASE_PORT=5432
+DATABASE_NAME=memory_recall
+DATABASE_USER=postgres
+DATABASE_PASSWORD=your_password
 ```
 
-### 7. 初始化数据库
+> 注意：`.env.example` 中的 `DATABASE_URL` 不会被解析（`src/database.py` 只读五件套），
+> 填了也不生效，见 [ISSUES.md](ISSUES.md)。
+
+必须配置：`VOLC_API_KEY`；无 Key 时记忆创建（embedding）、实体提取、关系检测全部失败。
+可选：`LLM_PROVIDER=volcengine|deepseek`，embedding 始终走火山。
+
+### 4. 初始化数据库
 
 ```bash
-# 执行数据库初始化脚本（使用 schema.sql）
-python init_db.py
+# 完整初始化：建库 + pgvector 扩展 + schema.sql 全部表
+venv/bin/python setup_database.py
+
+# 或仅建表（数据库已存在时）
+venv/bin/python init_db.py
 ```
 
-**注意**：新环境使用 `schema.sql` 直接创建数据库结构，不再需要运行迁移脚本。
+> 无迁移框架：schema.sql 是唯一事实源，改 schema 后需重跑上述脚本或手工 DDL。
 
----
-
-## 启动服务
-
-### 开发模式
+### 5. 启动服务
 
 ```bash
-# 激活虚拟环境
-source venv/bin/activate
-
-# 启动服务（自动重载）
-python3 -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+cd apps/api
+venv/bin/python -m uvicorn main:app --reload --port 8000
 ```
 
-### 生产模式
+**必须从 `apps/api/` 目录启动**（代码使用绝对 `src.*` 导入）。
 
-**方式 1: 直接启动**
+## 验证
 
 ```bash
-# 激活虚拟环境
-source venv/bin/activate
-
-# 设置环境变量
-export VOLC_API_KEY=your_api_key_here
-
-# 启动服务
-nohup python3 -m uvicorn main:app --host 0.0.0.0 --port 8000 > /var/log/memory_recall/api.log 2>&1 &
-```
-
-**方式 2: 使用 Gunicorn + Uvicorn**
-
-```bash
-# 安装 Gunicorn
-pip install gunicorn
-
-# 启动服务（多进程）
-gunicorn main:app \
-  --workers 4 \
-  --worker-class uvicorn.workers.UvicornWorker \
-  --bind 0.0.0.0:8000 \
-  --access-logfile /var/log/memory_recall/access.log \
-  --error-logfile /var/log/memory_recall/error.log
-```
-
-**方式 3: 使用 Systemd（推荐）**
-
-创建服务文件 `/etc/systemd/system/memory_recall.service`:
-
-```ini
-[Unit]
-Description=Memory Recall API
-After=network.target postgresql.service
-
-[Service]
-Type=simple
-User=memory_user
-Group=memory_user
-WorkingDirectory=/path/to/memory_recall/apps/api
-Environment="PATH=/path/to/memory_recall/apps/api/venv/bin"
-Environment="VOLC_API_KEY=your_api_key_here"
-ExecStart=/path/to/memory_recall/apps/api/venv/bin/python3 -m uvicorn main:app --host 0.0.0.0 --port 8000
-Restart=always
-RestartSec=10
-
-[Install]
-WantedBy=multi-user.target
-```
-
-启动服务：
-
-```bash
-# 重载 systemd
-sudo systemctl daemon-reload
-
-# 启动服务
-sudo systemctl start memory_recall
-
-# 设置开机启动
-sudo systemctl enable memory_recall
-
-# 查看状态
-sudo systemctl status memory_recall
-```
-
----
-
-## 健康检查
-
-```bash
-# 检查服务状态
 curl http://localhost:8000/health
-
-# 预期输出
-{"status":"healthy","app":"Memory Recall API","version":"1.0.0"}
+# {"status":"healthy",...}
+curl http://localhost:8000/docs   # Swagger UI
 ```
 
----
-
-## 性能优化
-
-### 1. 数据库优化
-
-```sql
--- 索引已在 schema.sql 中创建，无需单独执行
--- 如需手动添加索引，参考 schema.sql 中的 CREATE INDEX 语句
-
--- 配置连接池
-ALTER SYSTEM SET max_connections = 200;
-ALTER SYSTEM SET shared_buffers = '256MB';
-```
-
-### 2. 应用优化
-
-- Embedding 缓存: 默认 1000 条，可在代码中调整
-- 并发处理: 自动并发执行向量存储和图谱构建
-- 批量处理: 使用 `batch_create_memories` 方法
-
-### 3. 服务器优化
+创建 API Key（admin key）：
 
 ```bash
-# 增加文件描述符限制
-ulimit -n 65535
-
-# 优化内核参数
-sudo sysctl -w net.core.somaxconn=1024
-sudo sysctl -w net.ipv4.tcp_max_syn_backlog=1024
+curl -X POST http://localhost:8000/auth/api-keys \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: <admin-key>" \
+  -d '{"user_name":"dev"}'
 ```
 
----
-
-## 监控与日志
-
-### 日志位置
-
-- API 日志: `/var/log/memory_recall/api.log`
-- 访问日志: `/var/log/memory_recall/access.log`
-- 错误日志: `/var/log/memory_recall/error.log`
-
-### 查看日志
-
-```bash
-# 实时查看日志
-tail -f /var/log/memory_recall/api.log
-
-# 查看错误日志
-grep ERROR /var/log/memory_recall/api.log
-```
-
----
+> 所有端点要求 `X-API-Key`（`rk_live_...` / `rk_test_...`），
+> 容器隔离规则见 AGENTS.md 的 `verify_container_ownership`。
 
 ## 故障排查
 
-### 1. 数据库连接失败
-
-```bash
-# 检查 PostgreSQL 状态
-sudo systemctl status postgresql
-
-# 检查连接
-psql -h localhost -U memory_user -d memory_recall
-```
-
-### 2. API 启动失败
-
-```bash
-# 检查端口占用
-lsof -i :8000
-
-# 检查日志
-tail -100 /var/log/memory_recall/error.log
-```
-
-### 3. Embedding 生成失败
-
-```bash
-# 检查 API Key
-echo $VOLC_API_KEY
-
-# 测试 API 连接
-curl -s https://ark.cn-beijing.volces.com/api/v3/embeddings \
-  -H "Authorization: Bearer $VOLC_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"input": "test", "model": "doubao-embedding"}'
-```
-
----
+| 症状 | 原因 | 处理 |
+|------|------|------|
+| 启动报 pgvector 未启用 | 扩展未安装/未创建 | `CREATE EXTENSION IF NOT EXISTS vector;` 或重跑 setup_database.py |
+| 依赖安装失败（macOS） | 系统 Python 3.9 过旧 | 用 `python3.11+ -m venv venv` 创建 |
+| 记忆创建/召回空结果 | VOLC_API_KEY 缺失或失效 | 检查 .env 与日志；`/debug/embedding-logs` 查看调用失败 |
+| 连接失败 | 五件套配置错误 | 确认 DATABASE_HOST/PORT/NAME/USER/PASSWORD（不是 DATABASE_URL） |
 
 ## 备份与恢复
 
-### 备份数据库
-
 ```bash
-# 全量备份
-pg_dump -U memory_user memory_recall > backup_$(date +%Y%m%d).sql
+# 备份
+pg_dump -U postgres -h localhost memory_recall > backup_$(date +%Y%m%d).sql
 
-# 仅数据备份
-pg_dump -U memory_user --data-only memory_recall > data_backup.sql
+# 恢复
+psql -U postgres -h localhost -d memory_recall < backup_YYYYMMDD.sql
 ```
 
-### 恢复数据库
+## 生产建议
 
-```bash
-# 恢复数据
-psql -U memory_user -d memory_recall < backup_20260320.sql
-```
+1. 关闭 `APP_DEBUG`，避免 500 错误泄露内部信息；
+2. 反代启用 HTTPS，限制 Adminer/仪表盘访问；
+3. 定期备份（记忆数据不可重建）；
+4. 按需调整 `TRACE_ENABLED`/`TRACE_SAMPLE_RATE`（生产可降采样）。
 
----
-
-## 安全建议
-
-1. **修改默认端口**: 避免使用 8000 端口
-2. **启用 HTTPS**: 使用 Nginx 反向代理
-3. **限制数据库访问**: 仅允许本地连接
-4. **定期备份**: 每日自动备份
-5. **监控日志**: 设置日志告警
+*状态: ACTIVE · 版本: v1.0 · 最后更新: 2026-08-12*
