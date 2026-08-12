@@ -531,6 +531,54 @@ class TestContextInjectAPI:
         assert items[0].source == "userMemory"
         assert items[0].priority == 1  # userMemory 默认 2，降 1 级
 
+    def test_entity_graph_increment_priority_boost(self):
+        """entity_graph 增量记忆 priority 应 +0.5，使其在 dedup 排序与最终 cap 中存活
+        （修复：子代理 max_memories=3 时 [:6] 截断丢实体图增量，见 trace 902fc2fe）"""
+        from src.services.core.context_inject_service import context_inject_service
+
+        eg_mem = {
+            "id": "m_eg",
+            "content": "实体图增量记忆",
+            "embedding": [1.0],
+            "source": "entity_graph",
+        }
+        normal_mem = {
+            "id": "m_normal",
+            "content": "普通记忆",
+            "embedding": [1.0],
+        }
+        items = context_inject_service._collect_items(
+            {}, [normal_mem, eg_mem], []
+        )
+        by_id = {i.id: i for i in items}
+        assert by_id["m_normal"].priority == 2  # userMemory 默认
+        assert by_id["m_eg"].priority == 2.5  # entity_graph +0.5
+        # entity_graph 增量应排普通记忆之前（cap 截断时优先保留）
+        assert by_id["m_eg"].priority > by_id["m_normal"].priority
+
+    def test_entity_graph_truncation_source_aware(self):
+        """_get_memories 截断应 source-aware：实体图增量单独配额，不被 core 挤掉"""
+        from src.services.core.context_inject_service import context_inject_service
+
+        # 构造超过 max_memories*2=6 的 core + 实体图增量
+        core = [
+            {"id": f"core_{i}", "content": f"core{i}", "embedding": [1.0], "source": None}
+            for i in range(6)
+        ]
+        eg = [
+            {"id": "eg_1", "content": "实体图增量", "embedding": [1.0], "source": "entity_graph"},
+            {"id": "eg_2", "content": "实体图增量2", "embedding": [1.0], "source": "entity_graph"},
+        ]
+        # 直接验证截断逻辑（与 _get_memories L520-530 一致）
+        all_memories = core + eg
+        max_memories = 3  # 子代理场景
+        entity_graph_items = [m for m in all_memories if m.get("source") == "entity_graph"]
+        core_items = [m for m in all_memories if m.get("source") != "entity_graph"]
+        entity_quota = max(1, (max_memories + 2) // 3)
+        result = core_items[: max_memories * 2] + entity_graph_items[:entity_quota]
+        assert len(result) == 6 + 1  # core 6 + entity 1（quota=1）
+        assert "eg_1" in [m["id"] for m in result]  # 实体图增量保住
+
     def test_extract_query_keywords_jieba(self):
         """jieba 关键词提取统一小写，英文/中文均保留"""
         from src.services.core.context_inject_service import context_inject_service

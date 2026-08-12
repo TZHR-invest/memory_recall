@@ -406,8 +406,13 @@
         html += renderChannel(tr, 'entity_graph', '🌐 实体图扩展', ch => {
             const paths = (ch.entity_paths || []).map(p =>
                 `<div class="path-line"><span class="rel">${esc(p.entity)}</span> → <span class="rel">${esc(p.relation_type)}</span> → ${esc(p.to_entity)} ${scopeHtml(p)}</div>`).join('');
-            const mems = (ch.memories || []).map(m =>
-                `<div class="hit"><div class="hit-main"><div class="hit-content">${esc(m.content)}</div><div class="hit-meta">${esc(m.id || '')} ${scopeHtml(m)}</div></div></div>`).join('');
+            // 用 final 的 id 集合交叉标注：实体图记录的记忆是否真正进入最终注入
+            // （_get_memories 截断/后续 dedup+cap 可能丢弃，trace 记录的是"注入尝试"）
+            const finalIds = new Set((tr.final || []).map(f => f.id).filter(Boolean));
+            const mems = (ch.memories || []).map(m => {
+                const injected = finalIds.has(m.id);
+                return `<div class="hit"><div class="hit-main"><div class="hit-content">${esc(m.content)}</div><div class="hit-meta">${esc(m.id || '')} ${scopeHtml(m)} ${injected ? '<span class="add-flag">已注入</span>' : '<span class="skip-flag">被截断</span>'}</div></div></div>`;
+            }).join('');
             return (paths ? `<div style="margin-bottom:6px;">${paths}</div>` : '') + mems;
         });
 

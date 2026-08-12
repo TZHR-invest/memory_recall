@@ -416,6 +416,8 @@ class ContextInjectService:
                                                 "embedding": target_memory.embedding,
                                                 "is_static": target_memory.is_static,
                                                 "relation_type": rel_type,
+                                                # 标记渠道来源：供 L518 截断区分 core/entity_graph 增量
+                                                "source": "memory_graph",
                                             }
                                         )
                                         if trace:
@@ -515,7 +517,20 @@ class ContextInjectService:
             # 但这些记忆与query完全无关，造成噪音召回
             # 现改为：只返回语义搜索+图谱扩展的结果，不够就不够
 
-            return all_memories[: max_memories * 2]
+            # 截断 source-aware：向量+记忆图谱占 max_memories*2 容量，
+            # 实体图增量单独配额追加——避免后加入的实体图高价值增量被无差别挤掉
+            # （修复：子代理 max_memories=3 时 [:6] 截断丢 entity_graph 增量，见 trace 902fc2fe）
+            entity_graph_items = [
+                m for m in all_memories if m.get("source") == "entity_graph"
+            ]
+            core_items = [
+                m for m in all_memories if m.get("source") != "entity_graph"
+            ]
+            # 实体图增量配额：正常 max=5 → 2 条；子代理 max=3 → 1 条（保底 1）
+            entity_quota = max(1, (max_memories + 2) // 3)
+            return (
+                core_items[: max_memories * 2] + entity_graph_items[:entity_quota]
+            )
         except Exception:
             return []
 
@@ -754,8 +769,10 @@ class ContextInjectService:
                     content=m.get("content", ""),
                     source="userMemory",
                     # 边缘命中（low_confidence）降 1 级：让 cap 优先保留高分记忆，减少 0.40-0.45 噪音注入
+                    # entity_graph 增量（未被其他渠道召回的新信息）+0.5：在 dedup 排序与最终 cap 中存活
                     priority=SOURCE_PRIORITY["userMemory"]
-                    - (1 if m.get("low_confidence") else 0),
+                    - (1 if m.get("low_confidence") else 0)
+                    + (0.5 if m.get("source") == "entity_graph" else 0),
                     embedding=m.get("embedding"),
                     id=m.get("id"),
                     relation_type=m.get("relation_type"),
@@ -820,8 +837,10 @@ class ContextInjectService:
                     content=m.get("content", ""),
                     source="projectMemory",
                     # 边缘命中（low_confidence）降 1 级：让 cap 优先保留高分记忆，减少 0.40-0.45 噪音注入
+                    # entity_graph 增量（未被其他渠道召回的新信息）+0.5：在 dedup 排序与最终 cap 中存活
                     priority=SOURCE_PRIORITY["projectMemory"]
-                    - (1 if m.get("low_confidence") else 0),
+                    - (1 if m.get("low_confidence") else 0)
+                    + (0.5 if m.get("source") == "entity_graph" else 0),
                     embedding=m.get("embedding"),
                     id=m.get("id"),
                     relation_type=m.get("relation_type"),
@@ -834,8 +853,10 @@ class ContextInjectService:
                     content=m.get("content", ""),
                     source="userMemory",
                     # 边缘命中（low_confidence）降 1 级：让 cap 优先保留高分记忆，减少 0.40-0.45 噪音注入
+                    # entity_graph 增量（未被其他渠道召回的新信息）+0.5：在 dedup 排序与最终 cap 中存活
                     priority=SOURCE_PRIORITY["userMemory"]
-                    - (1 if m.get("low_confidence") else 0),
+                    - (1 if m.get("low_confidence") else 0)
+                    + (0.5 if m.get("source") == "entity_graph" else 0),
                     embedding=m.get("embedding"),
                     id=m.get("id"),
                     relation_type=m.get("relation_type"),
