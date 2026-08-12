@@ -56,6 +56,47 @@
   代码时顺手做。
 - 记录: MR-017（P2，含建议方案 Short/1-4h）。
 
+## 画像 static 优化（同日，Oracle 裁定）
+
+> 关联: MR-018；commit 93b7738（数据侧清理）
+
+### 事实
+
+- 主容器画像 = **18 static + 44 dynamic**；每 session 注入 23 条 = 18 static 全量 + 5 dynamic
+  （`max_profile_items` 截断）。static 全量 3175 字符 ≈1600 tokens/次。
+- 18 条 static 中 2 条"重启服务"行为规则近似重复（mem_9a7be81f / mem_4b43a566，同 5-19 创建，
+  difflib ratio 0.709）。
+
+### 关键发现：semantic_dedup 对 profile 完全无效
+
+`_collect_items`（L748-755）给 profile 构建 DedupItem **只传 content/source 不传 embedding**
+→ `semantic_dedup_service.deduplicate` 走 `items_without_embedding` 直接 `kept.extend()`，
+画像项不参与去重。所以画像内重复条目只能靠数据侧清理，代码侧去重形同虚设。
+
+### Oracle 裁定：不做代码侧 difflib 去重
+
+我的初版方案（Phase A：`_get_profile` 层 difflib 去重，阈值 0.7 保留第一条）被否，理由：
+1. **误伤风险真实存在**：difflib `SequenceMatcher` 对短中文串 ratio 不稳定，0.7 阈值可能把
+   共享词汇但语义不同的行为规则误判重复；"保留第一条"依赖 created_at DESC 顺序，可能保留
+   不完整版。丢一条行为规则 = 永久损失指令，远重于省 ~90 tokens/次。
+2. **违背测试锁定的设计意图**："行为规则永不截断"（`test_get_profile_requests_full_static_for_layering`
+   锁定 static_count==35）——读取侧丢弃 behavior rule 语义上等价于截断，属新失败模式。
+3. **重复行为规则对 LLM 无害**：语义同向（强化非矛盾），唯一成本是 token 浪费。
+4. Phase B（扩充 transient 标记识别 OMO 记录）**证伪**：`test_is_transient_static_classification`
+   L321 断言 "OMO 配置半迁移缺陷及修复" 是 behavior（7f02d2d 有意决策），Phase B 破坏测试。
+   Phase C（环境知识分类）价值存疑，不做。
+
+### 执行（数据侧清理）
+
+- forget `mem_9a7be81f`（较短那条），保留完整版 `mem_4b43a566`；static 注入 18→17 实测生效。
+- dynamic 44→5 保持现状（时效即价值，配置旋钮非缺陷）；static 不做 query 相关性过滤
+  （无条件指令，过滤会让行为不确定）。
+- 根因记 MR-018（P2）：profile 写入路径无 embedding → semantic_dedup 对画像失效；
+  仅当重复条目**反复出现**时才评估写入侧补 embedding。
+- 经验：判断"画像重复"先看写入侧去重是否真的生效（无 embedding 的 DedupItem 等于没去重），
+  而不是在读取侧打补丁——治标 vs 治本的分界。
+
+
 ## 下一步
 
 - MR-017 排期：参数化 3 字段（默认 6/6/4）+ opencode 映射补 `max_project_memories_cap` +
