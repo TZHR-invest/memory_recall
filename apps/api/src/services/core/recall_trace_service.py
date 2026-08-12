@@ -79,8 +79,17 @@ class RecallTrace:
             }
         )
 
-    def record_vector(self, hits: List[Dict[str, Any]], threshold: float, scope: Optional[str] = None) -> None:
+    def record_vector(
+        self,
+        hits: List[Dict[str, Any]],
+        threshold: float,
+        scope: Optional[str] = None,
+        full_candidate: bool = False,
+    ) -> None:
         self.channels["vector"]["threshold"] = threshold
+        if full_candidate:
+            # 采样记录阈值前候选（含被 0.40 生产阈值挡掉的 0.30-0.40 区间），用于漏召回分析
+            self.channels["vector"]["full_candidate"] = True
         for h in hits:
             similarity = float(h.get("similarity") or 0.0)
             hit = {

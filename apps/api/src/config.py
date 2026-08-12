@@ -88,6 +88,7 @@ class Settings(BaseSettings):
     TRACE_SAMPLE_RATE: float = 1.0  # Trace 采样率 0~1（include_trace 请求不受采样影响）
     TRACE_RETENTION_DAYS: int = 7  # Trace 保留天数，由后台任务清理
     TRACE_CONTENT_MAX_LEN: int = 200  # Trace 中内容截断长度
+    TRACE_FULL_CANDIDATE_RATE: float = 0.0  # 采样率 0~1：命中时记录阈值前候选（SQL 阈值降低+limit 放大），默认 0 关闭
 
     class Config:
         env_file = ".env"

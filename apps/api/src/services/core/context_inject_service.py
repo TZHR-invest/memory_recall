@@ -6,6 +6,7 @@
 from typing import Dict, Any, List, Optional
 import time
 import re
+import random
 
 from src.config import settings
 from src.database import db
@@ -301,18 +302,29 @@ class ContextInjectService:
                 )
 
                 if query_embedding:
+                    # 采样命中时记录阈值前候选（SQL 阈值降低 + limit 放大），
+                    # 用于漏召回分析；默认 TRACE_FULL_CANDIDATE_RATE=0 关闭，不改变生产行为
+                    full_candidate = (
+                        settings.TRACE_FULL_CANDIDATE_RATE > 0
+                        and random.random() < settings.TRACE_FULL_CANDIDATE_RATE
+                    )
+                    search_limit = max_memories * 3 if full_candidate else max_memories
+                    search_threshold = (
+                        0.30 if full_candidate else config.get("memory_similarity_threshold", 0.40)
+                    )
                     search_results = await memory_store.search(
                         query=query,
                         container_tag=container_tag,
-                        limit=max_memories,
-                        threshold=config.get("memory_similarity_threshold", 0.40),
+                        limit=search_limit,
+                        threshold=search_threshold,
                     )
 
                     if trace:
                         trace.record_vector(
                             search_results,
-                            config.get("memory_similarity_threshold", 0.40),
+                            search_threshold,
                             scope=scope,
+                            full_candidate=full_candidate,
                         )
 
                     for r in search_results:

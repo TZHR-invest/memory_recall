@@ -87,6 +87,29 @@ class TestRecallTrace:
         trace.record_vector([{"id": "m", "content": "c", "similarity": 0.8}], 0.3, scope="user")
         assert trace.channels["vector"]["hits"][0]["scope"] == "user"
 
+    def test_full_candidate_marker(self):
+        trace = RecallTrace("tags", "proj", "user", "proj", "q", {})
+        # 采样命中：记录阈值前候选（含低于生产阈值的 0.30-0.40 区间）
+        trace.record_vector(
+            [
+                {"id": "a", "content": "x", "similarity": 0.35},
+                {"id": "b", "content": "y", "similarity": 0.55},
+            ],
+            threshold=0.30,
+            scope="project",
+            full_candidate=True,
+        )
+        data = trace.to_dict()
+        assert data["channels"]["vector"]["full_candidate"] is True
+        # 相对采样阈值 0.30 均 passed；0.35 是相对生产阈值 0.40 的"候选"但 trace 只标相对采样阈值
+        assert data["channels"]["vector"]["hits"][0]["passed"] is True
+        assert data["channels"]["vector"]["hits"][1]["passed"] is True
+
+    def test_no_full_candidate_marker_by_default(self):
+        trace = RecallTrace("tags", "proj", "user", "proj", "q", {})
+        trace.record_vector([{"id": "m", "content": "c", "similarity": 0.8}], 0.4)
+        assert "full_candidate" not in trace.channels["vector"]
+
     def test_record_final_and_summary(self):
         trace = RecallTrace("single", "c", "c", None, "q", {})
         items = [
