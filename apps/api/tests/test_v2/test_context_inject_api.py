@@ -212,7 +212,7 @@ class TestContextInjectAPI:
     def test_profile_static_layered_injection(
         self, mock_profile_service, mock_memory_store, mock_document_store
     ):
-        """static 分层注入：行为规则全量 + 临时记录（配置/热点研究）填剩余额度"""
+        """static 分层注入：行为规则全量 + 临时记录（配置/一次性事件）填剩余额度"""
         from src.services.core.context_inject_service import context_inject_service
 
         static_facts = (

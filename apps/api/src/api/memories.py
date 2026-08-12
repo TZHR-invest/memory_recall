@@ -175,7 +175,7 @@ async def create_memory(
     if not is_static and request.metadata.get("type") == "preference":
         is_static = True
 
-    # 写入分类标记（审计用，不改 is_static）：行为规则 vs 临时记录（配置/热点研究等）
+    # 写入分类标记（审计用，不改 is_static）：行为规则 vs 临时记录（配置/一次性事件）
     # 与 context_inject_service.TRANSIENT_STATIC_MARKERS 共用同一套标记，防读/写漂移
     if is_static:
         import re
