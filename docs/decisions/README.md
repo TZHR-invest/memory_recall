@@ -1,6 +1,6 @@
 # 决策记录（ADR）
 
-> 状态: ACTIVE · 最后更新: 2026-08-12
+> 状态: ACTIVE · 最后更新: 2026-08-13
 
 本项目使用 ADR（Architecture Decision Records）记录所有方向性决策。
 规则见 [docs/DOCUMENTATION_GUIDE.md](../DOCUMENTATION_GUIDE.md#2-决策记录adr)。
@@ -51,6 +51,9 @@ ADR 只记录**已定**的决策，没有 Proposed / Rejected 状态：
   不受"正文冻结"限制。
 - 讨论过程放 `docs/notes/`；讨论后否决的方案若值得记录，
   写一条 Accepted 的"不采用 X" ADR（决策本身是"不做 X"），否则留在 notes。
+- **实施状态不进 ADR**：Accepted 只代表"决策已定"，不代表"已实现"；
+  尚未实现的 Accepted ADR 由 `docs/STATUS.md` 的"ADR 实施跟踪"表跟踪
+  （规则见 [DOCUMENTATION_GUIDE.md §2.1](../DOCUMENTATION_GUIDE.md#21-adr-与实施状态accepted--已实现)）。
 
 ## 索引
 
@@ -65,4 +68,4 @@ ADR 只记录**已定**的决策，没有 Proposed / Rejected 状态：
 | [0007](0007-compaction-converge-to-official-hook.md) | 压缩机制收敛到官方 hook（废弃预压缩） | Accepted | 2026-08-12 |
 | [0008](0008-remove-summary-capture-and-scene-recovery.md) | 删除摘要捕获与现场恢复 | Accepted | 2026-08-12 |
 
-*状态: ACTIVE · 最后更新: 2026-08-12*
+*状态: ACTIVE · 最后更新: 2026-08-13*

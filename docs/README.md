@@ -56,11 +56,11 @@ docs/
 
 | 文档 | 状态 | 最后更新 | 说明 |
 |------|------|---------|------|
-| [DOCUMENTATION_GUIDE.md](DOCUMENTATION_GUIDE.md) | ACTIVE | 2026-08-12 | 文档沉淀规范：所有工作信息必须落档，含 Agent checklist |
-| [decisions/README.md](decisions/README.md) | ACTIVE | 2026-08-12 | 决策记录（ADR）索引与模板 |
+| [DOCUMENTATION_GUIDE.md](DOCUMENTATION_GUIDE.md) | ACTIVE | 2026-08-13 | 文档沉淀规范：所有工作信息必须落档，含 Agent checklist |
+| [decisions/README.md](decisions/README.md) | ACTIVE | 2026-08-13 | 决策记录（ADR）索引与模板 |
 | [notes/README.md](notes/README.md) | ACTIVE | 2026-08-12 | 过程记录约定与模板（讨论/调研/方向） |
 | [designs/README.md](designs/README.md) | ACTIVE | 2026-08-12 | 设计文档版本化约定与模板 |
-| [STATUS.md](STATUS.md) | ACTIVE | 2026-08-12 | 实时任务状态：活跃工作/下一步/等待项 |
+| [STATUS.md](STATUS.md) | ACTIVE | 2026-08-13 | 实时任务状态：活跃工作/下一步/等待项；ADR 实施跟踪 |
 | [PROJECT_PLAN.md](PROJECT_PLAN.md) | ACTIVE | 2026-08-12 | 项目定位、产品支柱、路线图、不做清单 |
 | [ENTITY_DESIGN.md](ENTITY_DESIGN.md) | ACTIVE | 2026-08-12 | 记忆/文档/实体/图谱领域模型，schema 为准 |
 | [ISSUES.md](ISSUES.md) | ACTIVE | 2026-08-12 | 已知问题索引（open 清单）；详情在 [issues/](issues/) |
