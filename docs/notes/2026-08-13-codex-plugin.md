@@ -220,3 +220,13 @@ VSCode 扩展 extension.js 的 turnCwds 机制本质是扩展侧内部归因：
 无证据表明带 cwd；配合之前实测（spawn 环境无 cwd、父进程无 cwd、code-server 无
 workspace 参数），基本可判定 VSCode 模式下 server 端拿不到精确 cwd。
 探针验证收益低，暂缓；若 codex 后续版本在 MCP 通道下发 thread cwd 再重估。
+
+## 补充调研（同日九次完善）：rollout mtime 兜底（堵住长会话重启缺口）
+
+用户确认常规路径后，补 mtime 兜底：_detect_from_rollout 在文件名时间戳匹配
+（5 分钟窗）失败时，按文件 mtime 取最新且 10 分钟窗内的 rollout（活跃会话持续
+写入，重启后 mtime 仍新鲜），覆盖「长会话 + server 重启」场景。
+真实验证：会话 10:59 开始、12:02 模拟重启，文件名超窗但 mtime diff=0s → 命中
+k1_project-memory_recall。新增 2 个单测（mtime 命中/mtime 超窗），共 32 个测试全绿。
+已知边界收敛为：会话完全停止（mtime 也超窗）时回退 git/默认值——memory_recall
+仓库场景仍正确；跨项目且会话停止的极端场景需显式配置。

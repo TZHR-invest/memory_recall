@@ -92,6 +92,7 @@ class TestDetectProjectTag:
         monkeypatch.setattr(os, "getppid", lambda: 12345)
         monkeypatch.setattr("builtins.open", lambda *a, **k: io.BytesIO(b"codex app-server"))
         monkeypatch.setattr(os, "readlink", lambda p: "/home/u/projects/myproj")
+        monkeypatch.setattr(config_mod, "_detect_from_rollout", lambda u: None)
         monkeypatch.setattr(config_mod, "_detect_from_git", lambda u: None)
         assert detect_project_tag("k1", fallback="fb") == "fb"
 
@@ -99,6 +100,7 @@ class TestDetectProjectTag:
         monkeypatch.setattr(os, "getppid", lambda: 12345)
         monkeypatch.setattr("builtins.open", lambda *a, **k: io.BytesIO(b"codex exec"))
         monkeypatch.setattr(os, "readlink", lambda p: str(Path.home()))
+        monkeypatch.setattr(config_mod, "_detect_from_rollout", lambda u: None)
         monkeypatch.setattr(config_mod, "_detect_from_git", lambda u: None)
         assert detect_project_tag("k1", fallback="fb") == "fb"
 
@@ -110,6 +112,7 @@ class TestDetectProjectTag:
             raise OSError("no proc")
 
         monkeypatch.setattr(os, "readlink", boom)
+        monkeypatch.setattr(config_mod, "_detect_from_rollout", lambda u: None)
         monkeypatch.setattr(config_mod, "_detect_from_git", lambda u: None)
         assert detect_project_tag("k1", fallback="fb") == "fb"
 
@@ -121,6 +124,7 @@ class TestDetectProjectTag:
 
         monkeypatch.setattr("builtins.open", boom)
         monkeypatch.setattr(os, "readlink", lambda p: "/home/u/projects/myproj")
+        monkeypatch.setattr(config_mod, "_detect_from_rollout", lambda u: None)
         monkeypatch.setattr(config_mod, "_detect_from_git", lambda u: None)
         assert detect_project_tag("k1", fallback="fb") == "fb"
 
@@ -134,6 +138,7 @@ class TestDetectProjectTag:
     def test_git_fallback_generates_tag(self, monkeypatch):
         # VSCode 模式 + 插件位于 git 仓库：git 兜底生成 tag
         monkeypatch.setattr(config_mod, "_detect_from_parent", lambda u: None)
+        monkeypatch.setattr(config_mod, "_detect_from_rollout", lambda u: None)
         monkeypatch.setattr(
             "subprocess.run",
             lambda *a, **k: type("R", (), {"returncode": 0, "stdout": "/home/u/repos/myrepo\n"})(),
@@ -142,6 +147,7 @@ class TestDetectProjectTag:
 
     def test_git_failure_falls_back(self, monkeypatch):
         monkeypatch.setattr(config_mod, "_detect_from_parent", lambda u: None)
+        monkeypatch.setattr(config_mod, "_detect_from_rollout", lambda u: None)
         monkeypatch.setattr(
             "subprocess.run",
             lambda *a, **k: type("R", (), {"returncode": 128, "stdout": ""})(),
@@ -168,11 +174,6 @@ class TestDetectFromRollout:
         self._make_rollout(tmp_path, close_name, "/home/u/proj/current")
         assert config_mod._detect_from_rollout("k1", sessions_dir=tmp_path, start_time=now) == "k1_project-current"
 
-    def test_outside_time_window_returns_none(self, tmp_path):
-        now = time.time()
-        old_name = time.strftime("rollout-%Y-%m-%dT%H-%M-%S-", time.localtime(now - 3600)) + "old.jsonl"
-        self._make_rollout(tmp_path, old_name, "/home/u/proj/old")
-        assert config_mod._detect_from_rollout("k1", sessions_dir=tmp_path, start_time=now) is None
 
     def test_bad_cwd_rejected(self, tmp_path):
         now = time.time()
@@ -184,4 +185,28 @@ class TestDetectFromRollout:
         now = time.time()
         close_name = time.strftime("rollout-%Y-%m-%dT%H-%M-%S-", time.localtime(now)) + "x.jsonl"
         (tmp_path / close_name).write_text("not json\n", encoding="utf-8")
+        assert config_mod._detect_from_rollout("k1", sessions_dir=tmp_path, start_time=now) is None
+
+    def test_mtime_fallback_covers_restart(self, tmp_path):
+        # 长会话 + server 重启：文件名时间戳超窗（3 小时前），但文件 mtime 新鲜（活跃写入）
+        now = time.time()
+        old_name = time.strftime("rollout-%Y-%m-%dT%H-%M-%S-", time.localtime(now - 10800)) + "x.jsonl"
+        p = tmp_path / old_name
+        p.write_text(
+            '{"type":"session_meta","payload":{"cwd":"/home/u/proj/other"}}\n',
+            encoding="utf-8",
+        )
+        os.utime(p, (now - 60, now - 60))  # mtime：1 分钟前还在写入
+        assert config_mod._detect_from_rollout("k1", sessions_dir=tmp_path, start_time=now) == "k1_project-other"
+
+    def test_mtime_outside_window_returns_none(self, tmp_path):
+        # 文件 mtime 也超窗（会话已停止很久）→ 无命中，交给 git 兜底
+        now = time.time()
+        old_name = time.strftime("rollout-%Y-%m-%dT%H-%M-%S-", time.localtime(now - 10800)) + "x.jsonl"
+        p = tmp_path / old_name
+        p.write_text(
+            '{"type":"session_meta","payload":{"cwd":"/home/u/proj/other"}}\n',
+            encoding="utf-8",
+        )
+        os.utime(p, (now - 7200, now - 7200))  # mtime：2 小时前
         assert config_mod._detect_from_rollout("k1", sessions_dir=tmp_path, start_time=now) is None
