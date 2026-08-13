@@ -14,8 +14,10 @@ Memory Recall 的知识库本身会被 opencode 插件自动导入（默认 `tra
 docs/
 ├── README.md            # 本文档：索引 + 维护规范
 ├── DOCUMENTATION_GUIDE.md # 文档沉淀规范（Docs-as-Records，Agent 必读）
+├── STATUS.md            # 实时任务状态：活跃工作/下一步/等待项
 ├── PROJECT_PLAN.md      # 项目/产品长期规划（定位、路线图、不做清单）
 ├── ENTITY_DESIGN.md     # 领域模型与实体设计（以 schema.sql 为准）
+├── MEMORY_FLOW.md       # 核心数据流：写入 → 处理 → 召回/注入 → 消费
 ├── ISSUES.md            # 已知问题索引（open 清单，详情在 issues/）
 ├── issues/              # 问题详情（MR-xxx，每问题一文件）
 ├── DEPLOYMENT.md        # 部署与运维（Docker / 手动 / 备份）
@@ -54,10 +56,12 @@ docs/
 | [decisions/README.md](decisions/README.md) | ACTIVE | 2026-08-12 | 决策记录（ADR）索引与模板 |
 | [notes/README.md](notes/README.md) | ACTIVE | 2026-08-12 | 过程记录约定与模板（讨论/调研/方向） |
 | [designs/README.md](designs/README.md) | ACTIVE | 2026-08-12 | 设计文档版本化约定与模板 |
+| [STATUS.md](STATUS.md) | ACTIVE | 2026-08-12 | 实时任务状态：活跃工作/下一步/等待项 |
 | [PROJECT_PLAN.md](PROJECT_PLAN.md) | ACTIVE | 2026-08-12 | 项目定位、产品支柱、路线图、不做清单 |
 | [ENTITY_DESIGN.md](ENTITY_DESIGN.md) | ACTIVE | 2026-08-12 | 记忆/文档/实体/图谱领域模型，schema 为准 |
 | [ISSUES.md](ISSUES.md) | ACTIVE | 2026-08-12 | 已知问题索引（open 清单）；详情在 [issues/](issues/) |
 | [DEPLOYMENT.md](DEPLOYMENT.md) | ACTIVE | 2026-08-12 | Docker Compose / 手动部署 / 备份恢复 |
+| [MEMORY_FLOW.md](MEMORY_FLOW.md) | ACTIVE | 2026-08-12 | 核心数据流：写入 → 处理 → 召回/注入 → 消费（含 /context-inject 契约） |
 | [archive/README.md](archive/README.md) | ACTIVE | 2026-08-12 | 归档索引：为什么归档、历史文档在哪 |
 
 > 完整的文档分类与生命周期规则见 [DOCUMENTATION_GUIDE.md](DOCUMENTATION_GUIDE.md)。

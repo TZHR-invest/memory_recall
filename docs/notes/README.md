@@ -60,4 +60,19 @@
 - 写完不删除、不改写；新进展开新篇并互相引用；
 - 产生方向性取舍时，在 notes 基础上另写 ADR（notes 是过程，ADR 是决策）。
 
-*状态: ACTIVE · 最后更新: 2026-08-12*
+## 外部调研模板（配合 AGENTS.md 外部调研节）
+
+一个调研 = 一个文件夹：`docs/notes/research/YYYY-MM-DD-<slug>/`
+
+| 文件 | 内容 |
+|------|------|
+| `README.md` | 调研卡：目标/状态/结论入口/文件索引 |
+| `01-goals.md` | 背景 + 已知源码事实 |
+| `NN-round-NN-prompts.md` | 每轮提示词（含平台分配，按平台打包） |
+| `NN-round-NN-answers-<platform>.md` | 每平台回答原文（一次粘贴一个文件） |
+| `NN-round-NN-conclusions.md` | 每轮统一理解（一致性/冲突/结论/源码验证） |
+| `99-final-conclusions.md` | 最终统一理解 + 实施映射 |
+
+流程速记：**定向轮（每平台 ≤3 题）→ 追问轮（只追冲突）→ 收敛轮（回源码）**。
+
+*状态: ACTIVE · 最后更新: 2026-08-13*

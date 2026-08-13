@@ -75,11 +75,17 @@
 | `RECALL_TRACE_DESIGN.md` | docs/ | Recall Trace 功能已落地（recall_traces 表 + `/debug/traces` API），设计稿失去"当前为真"地位 |
 | `RECALL_TRACE_DEV.md` | docs/ | 同上，落地实现说明见代码 `src/services/core/recall_trace_service.py` |
 
+### 2026-08-12 新增归档（核心重构讨论稿）
+
+| 文档 | 原位置 | 归档原因 |
+|------|--------|---------|
+| `2026-08-11_refactor_core_and_plugin.md` | docs/ | 核心服务 + 插件精简讨论稿：正文多处结论未经核实、不可信任；已拆解为 notes（讨论/调研/计划）与 ADR-0003~0008，仅作历史参考 |
+
 Recall Trace 的现状入口：`/debug/traces`、`/debug/traces/{id}`、`/debug/traces/run`，
 配置项 `TRACE_ENABLED/TRACE_SAMPLE_RATE/TRACE_RETENTION_DAYS/TRACE_CONTENT_MAX_LEN`。
 
 ---
 
-*归档日期: 2026-03-31*  
-*更新: 2026-08-12（新增 4 篇归档 + 索引）*  
+*归档日期: 2026-03-31*
+*更新: 2026-08-12（新增 4 篇归档 + 核心重构讨论稿归档 + 索引）*
 *当前版本: v5.0.0*

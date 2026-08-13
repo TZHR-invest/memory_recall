@@ -58,5 +58,11 @@ ADR 只记录**已定**的决策，没有 Proposed / Rejected 状态：
 |------|------|------|------|
 | [0001](0001-product-positioning.md) | 产品定位收敛为 AI Agent 记忆系统 | Accepted | 2026-08-12 |
 | [0002](0002-docs-as-records.md) | 文档沉淀与生命周期规范（Docs-as-Records） | Accepted | 2026-08-12 |
+| [0003](0003-inject-api-convergence.md) | 注入接口收敛为 /context-inject 单一路径 | Accepted | 2026-08-12 |
+| [0004](0004-context-inject-graceful-degradation.md) | /context-inject 子模块优雅降级 | Accepted | 2026-08-12 |
+| [0005](0005-inject-failure-notice-policy.md) | 注入失败提示策略（log + toast，每会话最多 3 次） | Accepted | 2026-08-12 |
+| [0006](0006-session-summary-not-stored-as-memory.md) | 会话摘要不写入记忆库 | Accepted | 2026-08-12 |
+| [0007](0007-compaction-converge-to-official-hook.md) | 压缩机制收敛到官方 hook（废弃预压缩） | Accepted | 2026-08-12 |
+| [0008](0008-remove-summary-capture-and-scene-recovery.md) | 删除摘要捕获与现场恢复 | Accepted | 2026-08-12 |
 
 *状态: ACTIVE · 最后更新: 2026-08-12*

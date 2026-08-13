@@ -95,6 +95,8 @@ erDiagram
 
 ## 5. 召回路径（context-inject）
 
+> 完整数据流与生命周期（写入 → 处理 → 召回 → 消费）见 [MEMORY_FLOW.md](MEMORY_FLOW.md)。
+
 ```
 profile（画像） → vector（记忆向量） → memory graph（记忆演进）
 → entity graph（实体关系） → chunks（文档分块） → 语义去重 → 格式化注入

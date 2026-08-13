@@ -5,6 +5,20 @@
 > 本文档替代 `docs/archive/requirements.md`、`docs/archive/user-pain-points.md`、
 > `docs/archive/development-plan.md` 作为项目当前的产品规划入口。历史版本见 archive。
 
+## 0. 当前阶段与工程约束（Agent 决策参考）
+
+> 本节点是给 Agent 与协作者的"阶段判断依据"：破坏性变更是否可接受，先看这里。
+
+- **阶段**：开发早期（v5.x），以功能收敛与简化为主，尚未有外部商业承诺；
+- **用户规模**：自托管，用户数量个位数，主容器数据规模可控；
+- **变更策略**：允许破坏性变更（接口、插件配置、行为语义），但必须：
+  1. 先落 ADR / 文档（Docs-as-Records）；
+  2. 同步更新插件与后端（两端一致演进）；
+  3. 保留历史归档可追溯，不静默删除数据；
+- **兼容性承诺**：对旧插件配置（如 `useBackendDedup`、`userContainerTag`）与旧接口模式
+  （如 `/context-inject` 的 `container_tag`）不做长期兼容，按 ADR 逐步移除；
+- **决策落点**：本条由 ADR-0003 等破坏性变更决策引用；阶段变化时更新本节并记录日期。
+
 ## 1. 产品定位（当前事实，2026-08 快照）
 
 **Memory Recall 是一个 AI Agent 的长期记忆系统**：把对话中的事实、偏好与项目文档沉淀为可检索的知识，
