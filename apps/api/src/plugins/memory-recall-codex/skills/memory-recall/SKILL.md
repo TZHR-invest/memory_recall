@@ -40,6 +40,12 @@ description: 跨会话持久记忆。通过 Memory Recall MCP 工具在任务开
 - 经验教训 → `mcp__memory_recall__add` with `type: "learned-pattern"`
 - 项目配置/技术栈 → `mcp__memory_recall__add` with `type: "project-config"`
 
+### 用户明确要求记住时（立即执行，不等任务结束）
+
+用户说出"记住 / 别忘了 / 记下来 / 保存这个 / 以后参考"等明确存储意图时，
+**必须立即调用 `mcp__memory_recall__add`**（提取核心内容，按上方类型/scope 规范），
+不可推迟到任务收尾，也不可跳过。
+
 ### scope 语义（user / project）
 
 - `user`：跨项目共享（用户偏好、全局事实），存时用 `scope: "user"`
@@ -66,7 +72,7 @@ description: 跨会话持久记忆。通过 Memory Recall MCP 工具在任务开
 | 场景 | 工具 | 说明 |
 |------|------|------|
 | 完整召回 | `mcp__memory_recall__context_inject` | 画像+记忆+文档+双重图谱，任务开始首选 |
-| 搜记忆 | `mcp__memory_recall__search` | 语义搜索 |
+| 搜记忆 | `mcp__memory_recall__search` | 纯向量语义搜索（无图谱/画像/文档，需这些请用 context-inject） |
 | 查画像 | `mcp__memory_recall__profile` | 用户 static + dynamic |
 | 存储 | `mcp__memory_recall__add` | 默认异步，秒回 |
 | 更新 | `mcp__memory_recall__update` | 版本化更新（建版本链） |

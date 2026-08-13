@@ -182,7 +182,7 @@ async def list_tools() -> list[Tool]:
         ),
         Tool(
             name="search",
-            description="语义搜索 memory_recall 中的记忆。基于向量相似度检索。如需图谱扩展召回，请使用 context-inject。",
+            description="语义搜索记忆（纯向量相似度）。如需图谱扩展召回（Memory Graph/Entity Graph）、画像注入或文档片段，请改用 context-inject——本工具不返回 trace 且不支持图谱参数。",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -626,6 +626,8 @@ async def _handle_search(args: dict) -> list[TextContent]:
             id_str = f"[{mid[:8]}] " if mid else ""
             preview = c[:200] + "..." if len(c) > 200 else c
             lines.append(f"{i}. {id_str}{preview}{sim}")
+            if mid:
+                lines.append(f"   ID: {mid}")
         else:
             lines.append(f"{i}. {m}")
 
@@ -692,6 +694,8 @@ async def _handle_list(args: dict) -> list[TextContent]:
             is_s = "📌" if m.get("is_static") else "📝"
             preview = c[:100] + "..." if len(c) > 100 else c
             lines.append(f"{i}. {is_s} [{mid[:8]}] {preview}")
+            if mid:
+                lines.append(f"   ID: {mid}")
         else:
             lines.append(f"{i}. {m}")
 

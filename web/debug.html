@@ -577,6 +577,9 @@
     window.addEventListener('DOMContentLoaded', () => {
         document.getElementById('api-key').value = localStorage.getItem(LS_KEY) || '';
         document.getElementById('api-base').value = localStorage.getItem(LS_BASE) || `http://${location.hostname}:8000`;
+        if (!document.getElementById('api-key').value.trim()) {
+            toast('未配置 API Key：从 ~/.config/codex/memory-recall.jsonc 获取 rk_live 开头的 key 填入上方并保存', 'err');
+        }
         loadTraces();
     });
 </script>

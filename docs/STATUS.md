@@ -52,7 +52,8 @@
 - 记忆维护检查点延后：本地 API/DB 未运行（无 venv/.env，Postgres 未启动），
   ADR-0010 相关的过时记忆检索与修正待服务可用后执行（检索主题：文档知识闭环、chunks 通道、产品支柱）；
 - 手工验证需真实 opencode 运行时，可延后。
-- test_document/source_deduplication 两个文件一起跑会互相污染失败（缺 pytest-order 插件），
-  单独跑各自全绿；需要全量一条命令跑时先 pip install pytest-order（文档 TESTING.md 已知项）。
+- test_document/source_deduplication 两个文件一起跑必失败（全局 db 连接跨 asyncio loop 冲突，
+  非顺序问题，pytest-order/改 loop scope 均无法解决），单独跑各自全绿；彻底修复需测试
+  连接管理重构（TESTING.md 已记录根因，未排期）。
 
 *状态: ACTIVE · 最后更新: 2026-08-13*

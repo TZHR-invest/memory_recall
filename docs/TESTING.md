@@ -17,8 +17,12 @@
 
 - **没有 `TEST_DATABASE_URL`**：`src/database.py` 只通过 `DATABASE_HOST/PORT/NAME/USER/PASSWORD` 连库
   （`DATABASE_URL` 在 config 里声明但从不解析）。指向临时库用覆盖这些变量，如 `DATABASE_NAME=memory_recall_test`。
-- `test_document_deduplication.py` / `test_source_deduplication.py` 用 `@pytest.mark.order`，
-  但 `pytest-order` **不在** `requirements.txt` —— 需要排序时自行安装。
+- `test_document_deduplication.py` / `test_source_deduplication.py` **不能一起跑**（会互相
+  失败 18/26）：根因是全局 `db` 单例 asyncpg 连接跨 pytest-asyncio module loop 冲突
+  （"attached to a different loop"）。不是顺序问题——装 `pytest-order` 无法解决，
+  改 `asyncio_default_test_loop_scope=session` 也会变成 "Event loop is closed"。
+  正确做法：**两个文件分开单独跑**（各自全绿）。彻底修复需重构测试连接管理（每文件
+  独立连接或 session fixture 统一管理），属测试基建改造，未排期。
 - 集成测试不清理自己的测试数据（容器如 `test_integration_*`、`test_perf_*`）。
 - **`pytest.ini` 的 `asyncio_default_test_loop_scope = module` 不能删**：pytest-asyncio 1.x 默认测试函数用
   函数级 loop，而异步 fixture/db 用模块级 loop，asyncpg 连接会报 "attached to a different loop"。
