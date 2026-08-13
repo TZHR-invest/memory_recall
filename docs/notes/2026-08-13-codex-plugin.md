@@ -206,3 +206,17 @@ cwd 全是 home 目录，VSCode Remote 扩展模式下拿不到项目目录。
 
 最终探测链：显式配置 > 父进程 cwd（CLI）> rollout session_meta（VSCode）> git 仓库根 > 默认值。
 VSCode 模式已真正自动化，仅多项目场景（不同目录的仓库）仍需显式配置。
+
+## 补充调研（同日八次完善）：turnCwds 溯源——codex 不下发 cwd 的结论
+
+用户问「下面做什么」，启动探针前先做源码侦查（零成本）：
+VSCode 扩展 extension.js 的 turnCwds 机制本质是扩展侧内部归因：
+- 扩展向 codex 发 turn/start 请求时 track(cwd, requestId)，响应回来时 observeResponse 匹配，
+  用于路由/遥测（takeCompletedTurnCwds）；
+- isMcpRequestMessage 分支的 observeServerRequest 观察的是「扩展收到的 MCP 请求」
+  （codex-lsp-mcp 通道），不是「扩展/ codex 发给插件 stdio server 的请求」。
+
+结论：codex → 插件 MCP server 仍是标准 MCP 协议（initialize/tools/call），
+无证据表明带 cwd；配合之前实测（spawn 环境无 cwd、父进程无 cwd、code-server 无
+workspace 参数），基本可判定 VSCode 模式下 server 端拿不到精确 cwd。
+探针验证收益低，暂缓；若 codex 后续版本在 MCP 通道下发 thread cwd 再重估。
