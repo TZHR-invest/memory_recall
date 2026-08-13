@@ -247,3 +247,17 @@ code-mode-host；新增 1 个回归测试（8 断言），共 33 个测试全绿
 - status 配置来源文案去掉硬编码路径。
 
 插件 review 结论：无其他遗留问题，插件线收尾。
+
+## 二轮 review（同日十一次完善）：config.toml 层 disabled_tools 实测生效
+
+复查 delete-doc 安全缺口（插件 .mcp.json 的 disabled_tools 不生效）时发现：
+config.toml 层（Config 层）的策略字段是生效的——在 [mcp_servers.memory-recall]
+加 disabled_tools = ["delete_doc"] 后，codex mcp get --json 实测显示
+disabled_tools: ["delete_doc"]（此前 null）。这与插件层行为相反（插件 .mcp.json
+策略字段全不生效，仅 transport）。
+
+处置：本机 config.toml 已加 disabled_tools 禁用 delete_doc（符合插件作者原意，
+破坏性操作防误删），备份在 ~/.codex/config.toml.bak-probe；README 已知限制
+更新为区分「插件层策略字段不生效 / Config 层生效」。新会话生效。
+
+结论：二轮 review 无其他问题，插件线收尾。

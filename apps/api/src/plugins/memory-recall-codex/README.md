@@ -140,6 +140,9 @@ codex plugin add memory-recall-codex@personal   # 重装
 
 - 插件 `.mcp.json` 只支持 transport 字段（command/args/env/cwd）；策略字段
   （`default_tools_approval_mode`、`disabled_tools`）实测不生效，免审批配置必须走 config.toml（见上）。
+- **config.toml 层的策略字段生效**（与插件层不同）：`default_tools_approval_mode`
+  免审批、`disabled_tools` 禁用工具（本机已用 config.toml 禁用 delete_doc，
+  `codex mcp get` 实测生效）。插件 .mcp.json 里的同名字段才是死的。
 - MCP server 无法感知工作目录（spawn 时无 PWD/CODEX_CWD），所以 project 记忆
   是所有 Codex 项目共用一个池；需要隔离时在内容里标注项目名（如 `【项目X】...`）。
   **project_tag 自动探测链**：父进程 cwd（codex CLI）> codex 会话 rollout
