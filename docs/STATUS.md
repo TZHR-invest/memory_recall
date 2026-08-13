@@ -1,6 +1,6 @@
 # Memory Recall 任务状态（实时工作台）
 
-> 状态: ACTIVE · 最后更新: 2026-08-12
+> 状态: ACTIVE · 最后更新: 2026-08-13
 >
 > 规则：本文件只放"当前活跃工作 + 下一步 + 等待项"；历史一律进 `docs/notes/`；
 > 每次任务收尾必须更新；无活跃工作则写"空闲"。
@@ -11,6 +11,7 @@
 |------|------|------|
 | OpenCode 压缩 hook 外部调研 | 已完成（三轮收敛，结论与 ADR-0003~0008 一致） | [调研目录](notes/research/2026-08-12-opencode-compaction-hook/README.md) |
 | 核心服务 + 插件精简实施 | 未开始（下一步） | [实施计划](notes/2026-08-12-core-plugin-refactor-plan.md) |
+| AGENTS.md 精炼重构（拆分到 ARCHITECTURE/TESTING/PLUGINS/RESEARCH_GUIDE） | 已完成（2026-08-13） | [记录](notes/2026-08-13-note.md) |
 
 ## 下一步
 
@@ -24,4 +25,4 @@
 
 - 暂无（外部调研已完成；等待开始实施）。
 
-*状态: ACTIVE · 最后更新: 2026-08-12*
+*状态: ACTIVE · 最后更新: 2026-08-13*

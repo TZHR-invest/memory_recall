@@ -60,7 +60,7 @@
 - 写完不删除、不改写；新进展开新篇并互相引用；
 - 产生方向性取舍时，在 notes 基础上另写 ADR（notes 是过程，ADR 是决策）。
 
-## 外部调研模板（配合 AGENTS.md 外部调研节）
+## 外部调研模板（配合 docs/RESEARCH_GUIDE.md）
 
 一个调研 = 一个文件夹：`docs/notes/research/YYYY-MM-DD-<slug>/`
 

@@ -18,6 +18,10 @@ docs/
 ├── PROJECT_PLAN.md      # 项目/产品长期规划（定位、路线图、不做清单）
 ├── ENTITY_DESIGN.md     # 领域模型与实体设计（以 schema.sql 为准）
 ├── MEMORY_FLOW.md       # 核心数据流：写入 → 处理 → 召回/注入 → 消费
+├── ARCHITECTURE.md      # 架构与模块地图（后端分层、核心服务、惰性导入、死代码清单）
+├── TESTING.md           # 测试指南（三层分级、环境注意点、常用命令）
+├── PLUGINS.md           # 客户端插件（opencode / deepseek-tui / hermes）
+├── RESEARCH_GUIDE.md    # 外部调研工作流（Human-in-the-Loop Research）
 ├── ISSUES.md            # 已知问题索引（open 清单，详情在 issues/）
 ├── issues/              # 问题详情（MR-xxx，每问题一文件）
 ├── DEPLOYMENT.md        # 部署与运维（Docker / 手动 / 备份）
@@ -62,6 +66,10 @@ docs/
 | [ISSUES.md](ISSUES.md) | ACTIVE | 2026-08-12 | 已知问题索引（open 清单）；详情在 [issues/](issues/) |
 | [DEPLOYMENT.md](DEPLOYMENT.md) | ACTIVE | 2026-08-12 | Docker Compose / 手动部署 / 备份恢复 |
 | [MEMORY_FLOW.md](MEMORY_FLOW.md) | ACTIVE | 2026-08-12 | 核心数据流：写入 → 处理 → 召回/注入 → 消费（含 /context-inject 契约） |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | ACTIVE | 2026-08-13 | 架构与模块地图：后端分层、核心服务、惰性导入、死代码清单 |
+| [TESTING.md](TESTING.md) | ACTIVE | 2026-08-13 | 测试指南：三层分级、环境注意点、常用命令 |
+| [PLUGINS.md](PLUGINS.md) | ACTIVE | 2026-08-13 | 客户端插件：opencode / deepseek-tui / hermes |
+| [RESEARCH_GUIDE.md](RESEARCH_GUIDE.md) | ACTIVE | 2026-08-13 | 外部调研工作流（Human-in-the-Loop Research） |
 | [archive/README.md](archive/README.md) | ACTIVE | 2026-08-12 | 归档索引：为什么归档、历史文档在哪 |
 
 > 完整的文档分类与生命周期规则见 [DOCUMENTATION_GUIDE.md](DOCUMENTATION_GUIDE.md)。
@@ -73,4 +81,4 @@ docs/
 - 已知问题以 `docs/ISSUES.md` 为清单，修复后把对应条目标记为 `已解决` 并记录 commit/版本。
 - 版本号以 `apps/api/src/config.py` 的 `APP_VERSION` 为准（见 [ISSUES.md](ISSUES.md) 中版本漂移问题）。
 
-*状态: ACTIVE · 版本: v1.0 · 最后更新: 2026-08-12*
+*状态: ACTIVE · 版本: v1.0 · 最后更新: 2026-08-13*

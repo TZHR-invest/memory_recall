@@ -80,7 +80,7 @@
 13. 残留检查（应全部为空）：
     `checkAndTriggerCompaction|injectHookMessage|createCompactionPrompt|waitForSummaryMessage|
     captureAgentConfig|captureTodos|useBackendDedup|SummaryCapture|injectContext\b`；
-14. 后端 fast unit loop 全绿（见 AGENTS.md Testing），新增降级用例；
+14. 后端 fast unit loop 全绿（见 docs/TESTING.md），新增降级用例；
 15. 插件 `bun test` 更新后全绿；
 16. 手工验证：`/context-inject` 单通道失败返回部分结果；注入失败 toast ≤3；压缩 hook 只追加 context。
 
