@@ -13,6 +13,7 @@
 | deepseek-tui | `apps/api/src/plugins/deepseek-tui/` | Python MCP stdio server |
 | hermes | `apps/api/src/plugins/hermes/` | Python MCP stdio server |
 | openclaw | `apps/api/src/plugins/openclaw/` | Python hooks（旧） |
+| codex | `apps/api/src/plugins/memory-recall-codex/` | Codex 插件（skills + MCP stdio server） |
 
 现在为 omp 开发对应插件。omp 与 pi 同源（由 pi-mono fork），扩展 API 是 pi 扩展 API 的直接延续，插件形态与 opencode 同为 TypeScript 扩展，可最大程度复用 opencode 插件的实现。
 
