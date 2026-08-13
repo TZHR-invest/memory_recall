@@ -12,6 +12,7 @@
 | OpenCode 压缩 hook 外部调研 | 已完成（三轮收敛，结论与 ADR-0003~0008 一致） | [调研目录](notes/research/2026-08-12-opencode-compaction-hook/README.md) |
 | 核心服务 + 插件精简实施 | 未开始（下一步） | [实施计划](notes/2026-08-12-core-plugin-refactor-plan.md) |
 | AGENTS.md 精炼重构（拆分到 ARCHITECTURE/TESTING/PLUGINS/RESEARCH_GUIDE） | 已完成（2026-08-13） | [记录](notes/2026-08-13-note.md) |
+| project-codex / project-.codex 双容器清理 | 已完成（记忆迁移 + opencode 插件点号目录过滤修复，待 opencode 重启生效） | [notes/2026-08-13-note.md](notes/2026-08-13-note.md#project-codex--project-codex-双容器来源解密用户提问排查) |
 
 ## ADR 实施跟踪
 
