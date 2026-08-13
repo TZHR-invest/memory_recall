@@ -30,6 +30,7 @@
 | MR-017 | 注入 cap 硬编码 6/6/4 + 插件 maxProjectMemories 静默丢弃 | P2 | [详情](issues/MR-017-injection-caps.md) |
 | MR-018 | profile 写入路径无 embedding，semantic_dedup 对画像失效 | P2 | [详情](issues/MR-018-profile-dedup.md) |
 | MR-019 | 文档 → 记忆蒸馏是否值得做（ADR-0010 遗留） | P2 | [详情](issues/MR-019-document-to-memory-distillation.md) |
+| MR-020 | /history 端点对显式版本链返回空（版本历史双路径不一致） | P2 | [详情](issues/MR-020-version-history-gap.md) |
 
 ## 已关闭（决策导致不再适用）
 
@@ -56,6 +57,6 @@
 1. **先实施 ADR-0010**：移除文档 RAG（表/代码/路由/插件/测试），减少 MR-006 需统一的召回路径数量。
 2. **再定知识对象**（MR-006/008）：统一"当前事实"的存储与语义，这是架构层关键决策，越晚越难改。
 3. **同时做产品面最小闭环**（MR-011）：让用户看到并纠正系统记住了什么，这是信任与留存的基础。
-4. **清理工程债**（MR-013 迁移框架 / MR-015 死代码 / MR-017 cap 配置化 / MR-018 画像去重）。
+4. **清理工程债**（MR-013 迁移框架 / MR-015 死代码 / MR-017 cap 配置化 / MR-018 画像去重 / MR-020 版本历史读取）。
 
 *状态: ACTIVE · 版本: v1.4 · 最后更新: 2026-08-13*
