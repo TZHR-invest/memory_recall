@@ -16,6 +16,7 @@
 | 记忆维护闭环（ADR-0009） | 已完成（注入陈旧标注 + 规则检查点，API 已重启生效） | [ADR-0009](decisions/0009-memory-maintenance-loop.md) |
 | 文档 RAG 移出核心（ADR-0010） | 决策已定（2026-08-13，文档配套已落地）；代码删除待排期（已确认存量数据直接删不导出） | [ADR-0010](decisions/0010-remove-document-rag.md) · [实施讨论](notes/2026-08-13-adr0010-implementation-discussion.md) |
 | 全量测试验证 + 回归修复 | 已完成（2026-08-13）：修复 16f3b8f 引入的 Entity 测试回归（user_tag/project_tag→container_tag，2 测试）+ performance 测试 LLM 依赖隔离（extract_entities=False，1 测试）；单元 383 + 集成 7 + 性能 5 + 去重 26 全绿 | 见 commit |
+| 记忆维护检查点（ADR-0009） | 已完成（2026-08-13：语义检索 5 主题 × 5 容器 + SQL 关键词预检；版本化修正 1 条过时记忆 `mem_12490fb23d474aa1996e` → `mem_a716b54e449a4003beef`） | [ADR-0009](decisions/0009-memory-maintenance-loop.md) |
 
 ## ADR 实施跟踪
 
@@ -42,16 +43,13 @@
 
 1. ADR-0010 实施排期：文档 RAG 删除清单（表/代码/路由/插件/测试）拆分任务；
    已确认：存量数据直接删不导出；建议按 后端核心 → 插件 → 收尾 三个 commit 推进（[讨论记录](notes/2026-08-13-adr0010-implementation-discussion.md)）；
-2. ADR-0009 检查点：检索并修正"文档知识闭环/文档支柱"类过时记忆（服务可用后执行，见等待项）；
-3. 手工验证项（需真实 opencode 运行时，可延后）：
+2. 手工验证项（需真实 opencode 运行时，可延后）：
    - 压缩 hook 抛错 / 超时 / 共存检测实测；
    - /context-inject 单通道失败返回部分结果 + failed_channels；
    - 注入失败 toast 不超过每会话 3 次。
 
 ## 等待项 / 阻塞
 
-- 记忆维护检查点延后：本地 API/DB 未运行（无 venv/.env，Postgres 未启动），
-  ADR-0010 相关的过时记忆检索与修正待服务可用后执行（检索主题：文档知识闭环、chunks 通道、产品支柱）；
 - 手工验证需真实 opencode 运行时，可延后。
 - test_document/source_deduplication 两个文件一起跑必失败（全局 db 连接跨 asyncio loop 冲突，
   非顺序问题，pytest-order/改 loop scope 均无法解决），单独跑各自全绿；彻底修复需测试
