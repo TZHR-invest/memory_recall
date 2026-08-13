@@ -13,6 +13,7 @@
 | 核心服务 + 插件精简实施 | 未开始（下一步） | [实施计划](notes/2026-08-12-core-plugin-refactor-plan.md) |
 | AGENTS.md 精炼重构（拆分到 ARCHITECTURE/TESTING/PLUGINS/RESEARCH_GUIDE） | 已完成（2026-08-13） | [记录](notes/2026-08-13-note.md) |
 | project-codex / project-.codex 双容器清理 | 已完成（记忆迁移 + opencode 插件点号目录过滤修复，待 opencode 重启生效） | [notes/2026-08-13-note.md](notes/2026-08-13-note.md#project-codex--project-codex-双容器来源解密用户提问排查) |
+| 记忆维护闭环（ADR-0009） | 已完成（注入陈旧标注 + 规则检查点，API 已重启生效） | [ADR-0009](decisions/0009-memory-maintenance-loop.md) |
 
 ## ADR 实施跟踪
 
@@ -31,6 +32,7 @@
 | [0006](decisions/0006-session-summary-not-stored-as-memory.md) | 会话摘要不写入记忆库 | 部分实现 | 不写入行为已固化（saveSummaryAsMemory 返回 null）；summary.ts 死代码待删除（[实施计划](notes/2026-08-12-core-plugin-refactor-plan.md) 阶段 2/3） |
 | [0007](decisions/0007-compaction-converge-to-official-hook.md) | 压缩机制收敛到官方 hook | 未开始 | 预压缩代码（checkAndTriggerCompaction 等）仍存在；[实施计划](notes/2026-08-12-core-plugin-refactor-plan.md) 阶段 2/3 |
 | [0008](decisions/0008-remove-summary-capture-and-scene-recovery.md) | 删除摘要捕获与现场恢复 | 未开始 | waitForSummaryMessage/recoverAgentConfig 等仍存在；[实施计划](notes/2026-08-12-core-plugin-refactor-plan.md) 阶段 2/3 |
+| [0009](decisions/0009-memory-maintenance-loop.md) | 记忆维护闭环：注入可见性 + 规则约束，不做自动写库 | 已实现 | commit 见 2026-08-13-note；MR-011 UI 主体仍 OPEN |
 
 ## 下一步
 

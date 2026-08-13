@@ -16,6 +16,7 @@ class DedupItem:
     embedding: Optional[List[float]] = None
     id: Optional[str] = None
     relation_type: Optional[str] = None  # updates/extends/derives 语义关系类型
+    created_at: Optional[str] = None  # 记忆记录时间（ISO），供注入标注陈旧度
 
 
 SOURCE_PRIORITY = {

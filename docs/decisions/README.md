@@ -67,5 +67,6 @@ ADR 只记录**已定**的决策，没有 Proposed / Rejected 状态：
 | [0006](0006-session-summary-not-stored-as-memory.md) | 会话摘要不写入记忆库 | Accepted | 2026-08-12 |
 | [0007](0007-compaction-converge-to-official-hook.md) | 压缩机制收敛到官方 hook（废弃预压缩） | Accepted | 2026-08-12 |
 | [0008](0008-remove-summary-capture-and-scene-recovery.md) | 删除摘要捕获与现场恢复 | Accepted | 2026-08-12 |
+| [0009](0009-memory-maintenance-loop.md) | 记忆维护闭环：注入可见性 + 规则约束，不做自动写库 | Accepted | 2026-08-13 |
 
 *状态: ACTIVE · 最后更新: 2026-08-13*

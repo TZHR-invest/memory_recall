@@ -8,11 +8,16 @@ from typing import Dict, Any, List, Optional
 import time
 import re
 import random
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
 from src.config import settings
 from src.database import db
+
+# 注入标注阈值：记忆记录超过该天数时追加「记录于 N 天前」，
+# 让 agent 在召回当下感知陈旧度，主动 search/update 维护（ADR-0009）。
+STALE_DAYS = 90
 
 # static 临时性标记：命中即视为"配置记录/一次性事件"，而非永久行为规则。
 # 保守策略：宁误判为行为规则（多注入 token）也不误判为临时（不丢失规则）。
@@ -359,6 +364,7 @@ class ContextInjectService:
                                     "embedding": r.get("embedding"),
                                     "is_static": False,
                                     "similarity": sim,
+                                    "created_at": r.get("created_at"),
                                     # 仅"边缘命中且关键词无交集"标记低置信：降级让 cap 截断
                                     "low_confidence": in_edge and not kw_hit,
                                 }
@@ -416,6 +422,9 @@ class ContextInjectService:
                                                 "embedding": target_memory.embedding,
                                                 "is_static": target_memory.is_static,
                                                 "relation_type": rel_type,
+                                                "created_at": target_memory.created_at.isoformat()
+                                                if target_memory.created_at
+                                                else None,
                                                 # 标记渠道来源：供 L518 截断区分 core/entity_graph 增量
                                                 "source": "memory_graph",
                                             }
@@ -495,6 +504,9 @@ class ContextInjectService:
                                                     "content": m.content,
                                                     "embedding": m.embedding,
                                                     "is_static": m.is_static,
+                                                    "created_at": m.created_at.isoformat()
+                                                    if m.created_at
+                                                    else None,
                                                     "source": "entity_graph",
                                                 }
                                             )
@@ -775,6 +787,7 @@ class ContextInjectService:
                     + (0.5 if m.get("source") == "entity_graph" else 0),
                     embedding=m.get("embedding"),
                     id=m.get("id"),
+                    created_at=m.get("created_at"),
                     relation_type=m.get("relation_type"),
                 )
             )
@@ -843,6 +856,7 @@ class ContextInjectService:
                     + (0.5 if m.get("source") == "entity_graph" else 0),
                     embedding=m.get("embedding"),
                     id=m.get("id"),
+                    created_at=m.get("created_at"),
                     relation_type=m.get("relation_type"),
                 )
             )
@@ -967,15 +981,36 @@ class ContextInjectService:
 
     def _format_memory_with_relation(self, item: DedupItem, is_zh: bool) -> str:
         if not item.relation_type:
-            return item.content
+            content = item.content
+        else:
+            relation_labels = {
+                "updates": "更新" if is_zh else "updated",
+                "extends": "补充" if is_zh else "extended",
+                "derives": "推断" if is_zh else "derived",
+            }
+            label = relation_labels.get(item.relation_type, item.relation_type)
+            content = f"{item.content} [{label}]"
 
-        relation_labels = {
-            "updates": "更新" if is_zh else "updated",
-            "extends": "补充" if is_zh else "extended",
-            "derives": "推断" if is_zh else "derived",
-        }
-        label = relation_labels.get(item.relation_type, item.relation_type)
-        return f"{item.content} [{label}]"
+        age_days = self._age_days(item.created_at)
+        if age_days is not None and age_days > STALE_DAYS:
+            if is_zh:
+                content = f"{content}（记录于 {age_days} 天前）"
+            else:
+                content = f"{content} (recorded {age_days} days ago)"
+        return content
+
+    @staticmethod
+    def _age_days(created_at: Optional[str]) -> Optional[int]:
+        """ISO 时间字符串距今天数；无效/缺失返回 None。"""
+        if not created_at:
+            return None
+        try:
+            dt = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return max(0, (datetime.now(timezone.utc) - dt).days)
+        except (ValueError, TypeError):
+            return None
 
     def _format_context_with_tags(
         self,
