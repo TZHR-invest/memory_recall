@@ -163,8 +163,9 @@ def _detect_from_git(user_tag: str) -> str | None:
     except Exception:
         return None
 
+
 def detect_project_tag(user_tag: str, fallback: str = "codex-default") -> str:
-    """project_tag 自动探测：父进程 cwd（CLI）> git 仓库兜底 > fallback。"""
+    """project_tag 自动探测：父进程 cwd（CLI）> rollout 会话记录（VSCode）> git 仓库兜底 > fallback。"""
     return (
         _detect_from_parent(user_tag)
         or _detect_from_rollout(user_tag)
