@@ -235,7 +235,7 @@ class AuthService:
 
         return [
             APIKeyResponse(
-                id=row["id"],
+                id=str(row["id"]),
                 name=row["name"],
                 key_prefix=row["key_prefix"],
                 permissions=row["permissions"],
