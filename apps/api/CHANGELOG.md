@@ -2,6 +2,16 @@
 
 All notable changes to Memory Recall will be documented in this file.
 
+## [Unreleased] - 2026-08-14
+
+### Changed
+- codex / hermes 插件：search/list 输出完整记忆 ID（此前仅 8 字符前缀，无法直接用于 update/forget）
+- codex 插件：search 描述明确纯向量边界（图谱/画像/文档请用 context-inject）；SKILL.md 新增"用户明确要求记住时立即 add"强制项
+- debug.html：首次打开无 API key 时显示获取指引
+
+### Fixed
+- TESTING.md/STATUS.md：修正 test_document/source_deduplication 一起跑失败的根因（全局 db 连接跨 asyncio loop 冲突，非缺 pytest-order）
+
 ## [5.2.3] - 2026-08-11
 
 ### Changed

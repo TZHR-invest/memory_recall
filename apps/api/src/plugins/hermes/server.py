@@ -541,6 +541,8 @@ async def _handle_search(args: dict) -> list[TextContent]:
             id_str = f"[{mid[:8]}] " if mid else ""
             preview = c[:200] + "..." if len(c) > 200 else c
             lines.append(f"{i}. {id_str}{preview}{sim}")
+            if mid:
+                lines.append(f"   ID: {mid}")
         else:
             lines.append(f"{i}. {m}")
 
@@ -607,6 +609,8 @@ async def _handle_list(args: dict) -> list[TextContent]:
             is_s = "📌" if m.get("is_static") else "📝"
             preview = c[:100] + "..." if len(c) > 100 else c
             lines.append(f"{i}. {is_s} [{mid[:8]}] {preview}")
+            if mid:
+                lines.append(f"   ID: {mid}")
         else:
             lines.append(f"{i}. {m}")
 
