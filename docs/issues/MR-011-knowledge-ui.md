@@ -18,6 +18,6 @@
 ### 部分进展（2026-08-13，ADR-0009）
 
 - 注入可见性已落地：超过 90 天的记忆在 context-inject 输出标注「记录于 N 天前」，
-  agent 可在召回当下感知陈旧度并主动 update（commit 待填，见 2026-08-13-note）；
+  agent 可在召回当下感知陈旧度并主动 update（commit 6458b6c）；
 - 规则层：AGENTS.md + codex 插件 SKILL.md 增加"结论/行为变更后主动 search+update"检查点；
 - 本 issue 主体（用户可见的知识浏览/纠错 UI）仍 OPEN。
