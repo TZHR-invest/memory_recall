@@ -1,0 +1,29 @@
+{
+    // Memory Recall API 配置
+    // 配置优先级：环境变量 > 本文件 > 默认值
+
+    // API 连接
+    "base_url": "http://localhost:8000",
+    "api_key": "rk_live_...",
+
+    // 容器标签
+    // 建议与 opencode 插件使用相同的 keyId，实现跨平台 user 记忆共享
+    // 从 ~/.config/opencode/memory-recall.jsonc 的 keyId 字段获取
+    // user_tag    用于 user 范围记忆（跨项目共享）
+   // project_tag 用于 project 范围记忆（当前项目隔离）
+    "user_tag": "your-key-id",
+    // project_tag 设为 auto（或留空）时自动探测：codex CLI 模式下按父进程
+    // cwd 生成 {keyId}_project-<目录名>；VSCode 扩展模式需显式填写
+    "project_tag": "auto",
+
+    // 搜索参数
+    "max_memories": 5,
+    "max_chunks": 5,
+    "similarity_threshold": 0.3,
+
+    // 图谱召回（Memory Graph 记忆演进 + Entity Graph 实体关系）
+    "enable_graph_recall": true,
+    "enable_entity_recall": true,
+    "graph_max_depth": 2,
+    "graph_max_nodes": 5
+}

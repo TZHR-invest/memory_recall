@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "memory-recall": {
+      "command": "python3",
+      "args": [
+        "server.py"
+      ],
+      "cwd": ".",
+      "env": {},
+      "disabled_tools": ["delete_doc"],
+      "default_tools_approval_mode": "auto"
+    }
+  }
+}

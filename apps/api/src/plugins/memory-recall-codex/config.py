@@ -1,0 +1,217 @@
+
+"""Memory Recall Codex 插件配置加载（仅依赖标准库，可独立单测）。
+
+配置优先级：环境变量 > ~/.config/codex/memory-recall.jsonc > 默认值
+"""
+
+import json
+import logging
+import os
+import re
+import time
+from pathlib import Path
+
+logger = logging.getLogger("memory-recall-codex-config")
+
+
+def strip_jsonc_comments(content: str) -> str:
+    """字符串感知的 JSONC 注释剥离。
+
+    不会误伤字符串内的 `//`（如 `http://localhost:8000`）、转义序列与 `/* */` 注释，
+    并去掉对象/数组末尾的逗号。
+    """
+    out = []
+    in_string = False
+    i = 0
+    n = len(content)
+    while i < n:
+        c = content[i]
+        if in_string:
+            out.append(c)
+            if c == '\\' and i + 1 < n:
+                out.append(content[i + 1])
+                i += 2
+                continue
+            if c == '"':
+                in_string = False
+            i += 1
+            continue
+        if c == '"':
+            in_string = True
+            out.append(c)
+            i += 1
+            continue
+        if c == '/' and i + 1 < n:
+            nxt = content[i + 1]
+            if nxt == '/':
+                while i < n and content[i] != '\n':
+                    i += 1
+                continue
+            if nxt == '*':
+                i += 2
+                while i + 1 < n and not (content[i] == '*' and content[i + 1] == '/'):
+                    i += 1
+                i += 2
+                continue
+        out.append(c)
+        i += 1
+    stripped = ''.join(out)
+    return re.sub(r',(\s*[}\]])', r'\1', stripped)
+
+
+def load_config(config_path: Path | None = None) -> dict:
+    """加载配置：默认值 <- 配置文件 <- 环境变量（后者优先）。
+    """
+    cfg = {
+        "base_url": "http://localhost:8000", "api_key": "",
+        "user_tag": "codex-user", "project_tag": "codex-default",
+        "max_memories": 10, "max_chunks": 5, "similarity_threshold": 0.3,
+        "enable_graph_recall": True, "enable_entity_recall": True,
+        "graph_max_depth": 2, "graph_max_nodes": 5,
+    }
+    config_path = config_path or (Path.home() / ".config" / "codex" / "memory-recall.jsonc")
+    if config_path.exists():
+        try:
+            raw = config_path.read_text(encoding="utf-8")
+            clean = strip_jsonc_comments(raw)
+            file_cfg = json.loads(clean)
+            cfg.update({k: v for k, v in file_cfg.items() if v not in (None, "")})
+        except Exception as e:
+            logger.warning(f"Failed to parse {config_path}: {e}")
+    for env_key, cfg_key in {
+        "MEMORY_RECALL_BASE_URL": "base_url", "MEMORY_RECALL_API_KEY": "api_key",
+        "MEMORY_RECALL_USER_TAG": "user_tag", "MEMORY_RECALL_PROJECT_TAG": "project_tag",
+    }.items():
+        if os.environ.get(env_key):
+            cfg[cfg_key] = os.environ[env_key]
+    # project_tag 未显式指定（空/auto/默认占位）时，尝试按父进程 cwd 自动生成
+    if not cfg["project_tag"] or cfg["project_tag"] in ("auto", "codex-default"):
+        cfg["project_tag"] = detect_project_tag(
+            cfg["user_tag"], fallback=cfg["project_tag"] or "codex-default"
+        )
+    return cfg
+
+
+def _read_cmdline(pid: int) -> str:
+    """读取 /proc/<pid>/cmdline（不存在/无权限返回空串）。"""
+    try:
+        with open(f"/proc/{pid}/cmdline", "rb") as f:
+            return f.read().decode(errors="ignore").replace("\x00", " ")
+    except OSError:
+        return ""
+
+
+def _detect_from_parent(user_tag: str) -> str | None:
+    """父进程为 codex CLI 时按其 cwd 生成 tag；否则返回 None。"""
+    try:
+        ppid = os.getppid()
+        cmdline = _read_cmdline(ppid)
+        if "codex" not in cmdline or "app-server" in cmdline:
+            return None
+        cwd = os.readlink(f"/proc/{ppid}/cwd")
+        home = str(Path.home())
+        if not cwd or cwd == home or cwd == "/":
+            return None
+        if cwd.startswith(home + "/.vscode") or cwd.startswith("/tmp"):
+            return None
+        name = Path(cwd).name
+        if not name or name.startswith("."):
+            return None
+        return f"{user_tag}_project-{name}"
+    except OSError:
+        return None
+
+def _detect_from_git(user_tag: str) -> str | None:
+    """git 兜底：取插件所在目录的 git 仓库根目录名生成 tag。
+
+    适用于无法感知工作目录的模式（VSCode 扩展等）——此时 server 的 cwd
+    固定为插件目录，git 只能识别插件所在仓库；多项目场景应显式配置
+    project_tag（显式配置永远优先）。"""
+    try:
+        import subprocess
+        root = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            cwd=Path(__file__).resolve().parent,
+            capture_output=True, text=True, timeout=5,
+        )
+        name = (root.stdout or "").strip()
+        if root.returncode != 0 or not name:
+            return None
+        name = Path(name).name
+        if not name or name.startswith("."):
+            return None
+        return f"{user_tag}_project-{name}"
+    except Exception:
+        return None
+
+def detect_project_tag(user_tag: str, fallback: str = "codex-default") -> str:
+    """project_tag 自动探测：父进程 cwd（CLI）> git 仓库兜底 > fallback。"""
+    return (
+        _detect_from_parent(user_tag)
+        or _detect_from_rollout(user_tag)
+        or _detect_from_git(user_tag)
+        or fallback
+    )
+
+_ROLLOUT_RE = re.compile(r"rollout-(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})-")
+
+def _rollout_cwd_from_file(path: Path) -> str | None:
+    """读 rollout 首行 session_meta 的 cwd（损坏/无字段返回 None）。"""
+    try:
+        with path.open(encoding="utf-8", errors="ignore") as f:
+            line = f.readline().strip()
+        if not line.startswith("{"):
+            return None
+        data = json.loads(line)
+        cwd = (data.get("payload") or {}).get("cwd")
+        return cwd if isinstance(cwd, str) and cwd else None
+    except Exception:
+        return None
+
+def _detect_from_rollout(
+    user_tag: str, sessions_dir: Path | None = None, start_time: float | None = None
+) -> str | None:
+    """从 codex 会话 rollout 文件（~/.codex/sessions/**/rollout-*.jsonl）匹配当前会话。
+
+    codex 把每个会话的 cwd 写进 rollout 首行 session_meta；MCP server 由 codex
+    在会话创建时拉起（实测与 rollout 文件时间戳同秒），故取与进程启动时间最接近
+    的 rollout（时间窗 5 分钟内）即可定位当前项目目录。
+    适用于 VSCode 扩展模式（父进程无 cwd 信息）。"""
+    sessions_dir = sessions_dir or (Path.home() / ".codex" / "sessions")
+    start_time = start_time if start_time is not None else _START_TIME
+    if not sessions_dir.is_dir():
+        return None
+    best: tuple[float, Path] | None = None
+    try:
+        for p in sessions_dir.rglob("rollout-*.jsonl"):
+            m = _ROLLOUT_RE.search(p.name)
+            if not m:
+                continue
+            try:
+                ts = time.mktime(tuple(int(x) for x in m.groups()) + (0, 0, -1))
+            except (ValueError, OverflowError):
+                continue
+            diff = abs(ts - start_time)
+            if diff > 300:
+                continue  # 超出时间窗：旧会话/重启场景，交给下层兜底
+            if best is None or diff < best[0]:
+                best = (diff, p)
+    except OSError:
+        return None
+    if best is None:
+        return None
+    cwd = _rollout_cwd_from_file(best[1])
+    home = str(Path.home())
+    if not cwd or cwd in (home, "/", "/tmp") or cwd.startswith(home + "/.vscode"):
+        return None
+    name = Path(cwd).name
+    if not name or name.startswith("."):
+        return None
+    return f"{user_tag}_project-{name}"
+
+_START_TIME = time.time()  # 模块导入时刻 ≈ MCP server 进程启动时刻
+
+
+CONFIG = load_config()
+API_BASE_URL, API_KEY = CONFIG["base_url"], CONFIG["api_key"]
+USER_TAG, PROJECT_TAG = CONFIG["user_tag"], CONFIG["project_tag"]
