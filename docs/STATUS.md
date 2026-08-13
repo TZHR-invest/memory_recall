@@ -15,6 +15,7 @@
 | project-codex / project-.codex 双容器清理 | 已完成（记忆迁移 + opencode 插件点号目录过滤修复，待 opencode 重启生效） | [notes/2026-08-13-note.md](notes/2026-08-13-note.md#project-codex--project-codex-双容器来源解密用户提问排查) |
 | 记忆维护闭环（ADR-0009） | 已完成（注入陈旧标注 + 规则检查点，API 已重启生效） | [ADR-0009](decisions/0009-memory-maintenance-loop.md) |
 | 文档 RAG 移出核心（ADR-0010） | 决策已定（2026-08-13，文档配套已落地）；代码删除待排期 | [ADR-0010](decisions/0010-remove-document-rag.md) |
+| 全量测试验证 + 回归修复 | 已完成（2026-08-13）：修复 16f3b8f 引入的 Entity 测试回归（user_tag/project_tag→container_tag，2 测试）+ performance 测试 LLM 依赖隔离（extract_entities=False，1 测试）；单元 383 + 集成 7 + 性能 5 + 去重 26 全绿 | 见 commit |
 
 ## ADR 实施跟踪
 
@@ -51,5 +52,7 @@
 - 记忆维护检查点延后：本地 API/DB 未运行（无 venv/.env，Postgres 未启动），
   ADR-0010 相关的过时记忆检索与修正待服务可用后执行（检索主题：文档知识闭环、chunks 通道、产品支柱）；
 - 手工验证需真实 opencode 运行时，可延后。
+- test_document/source_deduplication 两个文件一起跑会互相污染失败（缺 pytest-order 插件），
+  单独跑各自全绿；需要全量一条命令跑时先 pip install pytest-order（文档 TESTING.md 已知项）。
 
 *状态: ACTIVE · 最后更新: 2026-08-13*

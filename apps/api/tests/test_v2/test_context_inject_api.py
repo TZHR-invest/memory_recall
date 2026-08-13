@@ -870,8 +870,7 @@ class TestContextInjectAPI:
                         id="entity_001",
                         name="张三",
                         type="person",
-                        user_tag="user_test",
-                project_tag="user_test",
+                        container_tag="user_test",
                         mention_count=1,
                         confidence=0.9,
                     )
@@ -883,8 +882,7 @@ class TestContextInjectAPI:
                         id="entity_002",
                         name="字节跳动",
                         type="organization",
-                        user_tag="user_test",
-                project_tag="user_test",
+                        container_tag="user_test",
                         mention_count=1,
                         confidence=0.8,
                     )
@@ -965,8 +963,7 @@ class TestContextInjectAPI:
                         id="entity_001",
                         name="张三",
                         type="person",
-                        user_tag="user_test",
-                project_tag="user_test",
+                        container_tag="user_test",
                         mention_count=1,
                         confidence=0.9,
                     )
@@ -978,8 +975,7 @@ class TestContextInjectAPI:
                         id="entity_002",
                         name="字节跳动",
                         type="organization",
-                        user_tag="user_test",
-                project_tag="user_test",
+                        container_tag="user_test",
                         mention_count=1,
                         confidence=0.8,
                     )

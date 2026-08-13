@@ -133,6 +133,8 @@ async def test_create_memory_latency(setup_db):
             container_tag=container,
             is_static=True,
             generate_embedding=False,
+            extract_entities=False,
+            extract_relations=False,
         )
         end = time.perf_counter()
         latencies.append((end - start) * 1000)
