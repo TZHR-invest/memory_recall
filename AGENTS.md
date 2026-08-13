@@ -49,3 +49,11 @@ venv/bin/python -m uvicorn main:app --reload --port 8000
 - 任务开始前先查 [docs/ISSUES.md](docs/ISSUES.md)（MR-xxx），避免重复劳动；
 - 每次任务收尾更新 [docs/STATUS.md](docs/STATUS.md)（下一步不该只存在于对话里）；
 - 修改文档后更新 [docs/README.md](docs/README.md) 索引；commit 时文档与代码一起提交（`docs:` 前缀）。
+
+## 记忆维护检查点（ADR-0009，强制）
+
+任务改变了某个**结论、配置或行为规则**时（含修复、重构、决策变更），收尾前必须：
+
+1. 用 memory-recall 的 `search` 检索相关主题，找出可能过时的既有记忆；
+2. 冲突或过时的旧记忆用 `update` 版本化修正（不要只新增一条——旧结论会继续误导召回）；
+3. 注入上下文里带「记录于 N 天前」标注的记忆（超过 90 天）尤其要核对是否仍成立。

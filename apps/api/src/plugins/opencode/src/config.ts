@@ -6,6 +6,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
+import { spawnSync } from "child_process";
 
 /**
  * Injection strategy types
@@ -484,13 +485,46 @@ export function getUserTag(config: Config): string {
   return `user-${config.userName.toLowerCase().replace(/\s+/g, "-")}`;
 }
 
+/**
+ * 取目录的 git 仓库根目录名（无仓库/失败/点号目录返回 null）。
+ * 与 codex 插件探测链的 git 兜底语义一致。
+ */
+function gitRootName(directory: string): string | null {
+  try {
+    const res = spawnSync("git", ["rev-parse", "--show-toplevel"], {
+      cwd: directory,
+      encoding: "utf8",
+      timeout: 5000,
+    });
+    if (res.status !== 0) {
+      return null;
+    }
+    const name = path.basename((res.stdout ?? "").trim());
+    if (!name || name.startsWith(".")) {
+      return null;
+    }
+    return name;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 生成 project tag：{keyId}_project-<目录名>。
+ * 隐藏目录（如 ~/.codex）不是项目工作区，跳过自动生成：
+ * 回退到 git 仓库根目录名，再无则用 project-default，
+ * 避免产生 project-.codex 这类伪容器（与 codex 插件探测链一致）。
+ */
 export function getProjectTag(config: Config, directory: string): string {
+  const projectName = path.basename(directory);
+  const candidate = projectName && !projectName.startsWith(".")
+    ? projectName
+    : gitRootName(directory);
+  const base = (candidate ?? "default").toLowerCase().replace(/\s+/g, "-");
   // 优先使用 keyId + 项目名生成（推荐方式）
   if (config.keyId) {
-    const projectName = path.basename(directory);
-    return `${config.keyId}_project-${projectName.toLowerCase().replace(/\s+/g, "-")}`;
+    return config.keyId + "_project-" + base;
   }
   // 兜底：仅使用项目名（需要后端允许）
-  const projectName = path.basename(directory);
-  return `project-${projectName.toLowerCase().replace(/\s+/g, "-")}`;
+  return "project-" + base;
 }
