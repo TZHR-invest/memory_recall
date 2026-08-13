@@ -14,6 +14,7 @@
 | AGENTS.md 精炼重构（拆分到 ARCHITECTURE/TESTING/PLUGINS/RESEARCH_GUIDE） | 已完成（2026-08-13） | [记录](notes/2026-08-13-note.md) |
 | project-codex / project-.codex 双容器清理 | 已完成（记忆迁移 + opencode 插件点号目录过滤修复，待 opencode 重启生效） | [notes/2026-08-13-note.md](notes/2026-08-13-note.md#project-codex--project-codex-双容器来源解密用户提问排查) |
 | 记忆维护闭环（ADR-0009） | 已完成（注入陈旧标注 + 规则检查点，API 已重启生效） | [ADR-0009](decisions/0009-memory-maintenance-loop.md) |
+| 文档 RAG 移出核心（ADR-0010） | 决策已定（2026-08-13，文档配套已落地）；代码删除待排期 | [ADR-0010](decisions/0010-remove-document-rag.md) |
 
 ## ADR 实施跟踪
 
@@ -33,19 +34,22 @@
 | [0007](decisions/0007-compaction-converge-to-official-hook.md) | 压缩机制收敛到官方 hook | 已实现 | 预压缩/私有存储写入已删除；官方 hook 仅 push context |
 | [0008](decisions/0008-remove-summary-capture-and-scene-recovery.md) | 删除摘要捕获与现场恢复 | 已实现 | 摘要捕获/现场恢复/summary.ts 已删除 |
 | [0009](decisions/0009-memory-maintenance-loop.md) | 记忆维护闭环：注入可见性 + 规则约束，不做自动写库 | 已实现 | commit 见 2026-08-13-note；MR-011 UI 主体仍 OPEN |
+| [0010](decisions/0010-remove-document-rag.md) | 文档 RAG 移出核心，文档不再是并行召回语料 | 未开始 | 删除清单实施计划待排期；MR-019 蒸馏评估冻结 |
 
 
 ## 下一步
 
-1. 提交本次实施（代码 + 文档一起 commit）；
-2. 收尾：后端 fast unit loop 全绿 + 插件 bun test 全绿（已完成）；
-   剩余手工验证项见实施计划阶段 5（需真实 opencode 运行时）：
+1. ADR-0010 实施排期：文档 RAG 删除清单（表/代码/路由/插件/测试）拆分任务；
+2. ADR-0009 检查点：检索并修正"文档知识闭环/文档支柱"类过时记忆（服务可用后执行，见等待项）；
+3. 手工验证项（需真实 opencode 运行时，可延后）：
    - 压缩 hook 抛错 / 超时 / 共存检测实测；
    - /context-inject 单通道失败返回部分结果 + failed_channels；
    - 注入失败 toast 不超过每会话 3 次。
 
 ## 等待项 / 阻塞
 
-- 暂无阻塞（手工验证需真实 opencode 运行时，可延后）。
+- 记忆维护检查点延后：本地 API/DB 未运行（无 venv/.env，Postgres 未启动），
+  ADR-0010 相关的过时记忆检索与修正待服务可用后执行（检索主题：文档知识闭环、chunks 通道、产品支柱）；
+- 手工验证需真实 opencode 运行时，可延后。
 
 *状态: ACTIVE · 最后更新: 2026-08-13*

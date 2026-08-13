@@ -61,9 +61,9 @@ docs/
 | [notes/README.md](notes/README.md) | ACTIVE | 2026-08-12 | 过程记录约定与模板（讨论/调研/方向） |
 | [designs/README.md](designs/README.md) | ACTIVE | 2026-08-12 | 设计文档版本化约定与模板 |
 | [STATUS.md](STATUS.md) | ACTIVE | 2026-08-13 | 实时任务状态：活跃工作/下一步/等待项；ADR 实施跟踪 |
-| [PROJECT_PLAN.md](PROJECT_PLAN.md) | ACTIVE | 2026-08-12 | 项目定位、产品支柱、路线图、不做清单 |
+| [PROJECT_PLAN.md](PROJECT_PLAN.md) | ACTIVE | 2026-08-13 | 项目定位、产品支柱、路线图、不做清单 |
 | [ENTITY_DESIGN.md](ENTITY_DESIGN.md) | ACTIVE | 2026-08-12 | 记忆/文档/实体/图谱领域模型，schema 为准 |
-| [ISSUES.md](ISSUES.md) | ACTIVE | 2026-08-12 | 已知问题索引（open 清单）；详情在 [issues/](issues/) |
+| [ISSUES.md](ISSUES.md) | ACTIVE | 2026-08-13 | 已知问题索引（open 清单）；详情在 [issues/](issues/) |
 | [DEPLOYMENT.md](DEPLOYMENT.md) | ACTIVE | 2026-08-12 | Docker Compose / 手动部署 / 备份恢复 |
 | [MEMORY_FLOW.md](MEMORY_FLOW.md) | ACTIVE | 2026-08-12 | 核心数据流：写入 → 处理 → 召回/注入 → 消费（含 /context-inject 契约） |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | ACTIVE | 2026-08-13 | 架构与模块地图：后端分层、核心服务、惰性导入、死代码清单 |
