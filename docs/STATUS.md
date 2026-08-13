@@ -14,7 +14,7 @@
 | AGENTS.md 精炼重构（拆分到 ARCHITECTURE/TESTING/PLUGINS/RESEARCH_GUIDE） | 已完成（2026-08-13） | [记录](notes/2026-08-13-note.md) |
 | project-codex / project-.codex 双容器清理 | 已完成（记忆迁移 + opencode 插件点号目录过滤修复，待 opencode 重启生效） | [notes/2026-08-13-note.md](notes/2026-08-13-note.md#project-codex--project-codex-双容器来源解密用户提问排查) |
 | 记忆维护闭环（ADR-0009） | 已完成（注入陈旧标注 + 规则检查点，API 已重启生效） | [ADR-0009](decisions/0009-memory-maintenance-loop.md) |
-| 文档 RAG 移出核心（ADR-0010） | 决策已定（2026-08-13，文档配套已落地）；代码删除待排期 | [ADR-0010](decisions/0010-remove-document-rag.md) |
+| 文档 RAG 移出核心（ADR-0010） | 决策已定（2026-08-13，文档配套已落地）；代码删除待排期（已确认存量数据直接删不导出） | [ADR-0010](decisions/0010-remove-document-rag.md) · [实施讨论](notes/2026-08-13-adr0010-implementation-discussion.md) |
 | 全量测试验证 + 回归修复 | 已完成（2026-08-13）：修复 16f3b8f 引入的 Entity 测试回归（user_tag/project_tag→container_tag，2 测试）+ performance 测试 LLM 依赖隔离（extract_entities=False，1 测试）；单元 383 + 集成 7 + 性能 5 + 去重 26 全绿 | 见 commit |
 
 ## ADR 实施跟踪
@@ -41,6 +41,7 @@
 ## 下一步
 
 1. ADR-0010 实施排期：文档 RAG 删除清单（表/代码/路由/插件/测试）拆分任务；
+   已确认：存量数据直接删不导出；建议按 后端核心 → 插件 → 收尾 三个 commit 推进（[讨论记录](notes/2026-08-13-adr0010-implementation-discussion.md)）；
 2. ADR-0009 检查点：检索并修正"文档知识闭环/文档支柱"类过时记忆（服务可用后执行，见等待项）；
 3. 手工验证项（需真实 opencode 运行时，可延后）：
    - 压缩 hook 抛错 / 超时 / 共存检测实测；
