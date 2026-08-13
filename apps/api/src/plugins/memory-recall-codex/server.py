@@ -809,7 +809,7 @@ async def _handle_status(args: dict) -> list[TextContent]:
         mem_project = await _count("/memories", PROJECT_TAG, strict=True)
         doc_user = await _count("/documents", USER_TAG)
         doc_project = await _count("/documents", PROJECT_TAG)
-        config_src = "配置文件 (~/.config/codex/memory-recall.jsonc)"
+        config_src = "配置文件"
         if not (Path.home() / ".config" / "codex" / "memory-recall.jsonc").exists():
             config_src = "默认值（未找到配置文件）"
         if any(os.environ.get(k) for k in (

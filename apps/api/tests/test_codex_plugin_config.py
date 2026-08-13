@@ -154,6 +154,20 @@ class TestDetectProjectTag:
         )
         assert detect_project_tag("k1", fallback="fb") == "fb"
 
+    def test_codex_cli_detection_excludes_path_lookalikes(self):
+        # 回归：路径含 codex 的进程（venv、opencodex）不能误判为 codex CLI
+        assert config_mod._is_codex_cli_parent("/usr/local/bin/codex exec --json") is True
+        assert config_mod._is_codex_cli_parent("codex exec --json") is True
+        assert config_mod._is_codex_cli_parent("codex.exe exec") is True
+        assert config_mod._is_codex_cli_parent("codex app-server --port 1") is False
+        assert config_mod._is_codex_cli_parent("codex-code-mode-host") is False
+        assert config_mod._is_codex_cli_parent(
+            "/home/wbaifan/.config/codex/memory-recall-venv/bin/python server.py",
+        ) is False
+        assert config_mod._is_codex_cli_parent(
+            "/home/wbaifan/.npm-global/lib/node_modules/@bitkyc08/opencodex/src/cli/index.ts start",
+        ) is False
+
 
 class TestDetectFromRollout:
     """~/.codex/sessions rollout 文件匹配（VSCode 模式定位当前会话 cwd）。"""

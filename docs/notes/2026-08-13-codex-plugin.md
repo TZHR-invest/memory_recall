@@ -230,3 +230,20 @@ workspace 参数），基本可判定 VSCode 模式下 server 端拿不到精确
 k1_project-memory_recall。新增 2 个单测（mtime 命中/mtime 超窗），共 32 个测试全绿。
 已知边界收敛为：会话完全停止（mtime 也超窗）时回退 git/默认值——memory_recall
 仓库场景仍正确；跨项目且会话停止的极端场景需显式配置。
+
+## 收尾 review（同日十次完善）：CLI 判定误伤 bug + 集成测试 + 版本 0.3.0
+
+review 发现并修复一个真实 bug：_detect_from_parent 用 codex-in-cmdline 子串判断
+父进程，但 venv 路径（~/.config/codex/...）和 opencodex 进程名都含 codex 子串，
+独立冒烟时误生成 _project-memory-recall-codex。修复：新增 _is_codex_cli_parent，
+按 argv[0] 可执行文件名判定（codex/codex.exe/codex-*），排除 app-server/
+code-mode-host；新增 1 个回归测试（8 断言），共 33 个测试全绿。
+
+其他收尾：
+- 新增真实链路集成测试 tests/test_codex_plugin_integration.py（4 用例：15 工具/
+  status/search/context-inject，后端不可达自动 skip；mcp stdio_client 须在测试
+  函数内自管生命周期，fixture 跨任务关闭会触发 anyio cancel scope 错误）；
+- plugin.json 版本 0.2.0 到 0.3.0（探测链 + CLI 判定修复 + 集成测试）；
+- status 配置来源文案去掉硬编码路径。
+
+插件 review 结论：无其他遗留问题，插件线收尾。

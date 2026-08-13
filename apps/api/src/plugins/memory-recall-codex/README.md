@@ -157,3 +157,8 @@ codex plugin add memory-recall-codex@personal   # 重装
 # config.py 纯函数单测（jsonc 剥离 / 配置优先级），无需后端与 mcp 包
 cd apps/api && python3 -m pytest tests/test_codex_plugin_config.py -q
 ```
+
+```bash
+# 真实链路集成测试（需本机后端 + ~/.config/codex/memory-recall.jsonc；不可达自动跳过）
+~/.config/codex/memory-recall-venv/bin/python -m pytest tests/test_codex_plugin_integration.py -q
+```

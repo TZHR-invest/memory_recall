@@ -101,12 +101,31 @@ def _read_cmdline(pid: int) -> str:
         return ""
 
 
+def _is_codex_cli_parent(cmdline: str) -> bool:
+    """判断父进程是否为 codex CLI（而非路径含 codex 的其他进程）。
+
+    用 argv[0] 的可执行文件名判定（codex / codex.exe / codex-*），避免
+    "codex" 子串误伤：venv 路径（~/.config/codex/...）、opencodex 等
+    进程名或路径含 codex 但并非 codex CLI 的情况。
+    """
+    parts = cmdline.split()
+    if not parts:
+        return False
+    base = Path(parts[0]).name
+    if not (base == "codex" or base.startswith("codex.") or base.startswith("codex-")):
+        return False
+    # VSCode 扩展宿主（app-server / code-mode-host）不是 CLI
+    if "app-server" in cmdline or "code-mode-host" in cmdline:
+        return False
+    return True
+
+
 def _detect_from_parent(user_tag: str) -> str | None:
     """父进程为 codex CLI 时按其 cwd 生成 tag；否则返回 None。"""
     try:
         ppid = os.getppid()
         cmdline = _read_cmdline(ppid)
-        if "codex" not in cmdline or "app-server" in cmdline:
+        if not _is_codex_cli_parent(cmdline):
             return None
         cwd = os.readlink(f"/proc/{ppid}/cwd")
         home = str(Path.home())
