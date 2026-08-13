@@ -51,6 +51,34 @@ class TestStatus:
         assert "服务不可用" in out[0].text
 
 
+class TestUpdate:
+    async def test_async_process_passthrough(self, mod, monkeypatch):
+        captured = {}
+
+        async def fake_api(method, path, body=None, params=None, timeout=None):
+            captured["body"] = body
+            return {"id": "mem_new1234567890", "status": "processing"}
+
+        monkeypatch.setattr(mod, "api_request", fake_api)
+        out = await mod._handle_update({"memoryId": "mem_old1234567890", "content": "新内容"})
+        assert captured["body"]["async_process"] is True
+        assert "后台处理" in out[0].text
+
+    async def test_sync_when_explicitly_disabled(self, mod, monkeypatch):
+        captured = {}
+
+        async def fake_api(method, path, body=None, params=None, timeout=None):
+            captured["body"] = body
+            return {"id": "mem_new1234567890", "status": "done"}
+
+        monkeypatch.setattr(mod, "api_request", fake_api)
+        out = await mod._handle_update(
+            {"memoryId": "mem_old1234567890", "content": "新内容", "asyncProcess": False}
+        )
+        assert captured["body"]["async_process"] is False
+        assert "后台处理" not in out[0].text
+
+
 class TestSearch:
     async def test_formats_results(self, mod, monkeypatch):
 

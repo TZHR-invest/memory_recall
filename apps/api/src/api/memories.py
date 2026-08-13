@@ -68,6 +68,10 @@ class UpdateMemoryRequest(BaseModel):
     content: str = Field(
         ..., description="New memory content", examples=["我现在在 Supermemory 工作"]
     )
+    async_process: bool = Field(
+        False,
+        description="Process embedding and entity extraction in background (faster response)",
+    )
 
 
 class CreateDocumentRequest(BaseModel):
@@ -391,6 +395,7 @@ async def restore_memory(
 async def update_memory(
     memory_id: str,
     request: UpdateMemoryRequest,
+    background_tasks: BackgroundTasks,
     current_user: Dict = Depends(require_permission("write")),
     _: Dict = Depends(check_rate_limit),
 ):
@@ -403,16 +408,21 @@ async def update_memory(
     new_memory = await memory_store.create_update_version(
         memory_id=memory_id,
         new_content=request.content,
+        async_process=request.async_process,
     )
 
     if new_memory:
-        await profile_service.invalidate_cache(old_memory.container_tag)
+        if request.async_process:
+            background_tasks.add_task(memory_store.process_embedding_async, new_memory.id)
+        else:
+            await profile_service.invalidate_cache(old_memory.container_tag)
 
     return {
         "id": new_memory.id,
         "content": new_memory.content,
         "old_id": memory_id,
         "relation": "updates",
+        "status": "processing" if request.async_process else "done",
     }
 
 

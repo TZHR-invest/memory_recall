@@ -367,6 +367,10 @@ async def list_tools() -> list[Tool]:
                         "type": "string",
                         "description": "新的记忆内容",
                     },
+                    "asyncProcess": {
+                        "type": "boolean",
+                        "description": "异步处理 embedding/实体提取（默认 true，响应更快）",
+                    },
                 },
                 "required": ["memoryId", "content"],
             },
@@ -839,13 +843,15 @@ async def _handle_status(args: dict) -> list[TextContent]:
 async def _handle_update(args: dict) -> list[TextContent]:
     memory_id = args["memoryId"]
     content = args["content"]
+    async_process = args.get("asyncProcess", True)  # 默认异步，避免长内容超时
 
-    body = {"content": content}
+    body = {"content": content, "async_process": async_process}
     result = await api_request("POST", f"/memories/{quote(memory_id, safe='')}/update", body, timeout=60.0)
     new_id = result.get("id", "N/A")
+    status_hint = "（后台处理 embedding/实体提取中）" if result.get("status") == "processing" else ""
     return [TextContent(
         type="text",
-        text=f"✅ 记忆已更新（版本化）\n"
+        text=f"✅ 记忆已更新（版本化）{status_hint}\n"
              f"旧 ID: {memory_id}\n"
              f"新 ID: {new_id}\n"
              f"新内容: \"{content[:80]}{'...' if len(content) > 80 else ''}\"",

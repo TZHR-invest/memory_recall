@@ -731,6 +731,7 @@ class MemoryStore:
         self,
         memory_id: str,
         new_content: str,
+        async_process: bool = False,
     ) -> Optional[Memory]:
         old_memory = await self.get_by_id(memory_id)
         if not old_memory:
@@ -742,6 +743,8 @@ class MemoryStore:
             is_static=old_memory.is_static,
             metadata=old_memory.metadata,
             parent_memory_id=memory_id,
+            async_process=async_process,
+            generate_embedding=not async_process,
         )
 
         await self.add_relation(new_memory.id, memory_id, "updates")
