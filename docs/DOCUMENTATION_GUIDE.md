@@ -178,6 +178,10 @@ ADR 只表达决策生命周期（Accepted / Superseded），**不表达实施�
 
 **任务开始前**：
 
+0. **重大开发（多文件重构 / 改核心链路 / 跨端协作）先同步远程**：`git fetch` + `git pull`，
+   并核对本地与远程是否分叉（`git log --oneline HEAD..origin/main`）。目的：避免在过时基线
+   或已冲突的代码上动工、避免 push 时才发现远程领先。
+
 1. 读 [docs/README.md](README.md) 索引，定位相关生效文档；
 2. 读 [docs/ISSUES.md](ISSUES.md) 确认是否已有相关 issue；
 3. 相关领域先读 [docs/ENTITY_DESIGN.md](ENTITY_DESIGN.md) 与 `docs/decisions/`。

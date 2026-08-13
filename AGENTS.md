@@ -47,6 +47,8 @@ venv/bin/python -m uvicorn main:app --reload --port 8000
 见 [docs/DOCUMENTATION_GUIDE.md](docs/DOCUMENTATION_GUIDE.md)。要点：
 
 - 任务开始前先查 [docs/ISSUES.md](docs/ISSUES.md)（MR-xxx），避免重复劳动；
+- 重大开发（多文件重构 / 改核心链路 / 跨端协作）开始前先 `git fetch` + `git pull` 同步远程，
+  并核对本地与远程是否分叉（`git log --oneline HEAD..origin/main`），避免在过时基线或已冲突代码上动工；
 - 每次任务收尾更新 [docs/STATUS.md](docs/STATUS.md)（下一步不该只存在于对话里）；
 - 修改文档后更新 [docs/README.md](docs/README.md) 索引；commit 时文档与代码一起提交（`docs:` 前缀）。
 
