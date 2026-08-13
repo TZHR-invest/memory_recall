@@ -12,8 +12,9 @@
     // user_tag    用于 user 范围记忆（跨项目共享）
    // project_tag 用于 project 范围记忆（当前项目隔离）
     "user_tag": "your-key-id",
-    // project_tag 设为 auto（或留空）时自动探测：codex CLI 模式下按父进程
-    // cwd 生成 {keyId}_project-<目录名>；VSCode 扩展模式需显式填写
+    // project_tag 设为 auto（或留空）时自动探测：codex CLI 按父进程 cwd、
+    // VSCode 扩展按会话 rollout 记录生成 {keyId}_project-<目录名>；
+    // 探测失败回退共享容器 codex-default
     "project_tag": "auto",
 
     // 搜索参数

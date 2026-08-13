@@ -93,15 +93,14 @@ default_tools_approval_mode = "approve"
 > `user_tag` 建议与 opencode 插件共用同一个 keyId，实现跨 Agent 的 user 记忆共享；
 > `project_tag` 遵循 `{keyId}_project-<dirName>` 约定。
 >
-> **project_tag 自动化**：设为 `"auto"`（或留空）时，server 启动会探测父进程——
-> 若为 codex CLI（`codex exec` / 终端运行），按父进程 cwd 自动生成
+> **project_tag 自动化**：设为 `"auto"`（或留空）时，server 启动会探测会话工作目录——
+> codex CLI（`codex exec` / 终端运行）按父进程 cwd 自动生成
 > `{keyId}_project-<目录名>`（与 opencode 的 input.directory 行为一致）；
- > 若为 VSCode 扩展（app-server，拿不到项目目录），则从 codex 会话记录
-> （~/.codex/sessions/**/rollout-*.jsonl 的 session_meta.cwd，按 server 启动时间
- > 匹配最近会话，5 分钟时间窗；长会话重启场景按文件 mtime 兜底，10 分钟窗）
- > 自动生成；再兜底取插件所在 git 仓库根目录名
-> （对本仓库即 _project-memory_recall）。都不行才回退默认值。
- > 处理插件所在仓库之外的其他项目时，建议显式配置 project_tag。
+> VSCode 扩展从 codex 会话记录（~/.codex/sessions/**/rollout-*.jsonl 的
+> session_meta.cwd，按 server 启动时间匹配最近会话，5 分钟时间窗；长会话重启
+> 场景按文件 mtime 兜底，10 分钟窗）自动生成；隐藏目录（如 .codex）同样生成
+> 独立容器。探测失败回退共享容器 codex-default，绝不写入插件自身仓库。
+> 显式配置 project_tag 永远优先。
 >
 > 配置含 API key，建议 `chmod 600 ~/.config/codex/memory-recall.jsonc`。
 > `project_tag` 遵循 `{keyId}_project-<dirName>` 约定。
@@ -143,13 +142,14 @@ codex plugin add memory-recall-codex@personal   # 重装
 - **config.toml 层的策略字段生效**（与插件层不同）：`default_tools_approval_mode`
   免审批、`disabled_tools` 禁用工具（本机已用 config.toml 禁用 delete_doc，
   `codex mcp get` 实测生效）。插件 .mcp.json 里的同名字段才是死的。
-- MCP server 无法感知工作目录（spawn 时无 PWD/CODEX_CWD），所以 project 记忆
-  是所有 Codex 项目共用一个池；需要隔离时在内容里标注项目名（如 `【项目X】...`）。
+- MCP server 无法直接感知工作目录（spawn 时无 PWD/CODEX_CWD），但会从父进程
+  cwd（CLI）或 codex 会话 rollout（VSCode）自动探测项目目录生成 project 容器；
+  需要更细隔离时可在内容里标注项目名（如 `【项目X】...`）。
   **project_tag 自动探测链**：父进程 cwd（codex CLI）> codex 会话 rollout
-   （~/.codex/sessions session_meta.cwd，启动时间 5 分钟窗 + mtime 10 分钟窗，
-   VSCode 模式可用）> git 仓库根（插件所在仓库）> 显式配置/默认值。注意
-   rollout/git 兜底只能识别插件所在仓库（本仓库即 _project-memory_recall），
-   处理其他项目时请显式配置 project_tag（显式配置永远优先）。
+  （~/.codex/sessions session_meta.cwd，启动时间 5 分钟窗 + mtime 10 分钟窗，
+  VSCode 模式可用）> 回退共享容器 codex-default。隐藏目录（如 .codex）也会
+  生成独立容器；探测失败绝不写入插件自身仓库（避免污染）。多项目隔离请显式
+  配置 project_tag（显式配置永远优先）。
 - `project` 级配置（`[projects."..."]`）不支持 mcp_servers 覆盖。
 - Windows 上首次自举建 venv 无文件锁（fcntl 仅 POSIX），多会话并发首次启动可能冲突；
   若出现"依赖自举失败"，删除 `~/.config/codex/memory-recall-venv` 后重试即可。

@@ -43,7 +43,11 @@ description: 跨会话持久记忆。通过 Memory Recall MCP 工具在任务开
 ### scope 语义（user / project）
 
 - `user`：跨项目共享（用户偏好、全局事实），存时用 `scope: "user"`
-- `project`：项目范围（当前 Codex 插件所有项目共用一个 project 池，因为 MCP server 无法感知工作目录；需要隔离时在内容里标注项目名，如 `【项目X】...`）
+- `project`：项目范围。server 启动时按会话工作目录自动生成容器
+  `{user_tag}_project-<目录名>`（codex CLI 按父进程 cwd，VSCode 扩展按
+  ~/.codex/sessions rollout 记录；隐藏目录如 `.codex` 也会生成独立容器）；
+  探测失败回退共享容器 `codex-default`。显式配置 project_tag 永远优先。
+  需要更细隔离时可在内容里标注项目名，如 `【项目X】...`
 
 ### 记忆维护
 

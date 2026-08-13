@@ -77,6 +77,21 @@ class TestLoadConfig:
         assert cfg["api_key"] == ""
         assert cfg["user_tag"] == "x"
 
+    def test_auto_project_tag_detection_fallback_is_codex_default(self, tmp_path, monkeypatch):
+        # 回归：project_tag=auto 时探测失败必须回退 codex-default，不能把 "auto" 当 fallback 回填
+        p = tmp_path / "memory-recall.jsonc"
+        p.write_text('{"project_tag": "auto", "user_tag": "k1"}\n', encoding="utf-8")
+        seen = {}
+
+        def fake_detect(user_tag, fallback="codex-default"):
+            seen["fallback"] = fallback
+            return "k1_project-detected"
+
+        monkeypatch.setattr(config_mod, "detect_project_tag", fake_detect)
+        cfg = load_config(p)
+        assert seen["fallback"] == "codex-default"
+        assert cfg["project_tag"] == "k1_project-detected"
+
 
 class TestDetectProjectTag:
     """父进程 cwd 自动生成 project_tag（模拟 opencode 的 input.directory 行为）。"""
@@ -93,7 +108,6 @@ class TestDetectProjectTag:
         monkeypatch.setattr("builtins.open", lambda *a, **k: io.BytesIO(b"codex app-server"))
         monkeypatch.setattr(os, "readlink", lambda p: "/home/u/projects/myproj")
         monkeypatch.setattr(config_mod, "_detect_from_rollout", lambda u: None)
-        monkeypatch.setattr(config_mod, "_detect_from_git", lambda u: None)
         assert detect_project_tag("k1", fallback="fb") == "fb"
 
     def test_home_cwd_falls_back(self, monkeypatch):
@@ -101,7 +115,6 @@ class TestDetectProjectTag:
         monkeypatch.setattr("builtins.open", lambda *a, **k: io.BytesIO(b"codex exec"))
         monkeypatch.setattr(os, "readlink", lambda p: str(Path.home()))
         monkeypatch.setattr(config_mod, "_detect_from_rollout", lambda u: None)
-        monkeypatch.setattr(config_mod, "_detect_from_git", lambda u: None)
         assert detect_project_tag("k1", fallback="fb") == "fb"
 
     def test_readlink_error_falls_back(self, monkeypatch):
@@ -113,7 +126,6 @@ class TestDetectProjectTag:
 
         monkeypatch.setattr(os, "readlink", boom)
         monkeypatch.setattr(config_mod, "_detect_from_rollout", lambda u: None)
-        monkeypatch.setattr(config_mod, "_detect_from_git", lambda u: None)
         assert detect_project_tag("k1", fallback="fb") == "fb"
 
     def test_cmdline_read_error_falls_back(self, monkeypatch):
@@ -125,7 +137,22 @@ class TestDetectProjectTag:
         monkeypatch.setattr("builtins.open", boom)
         monkeypatch.setattr(os, "readlink", lambda p: "/home/u/projects/myproj")
         monkeypatch.setattr(config_mod, "_detect_from_rollout", lambda u: None)
-        monkeypatch.setattr(config_mod, "_detect_from_git", lambda u: None)
+        assert detect_project_tag("k1", fallback="fb") == "fb"
+
+    def test_dot_dir_cwd_generates_tag(self, monkeypatch):
+        # 隐藏目录（如 ~/.codex）同样生成独立容器，不并入其他项目
+        monkeypatch.setattr(os, "getppid", lambda: 12345)
+        monkeypatch.setattr("builtins.open", lambda *a, **k: io.BytesIO(b"codex exec --json"))
+        monkeypatch.setattr(os, "readlink", lambda p: "/home/u/.codex")
+        assert detect_project_tag("k1") == "k1_project-.codex"
+
+    @pytest.mark.parametrize("cwd", ["/tmp/foo", str(Path.home()) + "/.vscode-server/xyz"])
+    def test_tmp_and_vscode_cwd_rejected(self, monkeypatch, cwd):
+        # /tmp 前缀与 ~/.vscode* 属于非项目目录，即使探测到也回退
+        monkeypatch.setattr(os, "getppid", lambda: 12345)
+        monkeypatch.setattr("builtins.open", lambda *a, **k: io.BytesIO(b"codex exec"))
+        monkeypatch.setattr(os, "readlink", lambda p, cwd=cwd: cwd)
+        monkeypatch.setattr(config_mod, "_detect_from_rollout", lambda u: None)
         assert detect_project_tag("k1", fallback="fb") == "fb"
 
     def test_explicit_config_wins_over_auto(self, tmp_path):
@@ -135,23 +162,10 @@ class TestDetectProjectTag:
         cfg = load_config(p)
         assert cfg["project_tag"] == "k1_project-explicit"
 
-    def test_git_fallback_generates_tag(self, monkeypatch):
-        # VSCode 模式 + 插件位于 git 仓库：git 兜底生成 tag
+    def test_all_detectors_fail_uses_fallback(self, monkeypatch):
+        # 探测全部失败时回退 fallback（绝不写入插件自身仓库等无关容器）
         monkeypatch.setattr(config_mod, "_detect_from_parent", lambda u: None)
         monkeypatch.setattr(config_mod, "_detect_from_rollout", lambda u: None)
-        monkeypatch.setattr(
-            "subprocess.run",
-            lambda *a, **k: type("R", (), {"returncode": 0, "stdout": "/home/u/repos/myrepo\n"})(),
-        )
-        assert detect_project_tag("k1") == "k1_project-myrepo"
-
-    def test_git_failure_falls_back(self, monkeypatch):
-        monkeypatch.setattr(config_mod, "_detect_from_parent", lambda u: None)
-        monkeypatch.setattr(config_mod, "_detect_from_rollout", lambda u: None)
-        monkeypatch.setattr(
-            "subprocess.run",
-            lambda *a, **k: type("R", (), {"returncode": 128, "stdout": ""})(),
-        )
         assert detect_project_tag("k1", fallback="fb") == "fb"
 
     def test_codex_cli_detection_excludes_path_lookalikes(self):
@@ -214,7 +228,7 @@ class TestDetectFromRollout:
         assert config_mod._detect_from_rollout("k1", sessions_dir=tmp_path, start_time=now) == "k1_project-other"
 
     def test_mtime_outside_window_returns_none(self, tmp_path):
-        # 文件 mtime 也超窗（会话已停止很久）→ 无命中，交给 git 兜底
+        # 文件 mtime 也超窗（会话已停止很久）→ 无命中，交给 fallback（codex-default）
         now = time.time()
         old_name = time.strftime("rollout-%Y-%m-%dT%H-%M-%S-", time.localtime(now - 10800)) + "x.jsonl"
         p = tmp_path / old_name

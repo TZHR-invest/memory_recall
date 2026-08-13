@@ -487,7 +487,8 @@ export function getUserTag(config: Config): string {
 
 /**
  * 取目录的 git 仓库根目录名（无仓库/失败/点号目录返回 null）。
- * 与 codex 插件探测链的 git 兜底语义一致。
+ * git 兜底仅作用于传入的会话目录本身（codex 插件已于 2026-08-13
+ * 移除 git 兜底，探测失败直接回退 codex-default）。
  */
 function gitRootName(directory: string): string | null {
   try {
@@ -513,7 +514,8 @@ function gitRootName(directory: string): string | null {
  * 生成 project tag：{keyId}_project-<目录名>。
  * 隐藏目录（如 ~/.codex）不是项目工作区，跳过自动生成：
  * 回退到 git 仓库根目录名，再无则用 project-default，
- * 避免产生 project-.codex 这类伪容器（与 codex 插件探测链一致）。
+ * 避免产生 project-.codex 这类伪容器（注意：codex 插件对隐藏目录
+ * 会生成独立的 {keyId}_project-.codex 容器，二者策略不同）。
  */
 export function getProjectTag(config: Config, directory: string): string {
   const projectName = path.basename(directory);

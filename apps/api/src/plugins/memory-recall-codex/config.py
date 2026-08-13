@@ -84,11 +84,10 @@ def load_config(config_path: Path | None = None) -> dict:
     }.items():
         if os.environ.get(env_key):
             cfg[cfg_key] = os.environ[env_key]
-    # project_tag 未显式指定（空/auto/默认占位）时，尝试按父进程 cwd 自动生成
+    # project_tag 未显式指定（空/auto/默认占位）时自动探测；
+    # 探测失败统一回退 codex-default（不能把 "auto" 本身当 fallback 回填）
     if not cfg["project_tag"] or cfg["project_tag"] in ("auto", "codex-default"):
-        cfg["project_tag"] = detect_project_tag(
-            cfg["user_tag"], fallback=cfg["project_tag"] or "codex-default"
-        )
+        cfg["project_tag"] = detect_project_tag(cfg["user_tag"], fallback="codex-default")
     return cfg
 
 
@@ -127,49 +126,19 @@ def _detect_from_parent(user_tag: str) -> str | None:
         cmdline = _read_cmdline(ppid)
         if not _is_codex_cli_parent(cmdline):
             return None
-        cwd = os.readlink(f"/proc/{ppid}/cwd")
-        home = str(Path.home())
-        if not cwd or cwd == home or cwd == "/":
-            return None
-        if cwd.startswith(home + "/.vscode") or cwd.startswith("/tmp"):
-            return None
-        name = Path(cwd).name
-        if not name or name.startswith("."):
-            return None
-        return f"{user_tag}_project-{name}"
+        return _tag_from_cwd(user_tag, os.readlink(f"/proc/{ppid}/cwd"))
     except OSError:
-        return None
-
-def _detect_from_git(user_tag: str) -> str | None:
-    """git 兜底：取插件所在目录的 git 仓库根目录名生成 tag。
-
-    适用于无法感知工作目录的模式（VSCode 扩展等）——此时 server 的 cwd
-    固定为插件目录，git 只能识别插件所在仓库；多项目场景应显式配置
-    project_tag（显式配置永远优先）。"""
-    try:
-        import subprocess
-        root = subprocess.run(
-            ["git", "rev-parse", "--show-toplevel"],
-            cwd=Path(__file__).resolve().parent,
-            capture_output=True, text=True, timeout=5,
-        )
-        name = (root.stdout or "").strip()
-        if root.returncode != 0 or not name:
-            return None
-        name = Path(name).name
-        if not name or name.startswith("."):
-            return None
-        return f"{user_tag}_project-{name}"
-    except Exception:
         return None
 
 
 def detect_project_tag(user_tag: str, fallback: str = "codex-default") -> str:
-    """project_tag 自动探测：父进程 cwd（CLI）> rollout 会话记录（VSCode）> git 仓库兜底 > fallback。"""
+    """project_tag 自动探测：父进程 cwd（CLI）> rollout 会话记录（VSCode）> fallback。
+
+    探测不到可靠的项目目录时直接回退 fallback（codex-default），绝不写入
+    插件自身仓库之类的无关容器，避免污染其他项目的记忆。"""
     return (
         _detect_from_parent(user_tag)
         or _detect_from_rollout(user_tag)
-        or _detect_from_git(user_tag)
         or fallback
     )
 
@@ -189,12 +158,20 @@ def _rollout_cwd_from_file(path: Path) -> str | None:
         return None
 
 def _tag_from_cwd(user_tag: str, cwd: str | None) -> str | None:
-    """校验 cwd 合理性并生成 {user_tag}_project-<目录名>；无效返回 None。"""
+    """校验 cwd 合理性并生成 {user_tag}_project-<目录名>；无效返回 None。
+
+    仅过滤 home、/tmp、~/.vscode* 等非项目目录；隐藏目录（如 .codex）保留
+    原名生成独立容器，避免误并入其他项目容器。"""
     home = str(Path.home())
-    if not cwd or cwd in (home, "/", "/tmp") or cwd.startswith(home + "/.vscode"):
+    if (
+        not cwd
+        or cwd in (home, "/")
+        or cwd.startswith("/tmp")
+        or cwd.startswith(home + "/.vscode")
+    ):
         return None
     name = Path(cwd).name
-    if not name or name.startswith("."):
+    if not name:
         return None
     return f"{user_tag}_project-{name}"
 

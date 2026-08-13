@@ -261,3 +261,32 @@ disabled_tools: ["delete_doc"]（此前 null）。这与插件层行为相反（
 更新为区分「插件层策略字段不生效 / Config 层生效」。新会话生效。
 
 结论：二轮 review 无其他问题，插件线收尾。
+
+---
+
+## 补充调研（同日九次完善）：~/.codex 会话 project 容器误归属修复（勘误上文）
+
+### 问题
+
+在 ~/.codex 目录开会话时，project 记忆被写进 _project-memory_recall（插件自身
+仓库容器）。根因两条叠加：
+1. _tag_from_cwd 拒绝点开头目录名，.codex 被当作无效 cwd 丢弃；
+2. git 兜底解析的是插件所在仓库（memory_recall），与用户项目无关。
+
+另发现潜在 bug：project_tag=auto 时 load_config 把 fallback 传成 "auto" 本身，
+探测全失败会把字面量 "auto" 当容器 tag。
+
+### 修复（config.py）
+
+- _tag_from_cwd：允许隐藏目录（.codex → {user_tag}_project-.codex），
+  /tmp 前缀过滤与父进程探测对齐（home、~/.vscode* 过滤保留）；
+- 删除 _detect_from_git（避免误写插件仓库）；探测链简化为
+  父进程 cwd（CLI）> rollout（VSCode）> codex-default；
+- load_config 探测失败统一回退 codex-default。
+- 测试同步：删除 git 兜底相关用例，新增点目录生成 / /tmp 与 .vscode 拒绝 /
+  全探测失败回退 / auto 回退 codex-default 回归，共 28 用例全绿。
+
+### 验证
+
+~/.codex 会话 PROJECT_TAG 实测 = 085288ba-..._project-.codex；新会话生效。
+已知限制：mtime 兜底在多会话并发时可能取到另一会话的 rollout（既有行为）。
