@@ -43,7 +43,7 @@ describe("shouldTriggerRecall", () => {
   });
 
   test("returns false when no keyword present", () => {
-    expect(shouldTriggerRecall("Hello, how are you?", defaultConfig)).toBe(false);
+    expect(shouldTriggerRecall("Good morning, nice weather today", defaultConfig)).toBe(false);
     expect(shouldTriggerRecall("今天天气不错", defaultConfig)).toBe(false);
   });
 

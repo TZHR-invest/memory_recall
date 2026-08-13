@@ -95,26 +95,14 @@ async def run_trace(
     current_user: dict = Depends(require_permission("read")),
     _: dict = Depends(check_rate_limit),
 ):
-    is_new_api_mode = request.user_tag or request.project_tag
+    user_tag = request.user_tag or current_user["container_tag"]
+    project_tag = request.project_tag or current_user["container_tag"]
+    verify_container_ownership(user_tag, current_user["key_id"])
+    verify_container_ownership(project_tag, current_user["key_id"])
 
-    if is_new_api_mode:
-        user_tag = request.user_tag or current_user["container_tag"]
-        project_tag = request.project_tag or current_user["container_tag"]
-        verify_container_ownership(user_tag, current_user["key_id"])
-        verify_container_ownership(project_tag, current_user["key_id"])
-        return await context_inject_service.inject_with_tags(
-            user_tag=user_tag,
-            project_tag=project_tag,
-            query=request.query,
-            config=request.config.model_dump(),
-            include_trace=True,
-        )
-
-    container_tag = request.container_tag or current_user["container_tag"]
-    verify_container_ownership(container_tag, current_user["key_id"])
-
-    return await context_inject_service.inject(
-        container_tag=container_tag,
+    return await context_inject_service.inject_with_tags(
+        user_tag=user_tag,
+        project_tag=project_tag,
         query=request.query,
         config=request.config.model_dump(),
         include_trace=True,

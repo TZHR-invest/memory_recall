@@ -484,56 +484,6 @@ export class ApiClient {
     }
   }
 
-  async embedBatch(
-    texts: string[],
-    timeoutMs: number = 5000,
-    maxRetries: number = 3
-  ): Promise<number[][] | null> {
-    if (texts.length === 0) return [];
-    if (texts.length > 50) {
-      texts = texts.slice(0, 50);
-    }
-
-    let lastError: Error | null = null;
-
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        const response = await fetchWithTimeout(
-          `${this.config.baseUrl}/embed`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-API-Key": this.config.apiKey || "",
-            },
-            body: JSON.stringify({ texts }),
-          },
-          timeoutMs
-        );
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(`API error ${response.status}: ${errorText}`);
-        }
-
-        const data = (await response.json()) as {
-          embeddings: number[][];
-          dimension: number;
-          count: number;
-        };
-        return data.embeddings;
-      } catch (error) {
-        lastError = error instanceof Error ? error : new Error(String(error));
-        if (attempt < maxRetries) {
-          await new Promise((resolve) => setTimeout(resolve, 100 * attempt));
-        }
-      }
-    }
-
-    console.warn(`embedBatch failed after ${maxRetries} attempts:`, lastError);
-    return null;
-  }
-
   async injectContext(
     userTag: string,
     projectTag: string,

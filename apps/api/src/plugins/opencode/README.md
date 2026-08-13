@@ -20,17 +20,11 @@ node dist/cli.js install
 2. 获取 `keyId` 并写入配置
 3. 自动生成项目隔离的 container_tag
 
-## 与 Oh-My-OpenCode 共存
+## 压缩兼容性说明
 
-如果你同时安装了 Oh-My-OpenCode，需要在 `~/.config/opencode/oh-my-openagent.json` 中禁用其恢复功能，避免重复恢复：
-
-```json
-{
-  "disabled_hooks": ["anthropic-context-window-limit-recovery"]
-}
-```
-
-**原因**：Memory Recall 和 Oh-My-OpenCode 都会在压缩后尝试恢复 agent 配置，同时启用会导致重复消息。
+本插件在压缩时只向 `output.context` 追加 AI guidance 与项目记忆，不设置 `output.prompt`、
+不注册 autocontinue。若同时启用任何设置 `output.prompt` 的压缩插件/开关
+（如 Oh-My-OpenCode 的 customCompactionPrompt），本插件的压缩注入会失效。
 
 ## 目录结构
 
@@ -121,7 +115,7 @@ opencode 启动时自动从 npm 安装插件到 `~/.cache/opencode/packages/`（
 | 包 | 使用位置 | 方式 |
 |---|---|---|
 | `@opencode-ai/plugin` | `src/tool.ts` | 运行时：`tool()` 注册工具 + `tool.schema.*` 定义参数 schema |
-| `@opencode-ai/sdk` | `src/compaction.ts` | 仅 `import type`（编译期擦除） |
+| `@opencode-ai/sdk` | （无源码引用） | 声明依赖，供宿主对齐版本 |
 
 **关键约定**：
 
@@ -331,8 +325,6 @@ shuihu_card_game 项目:
   project_tag: <your-key-id>_project-shuihu_card_game
 ```
 
-**向后兼容**：
-如果配置了旧的 `userContainerTag`/`projectContainerTag`，会继续使用旧配置。
 
 ### 语义去重配置
 
@@ -342,17 +334,15 @@ shuihu_card_game 项目:
 {
   "semanticDedup": {
     "enabled": true,
-    "threshold": 0.85,
-    "maxBatchSize": 50
+    "threshold": 0.85
   }
 }
 ```
 
 | 配置项 | 默认值 | 说明 |
 |--------|--------|------|
-| `enabled` | `true` | 是否启用语义去重 |
+| `enabled` | `true` | 是否启用后端语义去重 |
 | `threshold` | `0.85` | 相似度阈值（0.0-1.0），高于此值视为重复 |
-| `maxBatchSize` | `50` | 批量 embedding 计算的最大数量 |
 
 #### 阈值选择建议
 
@@ -636,7 +626,6 @@ POST /context-inject
 
 ```json
 {
-  "useBackendDedup": true,
   "semanticDedup": {
     "enabled": true,
     "threshold": 0.85
@@ -646,8 +635,7 @@ POST /context-inject
 
 | 配置项 | 默认值 | 说明 |
 |--------|--------|------|
-| `useBackendDedup` | `true` | 使用后端 API 进行去重 |
-| `semanticDedup.enabled` | `true` | 启用语义去重 |
+| `semanticDedup.enabled` | `true` | 启用后端语义去重 |
 | `semanticDedup.threshold` | `0.85` | 去重阈值 |
 
 ### 工作流程
@@ -659,24 +647,10 @@ POST /context-inject
 5. 基于优先级进行语义去重
 6. 返回格式化的上下文
 
-### 向后兼容
+### 单通道失败优雅降级
 
-旧版调用方式（只提供 `container_tag`）仍然支持：
-
-```json
-POST /context-inject
-{
-  "container_tag": "{keyId}",
-  "query": "用户输入"
-}
-```
-
-### 回退机制
-
-当后端 API 失败时，自动切换到前端去重逻辑：
-- 使用前端 `semantic-dedup.ts` 进行去重
-- 调用 `/embed` API 计算 embedding
-- 保证系统可靠性
+`/context-inject` 单通道（profile / memories / chunks）失败时返回成功通道的部分结果，
+并在 `failed_channels` 中标记失败通道；仅当全部通道失败或请求级错误时才返回 500。
 
 ## 许可证
 

@@ -53,7 +53,7 @@ flowchart LR
 ## 5. 读取路径（/context-inject）
 
 `POST /context-inject` 是**唯一召回入口**（[ADR-0003](decisions/0003-inject-api-convergence.md)，
-旧 `container_tag` 模式已决策移除、待实施）。
+旧 `container_tag` 模式已移除，仅支持 `user_tag/project_tag`）。
 
 ### 请求
 
@@ -89,7 +89,7 @@ profile（画像） → memory vector（记忆向量） → memory graph（记�
 - 挂 `chat.message` hook，把 synthetic text part unshift 到用户消息头部；
 - `injectionStrategy`：once / smart（默认）/ always；smart 随会话增长收窄注入量；
 - `injectedMemoryIds` 记账，避免同会话重复注入同一条记忆；
-- 目标态只走 `/context-inject` 后端聚合，前端复合路径已决策删除（ADR-0003）。
+- 目标态只走 `/context-inject` 后端聚合，前端复合路径已删除（ADR-0003）。
 
 ### compaction 注入
 

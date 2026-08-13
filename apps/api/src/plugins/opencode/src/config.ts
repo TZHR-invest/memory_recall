@@ -42,7 +42,6 @@ export interface SmartRecallConfig {
 export interface SemanticDedupConfig {
   enabled: boolean;
   threshold: number;
-  maxBatchSize: number;
 }
 
 /**
@@ -91,8 +90,6 @@ export interface Config {
   baseUrl: string;
   userName: string;
   keyId: string | null;
-  userContainerTag: string | null;
-  projectContainerTag: string | null;
   similarityThreshold: number;
   maxMemories: number;
   maxProjectMemories: number;
@@ -100,7 +97,6 @@ export interface Config {
   maxStaticProfileItems: number;
   injectProfile: boolean;
   compactionThreshold: number;
-  enableSummaryCapture: boolean;
   enableDocumentTracking: boolean;
   trackedDocPatterns: string[];
   language: "auto" | "zh_CN" | "en_US";
@@ -125,8 +121,6 @@ export interface Config {
   initialInjection: InitialInjectionConfig;
   smartRecall: SmartRecallConfig;
   semanticDedup: SemanticDedupConfig;
-  // Backend API config
-  useBackendDedup: boolean;
   // Async queue config
   asyncQueue: AsyncQueueConfig;
 }
@@ -135,8 +129,6 @@ const DEFAULT_CONFIG: Omit<Config, "apiKey"> = {
   baseUrl: "http://localhost:8000",
   userName: "User",
   keyId: null,
-  userContainerTag: null,
-  projectContainerTag: null,
   similarityThreshold: 0.4,
   maxMemories: 5,
   maxProjectMemories: 10,
@@ -144,7 +136,6 @@ const DEFAULT_CONFIG: Omit<Config, "apiKey"> = {
   maxStaticProfileItems: 30,
   injectProfile: true,
   compactionThreshold: 0.8,
-  enableSummaryCapture: true,
   enableDocumentTracking: true,
   trackedDocPatterns: [
     "README*.md",
@@ -186,9 +177,7 @@ const DEFAULT_CONFIG: Omit<Config, "apiKey"> = {
   semanticDedup: {
     enabled: true,
     threshold: 0.85,
-    maxBatchSize: 50,
   },
-  useBackendDedup: true,
   asyncQueue: {
     enabled: false, // 默认关闭，需要用户显式启用
     maxConcurrency: 3,
@@ -276,14 +265,6 @@ function buildRawConfig(
       (overrides.keyId as string | null) ||
       (fileConfig.keyId as string | null) ||
       DEFAULT_CONFIG.keyId,
-    userContainerTag:
-      (overrides.userContainerTag as string | null) ||
-      (fileConfig.userContainerTag as string | null) ||
-      DEFAULT_CONFIG.userContainerTag,
-    projectContainerTag:
-      (overrides.projectContainerTag as string | null) ||
-      (fileConfig.projectContainerTag as string | null) ||
-      DEFAULT_CONFIG.projectContainerTag,
     similarityThreshold:
       (overrides.similarityThreshold as number) ||
       (fileConfig.similarityThreshold as number) ||
@@ -312,10 +293,6 @@ function buildRawConfig(
       (overrides.compactionThreshold as number) ||
       (fileConfig.compactionThreshold as number) ||
       DEFAULT_CONFIG.compactionThreshold,
-    enableSummaryCapture:
-      (overrides.enableSummaryCapture as boolean) ??
-      (fileConfig.enableSummaryCapture as boolean) ??
-      DEFAULT_CONFIG.enableSummaryCapture,
     enableDocumentTracking:
       (overrides.enableDocumentTracking as boolean) ??
       (fileConfig.enableDocumentTracking as boolean) ??
@@ -444,15 +421,7 @@ function buildRawConfig(
         ((overrides.semanticDedup as Record<string, unknown>)?.threshold as number) ||
         ((fileConfig.semanticDedup as Record<string, unknown>)?.threshold as number) ||
         DEFAULT_CONFIG.semanticDedup.threshold,
-      maxBatchSize:
-        ((overrides.semanticDedup as Record<string, unknown>)?.maxBatchSize as number) ||
-        ((fileConfig.semanticDedup as Record<string, unknown>)?.maxBatchSize as number) ||
-        DEFAULT_CONFIG.semanticDedup.maxBatchSize,
     },
-    useBackendDedup:
-      (overrides.useBackendDedup as boolean) ??
-      (fileConfig.useBackendDedup as boolean) ??
-      DEFAULT_CONFIG.useBackendDedup,
     asyncQueue: {
       enabled:
         ((overrides.asyncQueue as Record<string, unknown>)?.enabled as boolean) ??
@@ -500,12 +469,6 @@ function validateSemanticDedupConfig(config: SemanticDedupConfig): void {
       `semanticDedup.threshold must be between 0.0 and 1.0, got ${config.threshold}`
     );
   }
-
-  if (!Number.isInteger(config.maxBatchSize) || config.maxBatchSize < 1) {
-    throw new Error(
-      `semanticDedup.maxBatchSize must be a positive integer, got ${config.maxBatchSize}`
-    );
-  }
 }
 
 export function isConfigured(config: Config): boolean {
@@ -513,11 +476,7 @@ export function isConfigured(config: Config): boolean {
 }
 
 export function getUserTag(config: Config): string {
-  // 优先使用显式配置的 userContainerTag（向后兼容）
-  if (config.userContainerTag) {
-    return config.userContainerTag;
-  }
-  // 其次使用 keyId（推荐方式）
+  // 优先使用 keyId（推荐方式）
   if (config.keyId) {
     return config.keyId;
   }
@@ -526,11 +485,7 @@ export function getUserTag(config: Config): string {
 }
 
 export function getProjectTag(config: Config, directory: string): string {
-  // 优先使用显式配置的 projectContainerTag（向后兼容）
-  if (config.projectContainerTag) {
-    return config.projectContainerTag;
-  }
-  // 其次使用 keyId + 项目名生成（推荐方式）
+  // 优先使用 keyId + 项目名生成（推荐方式）
   if (config.keyId) {
     const projectName = path.basename(directory);
     return `${config.keyId}_project-${projectName.toLowerCase().replace(/\s+/g, "-")}`;

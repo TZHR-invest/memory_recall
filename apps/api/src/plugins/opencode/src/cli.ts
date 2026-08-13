@@ -479,17 +479,24 @@ function registerPluginToPackageJson(): void {
   }
   
   let addedCount = 0;
+  let updatedCount = 0;
   for (const [name, version] of Object.entries(pluginDeps)) {
-    if (!packageJson.dependencies[name] && name !== PLUGIN_NAME) {
+    if (name === PLUGIN_NAME) continue;
+    const existing = packageJson.dependencies[name];
+    if (!existing) {
       packageJson.dependencies[name] = version;
       addedCount++;
+    } else if (existing !== version) {
+      // 已存在依赖也更新版本（版本对齐：升级到插件声明的最新版本）
+      packageJson.dependencies[name] = version;
+      updatedCount++;
     }
   }
   
   writeFileSync(CONFIG_PACKAGE_JSON, JSON.stringify(packageJson, null, 2));
   
-  if (addedCount > 0) {
-    console.log(`✓ 已更新 package.json，新增 ${addedCount} 个依赖`);
+  if (addedCount > 0 || updatedCount > 0) {
+    console.log(`✓ 已更新 package.json（新增 ${addedCount} 个，更新 ${updatedCount} 个依赖）`);
     console.log(`  OpenCode 启动时将自动安装依赖 (bun install)`);
   } else {
     console.log(`✓ package.json 已是最新`);
@@ -667,7 +674,6 @@ function writeConfig(config: {
   "maxProjectMemories": 10,
   "injectProfile": true,
   "compactionThreshold": 0.8,
-  "enableSummaryCapture": true,
   "enableDocumentTracking": true,
   "trackedDocPatterns": ["README*.md", "CHANGELOG*.md", "docs/*.md", "AGENTS.md"],
 
@@ -697,12 +703,10 @@ function writeConfig(config: {
     "maxAdditionalChunks": 2
   },
 
-  // 后端语义去重（v5.1 新增）
-  "useBackendDedup": true,
+  // 后端语义去重（由 /context-inject 统一处理）
   "semanticDedup": {
     "enabled": true,
-    "threshold": 0.85,
-    "maxBatchSize": 50
+    "threshold": 0.85
   },
 
   // 异步写入队列（v5.2 新增）

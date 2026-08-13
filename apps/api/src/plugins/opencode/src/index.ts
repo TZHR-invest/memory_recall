@@ -2,23 +2,25 @@ import type { Plugin, PluginInput, Hooks } from "@opencode-ai/plugin";
 import { loadConfig, isConfigured, getUserTag, getProjectTag, type InjectionStrategy } from "./config";
 import { ApiClient } from "./client";
 import { createTool, detectMemoryKeyword } from "./tool";
-import { injectContext, injectContextFromBackend, getMemoryNudge, getAiGuidance, type ContextResult, type ExpandedMemory } from "./context";
+import { injectContextFromBackend, getMemoryNudge, getAiGuidance, type ContextResult } from "./context";
 import { detectLocaleFromText, getLocale, type Locale } from "./i18n";
 import { initLogging } from "./logging";
 import { CompactionHook } from "./compaction";
 import { EventHandler } from "./events";
 import { DocumentTracker } from "./document-tracker";
 import { FileWatcher } from "./file-watcher";
-import { 
-  SessionTrackerManager, 
+import {
+  SessionTrackerManager,
   calculateDynamicRecallSize,
-  filterMemoriesForInjection,
-  type ConversationMessage 
 } from "./tracker";
 import { shouldTriggerRecall, findTriggerKeyword } from "./recall-trigger";
 import { TaskQueue, type Task } from "./queue";
 
 const sessionTrackerManager = new SessionTrackerManager();
+
+// 注入失败 toast 节流（ADR-0005）：按 sessionID 计数，每会话最多 3 次，之后静默。
+const toastThrottle = new Map<string, number>();
+const MAX_TOASTS_PER_SESSION = 3;
 
 interface TextPart {
   type: "text";
@@ -110,14 +112,7 @@ async function server(input: PluginInput, options: Record<string, unknown> = {})
   const tool = createTool(client, config, documentTracker, taskQueue);
 
   const opencodeClient = input.client;
-  const compactionHook = new CompactionHook(
-    client,
-    config,
-    tags,
-    logger,
-    input.directory,
-    opencodeClient
-  );
+  const compactionHook = new CompactionHook(client, config, tags, logger);
 
   const eventHandler = new EventHandler(config, compactionHook, tags, logger);
 
@@ -191,46 +186,24 @@ async function server(input: PluginInput, options: Record<string, unknown> = {})
       : maxMemoriesToUse;
 
     try {
-      let result: ContextResult;
-      
-      if (config.useBackendDedup) {
-        result = await injectContextFromBackend(client, userMessage, userTag, projectTag, {
-          injectProfile: isInitialInjection ? config.initialInjection.profile : false,
-          maxProfileItems: config.maxProfileItems,
-          maxStaticProfileItems: config.maxStaticProfileItems,
-          maxProjectMemories: isInitialInjection ? config.maxProjectMemories : config.smartRecall.maxAdditionalMemories,
-          maxMemories: dynamicMaxMemories,
-          maxChunks: maxChunksToUse,
-          language: config.language,
-          semanticDedup: config.semanticDedup,
-          enableGraphRecall: config.enableGraphRecall,
-          enableEntityRecall: config.enableEntityRecall,
-          graphMaxDepth: config.graphMaxDepth,
-          graphMaxNodes: config.graphMaxNodes,
-          enableChunksSearch: config.enableChunksSearch,
-          chunksSimilarityThreshold: config.chunksSimilarityThreshold,
-          similarityThreshold: config.similarityThreshold,
-          entityChunkThreshold: config.entityChunkThreshold,
-        });
-      } else {
-        result = await injectContext(client, userMessage, userTag, projectTag, {
-          injectProfile: isInitialInjection ? config.initialInjection.profile : false,
-          maxProfileItems: config.maxProfileItems,
-          maxStaticProfileItems: config.maxStaticProfileItems,
-          maxProjectMemories: isInitialInjection ? config.maxProjectMemories : config.smartRecall.maxAdditionalMemories,
-          maxMemories: dynamicMaxMemories,
-          language: config.language,
-          enableChunksSearch: config.enableChunksSearch,
-          maxChunks: maxChunksToUse,
-          chunksSimilarityThreshold: config.chunksSimilarityThreshold,
-          chunksDocTypes: config.chunksDocTypes,
-          enableGraphRecall: config.enableGraphRecall,
-          enableEntityRecall: config.enableEntityRecall,
-          graphMaxDepth: config.graphMaxDepth,
-          graphMaxNodes: config.graphMaxNodes,
-          semanticDedup: config.semanticDedup,
-        });
-      }
+      const result: ContextResult = await injectContextFromBackend(client, userMessage, userTag, projectTag, {
+        injectProfile: isInitialInjection ? config.initialInjection.profile : false,
+        maxProfileItems: config.maxProfileItems,
+        maxStaticProfileItems: config.maxStaticProfileItems,
+        maxProjectMemories: isInitialInjection ? config.maxProjectMemories : config.smartRecall.maxAdditionalMemories,
+        maxMemories: dynamicMaxMemories,
+        maxChunks: maxChunksToUse,
+        language: config.language,
+        semanticDedup: config.semanticDedup,
+        enableGraphRecall: config.enableGraphRecall,
+        enableEntityRecall: config.enableEntityRecall,
+        graphMaxDepth: config.graphMaxDepth,
+        graphMaxNodes: config.graphMaxNodes,
+        enableChunksSearch: config.enableChunksSearch,
+        chunksSimilarityThreshold: config.chunksSimilarityThreshold,
+        similarityThreshold: config.similarityThreshold,
+        entityChunkThreshold: config.entityChunkThreshold,
+      });
 
       if (result.context) {
         outputData.parts.unshift({
@@ -264,7 +237,24 @@ async function server(input: PluginInput, options: Record<string, unknown> = {})
         });
       }
     } catch (e) {
-      logger.error("Context injection failed", { error: String(e) });
+      logger.error("Context injection failed", { sessionId, error: String(e) });
+
+      // toast 节流：错误详情只进日志，toast 每会话最多 3 次，之后不再打扰
+      const shown = toastThrottle.get(sessionId) || 0;
+      if (shown < MAX_TOASTS_PER_SESSION) {
+        toastThrottle.set(sessionId, shown + 1);
+        const remaining = MAX_TOASTS_PER_SESSION - (shown + 1);
+        const msg = remaining > 0
+          ? "Memory recall failed to inject context"
+          : "Memory recall errors will no longer be shown; see ~/.memory-recall-opencode.log";
+        try {
+          await opencodeClient.tui.showToast({
+            body: { title: "Memory Recall", message: msg, variant: "warning", duration: 2500 },
+          }).catch(() => {});
+        } catch {
+          // toast 失败不影响主流程
+        }
+      }
     }
   };
 
@@ -289,6 +279,15 @@ async function server(input: PluginInput, options: Record<string, unknown> = {})
 
     logger.eventReceived({ eventType });
 
+    if (eventType === "session.deleted") {
+      const info = (eventData.event?.properties?.info as Record<string, unknown>) || {};
+      const sessionId = info.id as string | undefined;
+      if (sessionId) {
+        toastThrottle.delete(sessionId);
+        sessionTrackerManager.clearSession(sessionId);
+      }
+    }
+
     const handlers = eventHandler.getHandlers();
     if (eventType in handlers) {
       await handlers[eventType](eventData.event as { type: string; properties?: Record<string, unknown> }, opencodeClient);
@@ -299,45 +298,19 @@ async function server(input: PluginInput, options: Record<string, unknown> = {})
     const sessionId = inputData.sessionID;
     logger.info("Session compacting", { sessionId });
 
-    compactionHook.markSummarized(sessionId);
+    // 共存检测：若已有其他插件设置 output.prompt 接管压缩，则跳过注入，避免静默失效
+    if ((outputData as { prompt?: unknown }).prompt !== undefined) {
+      logger.warn("Skipping compaction context: another plugin took over via output.prompt", { sessionId });
+      return;
+    }
 
-    await compactionHook.captureAgentConfig(sessionId);
-    await compactionHook.captureTodos(sessionId);
-
-    const locale = config.language === "auto" 
+    const locale = config.language === "auto"
       ? (detectLocaleFromText("", config.language) as Locale)
       : (config.language as Locale);
     const aiGuidance = getAiGuidance(locale === "zh_CN");
-    if (aiGuidance.length > 0) {
-      outputData.context.push(aiGuidance.join("\n"));
-    }
 
-    if (config.enableSummaryCapture) {
-      try {
-        const cachedSummary = compactionHook.getLatestSummary(sessionId);
-        if (cachedSummary) {
-          const prefix = locale === "zh_CN" ? "[会话摘要]\n" : "[Session Summary]\n";
-          outputData.context.push("[Project Memories]\n" + prefix + cachedSummary);
-          logger.debug("Using cached latest summary for compaction restore", {
-            sessionID: sessionId,
-            contentLength: cachedSummary.length,
-          });
-          return;
-        }
-
-        const allMemories = await client.listMemories(projectTag, 5);
-        const projectMemories = allMemories.filter(m => 
-          !m.content.startsWith("[Session Summary]") && 
-          !m.content.startsWith("[会话摘要]")
-        );
-        if (projectMemories.length > 0) {
-          const context = projectMemories.map((m) => "- " + m.content).join("\n");
-          outputData.context.push("[Project Memories]\n" + context);
-        }
-      } catch (e) {
-        logger.error("Failed to inject project memories during compaction", { error: String(e) });
-      }
-    }
+    // hook 内 fail-open：注入失败只记日志，绝不阻断压缩主流程
+    await compactionHook.injectCompactionContext(sessionId, outputData.context, aiGuidance);
   };
 
   return {

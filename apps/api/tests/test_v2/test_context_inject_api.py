@@ -67,8 +67,9 @@ class TestContextInjectAPI:
         from src.services.core.context_inject_service import context_inject_service
 
         result = asyncio.run(
-            context_inject_service.inject(
-                container_tag="user_test",
+            context_inject_service.inject_with_tags(
+                user_tag="user_test",
+                project_tag="user_test",
                 query="测试查询",
                 config={
                     "inject_profile": True,
@@ -92,8 +93,9 @@ class TestContextInjectAPI:
         from src.services.core.context_inject_service import context_inject_service
 
         result = asyncio.run(
-            context_inject_service.inject(
-                container_tag="user_test",
+            context_inject_service.inject_with_tags(
+                user_tag="user_test",
+                project_tag="user_test",
                 query="测试查询",
                 config={
                     "inject_profile": True,
@@ -118,8 +120,9 @@ class TestContextInjectAPI:
         mock_memory_store.get_by_container = AsyncMock(return_value=[])
 
         result = asyncio.run(
-            context_inject_service.inject(
-                container_tag="user_test",
+            context_inject_service.inject_with_tags(
+                user_tag="user_test",
+                project_tag="user_test",
                 query=None,
                 config={
                     "inject_profile": True,
@@ -153,8 +156,9 @@ class TestContextInjectAPI:
         mock_memory_store.get_by_container = AsyncMock(return_value=[])
 
         result = asyncio.run(
-            context_inject_service.inject(
-                container_tag="user_test",
+            context_inject_service.inject_with_tags(
+                user_tag="user_test",
+                project_tag="user_test",
                 query=None,
                 config={
                     "inject_profile": True,
@@ -190,8 +194,9 @@ class TestContextInjectAPI:
         mock_memory_store.get_by_container = AsyncMock(return_value=[])
 
         result = asyncio.run(
-            context_inject_service.inject(
-                container_tag="user_test",
+            context_inject_service.inject_with_tags(
+                user_tag="user_test",
+                project_tag="user_test",
                 query=None,
                 config={
                     "inject_profile": True,
@@ -235,8 +240,9 @@ class TestContextInjectAPI:
         mock_memory_store.get_by_container = AsyncMock(return_value=[])
 
         result = asyncio.run(
-            context_inject_service.inject(
-                container_tag="user_test",
+            context_inject_service.inject_with_tags(
+                user_tag="user_test",
+                project_tag="user_test",
                 query=None,
                 config={
                     "inject_profile": True,
@@ -280,8 +286,9 @@ class TestContextInjectAPI:
         mock_memory_store.get_by_container = AsyncMock(return_value=[])
 
         result = asyncio.run(
-            context_inject_service.inject(
-                container_tag="user_test",
+            context_inject_service.inject_with_tags(
+                user_tag="user_test",
+                project_tag="user_test",
                 query=None,
                 config={
                     "inject_profile": True,
@@ -334,8 +341,9 @@ class TestContextInjectAPI:
         from src.services.core.context_inject_service import context_inject_service
 
         result = asyncio.run(
-            context_inject_service.inject(
-                container_tag="user_test",
+            context_inject_service.inject_with_tags(
+                user_tag="user_test",
+                project_tag="user_test",
                 query=None,
                 config={
                     "inject_profile": False,
@@ -368,8 +376,9 @@ class TestContextInjectAPI:
         )
 
         result = asyncio.run(
-            context_inject_service.inject(
-                container_tag="user_test",
+            context_inject_service.inject_with_tags(
+                user_tag="user_test",
+                project_tag="user_test",
                 query="项目文档",
                 config={
                     "inject_profile": False,
@@ -387,7 +396,7 @@ class TestContextInjectAPI:
     def test_final_injection_cap(
         self, mock_profile_service, mock_memory_store, mock_document_store
     ):
-        """最终注入 cap：memory 12 条 + chunk 4 条，profile 不裁剪"""
+        """最终注入 cap：memory 12 条（project 6 + user 6）+ chunk 4 条，profile 不裁剪"""
         from src.services.core.context_inject_service import context_inject_service
 
         mock_memory_store.get_by_container = AsyncMock(return_value=[])
@@ -425,8 +434,9 @@ class TestContextInjectAPI:
             ),
         ):
             result = asyncio.run(
-                context_inject_service.inject(
-                    container_tag="user_test",
+                context_inject_service.inject_with_tags(
+                    user_tag="user_test",
+                    project_tag="project_test",
                     query="测试",
                     config={
                         "inject_profile": True,
@@ -440,10 +450,10 @@ class TestContextInjectAPI:
             )
 
         # cap 统一在去重后应用：context/stats/trace.final 三者一致
-        # 单容器路径所有 memory 均为 userMemory → cap 6
-        assert result["context"].count("- 记忆内容") == 6
+        # tags 路径 project/user 分开 cap：project 6 + user 6
+        assert result["context"].count("- 记忆内容") == 12
         assert result["context"].count("- 文档内容") == 4
-        assert result["stats"]["memories_count"] == 6
+        assert result["stats"]["memories_count"] == 12
         assert result["stats"]["chunks_count"] == 4
 
     def test_cap_project_user_balanced(
@@ -507,8 +517,8 @@ class TestContextInjectAPI:
                 "low_confidence": True,
             }
         ]
-        normal_items = context_inject_service._collect_items({}, normal, [])
-        edge_items = context_inject_service._collect_items({}, edge, [])
+        normal_items = context_inject_service._collect_items_with_tags({}, normal, [], [], [])
+        edge_items = context_inject_service._collect_items_with_tags({}, edge, [], [], [])
         assert normal_items[0].priority == 2  # userMemory 默认 2
         assert edge_items[0].priority == 1  # 降 1 级
         # 高分记忆应在去重排序时优先于边缘记忆
@@ -547,8 +557,8 @@ class TestContextInjectAPI:
             "content": "普通记忆",
             "embedding": [1.0],
         }
-        items = context_inject_service._collect_items(
-            {}, [normal_mem, eg_mem], []
+        items = context_inject_service._collect_items_with_tags(
+            {}, [normal_mem, eg_mem], [], [], []
         )
         by_id = {i.id: i for i in items}
         assert by_id["m_normal"].priority == 2  # userMemory 默认
@@ -637,8 +647,9 @@ class TestContextInjectAPI:
         from src.services.core.context_inject_service import context_inject_service
 
         result = asyncio.run(
-            context_inject_service.inject(
-                container_tag="user_test",
+            context_inject_service.inject_with_tags(
+                user_tag="user_test",
+                project_tag="user_test",
                 query=None,
                 config={
                     "inject_profile": True,
@@ -670,8 +681,9 @@ class TestContextInjectAPI:
         mock_memory_store.get_by_container = AsyncMock(return_value=[])
 
         result = asyncio.run(
-            context_inject_service.inject(
-                container_tag="user_test",
+            context_inject_service.inject_with_tags(
+                user_tag="user_test",
+                project_tag="user_test",
                 query=None,
                 config={
                     "inject_profile": True,
@@ -692,8 +704,9 @@ class TestContextInjectAPI:
         from src.services.core.context_inject_service import context_inject_service
 
         result = asyncio.run(
-            context_inject_service.inject(
-                container_tag="user_test",
+            context_inject_service.inject_with_tags(
+                user_tag="user_test",
+                project_tag="user_test",
                 query=None,
                 config={
                     "inject_profile": True,
@@ -719,8 +732,9 @@ class TestContextInjectAPI:
         from src.services.core.context_inject_service import context_inject_service
 
         result = asyncio.run(
-            context_inject_service.inject(
-                container_tag="user_test",
+            context_inject_service.inject_with_tags(
+                user_tag="user_test",
+                project_tag="user_test",
                 query=None,
                 config={
                     "inject_profile": True,
@@ -756,8 +770,9 @@ class TestContextInjectAPI:
         from src.services.core.context_inject_service import context_inject_service
 
         result = asyncio.run(
-            context_inject_service.inject(
-                container_tag="user_test",
+            context_inject_service.inject_with_tags(
+                user_tag="user_test",
+                project_tag="user_test",
                 query=None,
                 config={
                     "inject_profile": True,
@@ -812,8 +827,9 @@ class TestContextInjectAPI:
                 )
 
                 result = asyncio.run(
-                    context_inject_service.inject(
-                        container_tag="user_test",
+                    context_inject_service.inject_with_tags(
+                        user_tag="user_test",
+                project_tag="user_test",
                         query="工作",
                         config={
                             "inject_profile": False,
@@ -854,7 +870,8 @@ class TestContextInjectAPI:
                         id="entity_001",
                         name="张三",
                         type="person",
-                        container_tag="user_test",
+                        user_tag="user_test",
+                project_tag="user_test",
                         mention_count=1,
                         confidence=0.9,
                     )
@@ -866,7 +883,8 @@ class TestContextInjectAPI:
                         id="entity_002",
                         name="字节跳动",
                         type="organization",
-                        container_tag="user_test",
+                        user_tag="user_test",
+                project_tag="user_test",
                         mention_count=1,
                         confidence=0.8,
                     )
@@ -895,8 +913,9 @@ class TestContextInjectAPI:
                 )
 
                 result = asyncio.run(
-                    context_inject_service.inject(
-                        container_tag="user_test",
+                    context_inject_service.inject_with_tags(
+                        user_tag="user_test",
+                project_tag="user_test",
                         query="张三",
                         config={
                             "inject_profile": False,
@@ -946,7 +965,8 @@ class TestContextInjectAPI:
                         id="entity_001",
                         name="张三",
                         type="person",
-                        container_tag="user_test",
+                        user_tag="user_test",
+                project_tag="user_test",
                         mention_count=1,
                         confidence=0.9,
                     )
@@ -958,7 +978,8 @@ class TestContextInjectAPI:
                         id="entity_002",
                         name="字节跳动",
                         type="organization",
-                        container_tag="user_test",
+                        user_tag="user_test",
+                project_tag="user_test",
                         mention_count=1,
                         confidence=0.8,
                     )
@@ -987,8 +1008,9 @@ class TestContextInjectAPI:
                 )
 
                 result = asyncio.run(
-                    context_inject_service.inject(
-                        container_tag="user_test",
+                    context_inject_service.inject_with_tags(
+                        user_tag="user_test",
+                project_tag="user_test",
                         query="张三",
                         config={
                             "inject_profile": False,
@@ -1040,8 +1062,9 @@ class TestContextInjectAPI:
                 )
 
                 result = asyncio.run(
-                    context_inject_service.inject(
-                        container_tag="user_test",
+                    context_inject_service.inject_with_tags(
+                        user_tag="user_test",
+                project_tag="user_test",
                         query="测试",
                         config={
                             "inject_profile": False,
@@ -1141,3 +1164,185 @@ class TestContextInjectAPI:
                 assert result["stats"]["user_memories_count"] == 1
                 assert result["stats"]["project_memories_count"] == 1
                 mock_memory.traverse_entity_relations.assert_not_called()
+
+    def test_single_channel_failure_returns_partial(
+        self, mock_profile_service, mock_document_store
+    ):
+        """单通道失败：memories 抛错，返回 profile/chunks 部分结果 + failed_channels"""
+        from src.services.core.context_inject_service import context_inject_service
+
+        with patch(
+            "src.services.core.context_inject_service.memory_store"
+        ) as mock_memory:
+            mock_memory.get_by_container = AsyncMock(return_value=[])
+            mock_memory.search = AsyncMock(side_effect=RuntimeError("db down"))
+
+            with (
+                patch.object(
+                    context_inject_service, "_get_chunks", AsyncMock(return_value=[])
+                ),
+                patch(
+                    "src.services.core.context_inject_service.get_embedding_client"
+                ) as mock_embed,
+                patch(
+                    "src.services.core.context_inject_service.recall_embedding_service"
+                ) as mock_emb_log,
+            ):
+                mock_emb_log.log = AsyncMock(return_value=None)
+                client = MagicMock()
+                client.embed = AsyncMock(return_value=[0.5] * 1024)
+                mock_embed.return_value = client
+                result = asyncio.run(
+                    context_inject_service.inject_with_tags(
+                        user_tag="user_test",
+                        project_tag="project_test",
+                        query="测试",
+                        config={
+                            "inject_profile": True,
+                            "max_memories": 5,
+                            "enable_memory_graph": False,
+                            "enable_entity_graph": False,
+                            "enable_semantic_dedup": False,
+                            "language": "zh_CN",
+                        },
+                    )
+                )
+
+        assert result["failed_channels"] == ["memories"]
+        assert result["stats"]["failed_channels"] == ["memories"]
+        # profile 仍然注入成功
+        assert result["stats"]["profile_count"] > 0
+        assert "用户上下文" in result["context"]
+
+    def test_single_channel_failure_chunks(
+        self, mock_profile_service, mock_document_store
+    ):
+        """单通道失败：chunks 抛错，memories/profile 仍返回"""
+        from src.services.core.context_inject_service import context_inject_service
+
+        with patch(
+            "src.services.core.context_inject_service.memory_store"
+        ) as mock_memory:
+            mock_memory.get_by_container = AsyncMock(return_value=[])
+            mock_memory.search = AsyncMock(return_value=[])
+            mock_memory.get_entities_for_memories = AsyncMock(return_value=[])
+            mock_memory.traverse_entity_relations = AsyncMock(return_value=[])
+
+            with (
+                patch.object(
+                    context_inject_service, "_get_chunks", AsyncMock(side_effect=RuntimeError("chunk db down"))
+                ),
+                patch(
+                    "src.services.core.context_inject_service.get_embedding_client"
+                ) as mock_embed,
+                patch(
+                    "src.services.core.context_inject_service.recall_embedding_service"
+                ) as mock_emb_log,
+            ):
+                mock_emb_log.log = AsyncMock(return_value=None)
+                client = MagicMock()
+                client.embed = AsyncMock(return_value=[0.5] * 1024)
+                mock_embed.return_value = client
+                result = asyncio.run(
+                    context_inject_service.inject_with_tags(
+                        user_tag="user_test",
+                        project_tag="project_test",
+                        query="测试",
+                        config={
+                            "inject_profile": True,
+                            "max_memories": 5,
+                            "enable_memory_graph": False,
+                            "enable_entity_graph": False,
+                            "enable_semantic_dedup": False,
+                            "language": "zh_CN",
+                        },
+                    )
+                )
+
+        assert result["failed_channels"] == ["chunks"]
+        assert result["stats"]["chunks_count"] == 0
+
+    def test_all_channels_failure_raises(
+        self, mock_profile_service, mock_document_store
+    ):
+        """全部通道失败：视为请求级错误，抛 RuntimeError"""
+        from src.services.core.context_inject_service import context_inject_service
+
+        with patch(
+            "src.services.core.context_inject_service.memory_store"
+        ) as mock_memory:
+            mock_memory.get_by_container = AsyncMock(return_value=[])
+            mock_memory.search = AsyncMock(side_effect=RuntimeError("db down"))
+
+            with (
+                patch.object(
+                    context_inject_service,
+                    "_get_profile",
+                    AsyncMock(side_effect=RuntimeError("profile db down")),
+                ),
+                patch.object(
+                    context_inject_service,
+                    "_get_chunks",
+                    AsyncMock(side_effect=RuntimeError("chunk db down")),
+                ),
+                patch(
+                    "src.services.core.context_inject_service.get_embedding_client"
+                ) as mock_embed,
+                patch(
+                    "src.services.core.context_inject_service.recall_embedding_service"
+                ) as mock_emb_log,
+            ):
+                mock_emb_log.log = AsyncMock(return_value=None)
+                client = MagicMock()
+                client.embed = AsyncMock(return_value=[0.5] * 1024)
+                mock_embed.return_value = client
+                with pytest.raises(RuntimeError, match="all recall channels failed"):
+                    asyncio.run(
+                        context_inject_service.inject_with_tags(
+                            user_tag="user_test",
+                            project_tag="project_test",
+                            query="测试",
+                            config={
+                                "inject_profile": True,
+                                "max_memories": 5,
+                                "enable_memory_graph": False,
+                                "enable_entity_graph": False,
+                                "enable_semantic_dedup": False,
+                                "language": "zh_CN",
+                            },
+                        )
+                    )
+
+    def test_request_level_error_dedup_raises(
+        self, mock_profile_service, mock_memory_store, mock_document_store
+    ):
+        """请求级错误（去重抛错）应向上抛（对应 API 500）"""
+        from src.services.core.context_inject_service import context_inject_service
+
+        mock_memory_store.get_by_container = AsyncMock(return_value=[])
+        with patch.object(
+            context_inject_service,
+            "_get_memories",
+            AsyncMock(return_value=[]),
+        ), patch.object(
+            context_inject_service,
+            "_get_chunks",
+            AsyncMock(return_value=[]),
+        ), patch(
+            "src.services.core.context_inject_service.semantic_dedup_service"
+        ) as mock_dedup:
+            mock_dedup.deduplicate = AsyncMock(side_effect=RuntimeError("dedup down"))
+            with pytest.raises(RuntimeError, match="dedup down"):
+                asyncio.run(
+                    context_inject_service.inject_with_tags(
+                        user_tag="user_test",
+                        project_tag="project_test",
+                        query=None,
+                        config={
+                            "inject_profile": True,
+                            "max_memories": 5,
+                            "enable_semantic_dedup": True,
+                            "language": "zh_CN",
+                        },
+                    )
+                )

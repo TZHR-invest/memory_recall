@@ -54,6 +54,7 @@ class RecallTrace:
         self.config = config
         self.error: Optional[str] = None
         self._start = time.monotonic()
+        self.failed_channels: List[str] = []
 
         self.channels: Dict[str, Any] = {
             "profile": {"enabled": bool(config.get("inject_profile", False))},
@@ -110,6 +111,11 @@ class RecallTrace:
             if scope:
                 hit["scope"] = scope
             self.channels["vector"]["hits"].append(hit)
+
+    def record_channel_failure(self, channel: str) -> None:
+        """记录一个召回通道的失败（profile/memories/chunks）。"""
+        if channel not in self.failed_channels:
+            self.failed_channels.append(channel)
 
     def record_memory_graph(
         self, from_id: str, relation_type: str, target: Dict[str, Any], added: bool, scope: Optional[str] = None
@@ -228,6 +234,7 @@ class RecallTrace:
             "project_tag": self.project_tag,
             "query": _truncate(self.query, 500),
             "channels": self.channels,
+            "failed_channels": self.failed_channels,
             "dedup": self.dedup,
             "final": self.final,
             "elapsed_ms": self.elapsed_ms,

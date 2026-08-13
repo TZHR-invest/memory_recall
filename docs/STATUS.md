@@ -10,7 +10,7 @@
 | 任务 | 状态 | 入口 |
 |------|------|------|
 | OpenCode 压缩 hook 外部调研 | 已完成（三轮收敛，结论与 ADR-0003~0008 一致） | [调研目录](notes/research/2026-08-12-opencode-compaction-hook/README.md) |
-| 核心服务 + 插件精简实施 | 未开始（下一步） | [实施计划](notes/2026-08-12-core-plugin-refactor-plan.md) |
+| 核心服务 + 插件精简实施 | 已完成（阶段 1~5 全量实施，见 commit） | [实施计划](notes/2026-08-12-core-plugin-refactor-plan.md) |
 | AGENTS.md 精炼重构（拆分到 ARCHITECTURE/TESTING/PLUGINS/RESEARCH_GUIDE） | 已完成（2026-08-13） | [记录](notes/2026-08-13-note.md) |
 
 ## ADR 实施跟踪
@@ -24,23 +24,24 @@
 | ADR | 决策 | 实施状态 | 说明 / 入口 |
 |-----|------|---------|-------------|
 | [0001](decisions/0001-product-positioning.md) | 产品定位收敛为 AI Agent 记忆系统 | 部分实现 | PROJECT_PLAN 已按决策重写；README 统一叙事待收尾（[MR-010](issues/MR-010-positioning-drift.md) 仍 OPEN） |
-| [0003](decisions/0003-inject-api-convergence.md) | 注入接口收敛为 /context-inject 单一路径 | 未开始 | 插件双注入路径（injectContext/useBackendDedup/semantic-dedup）仍存在；[实施计划](notes/2026-08-12-core-plugin-refactor-plan.md) 阶段 1 |
-| [0004](decisions/0004-context-inject-graceful-degradation.md) | /context-inject 子模块优雅降级 | 未开始 | 后端 failed_channels 未实现；[实施计划](notes/2026-08-12-core-plugin-refactor-plan.md) 阶段 1 |
-| [0005](decisions/0005-inject-failure-notice-policy.md) | 注入失败提示策略（log + toast 节流） | 未开始 | [实施计划](notes/2026-08-12-core-plugin-refactor-plan.md) 阶段 4 |
-| [0006](decisions/0006-session-summary-not-stored-as-memory.md) | 会话摘要不写入记忆库 | 部分实现 | 不写入行为已固化（saveSummaryAsMemory 返回 null）；summary.ts 死代码待删除（[实施计划](notes/2026-08-12-core-plugin-refactor-plan.md) 阶段 2/3） |
-| [0007](decisions/0007-compaction-converge-to-official-hook.md) | 压缩机制收敛到官方 hook | 未开始 | 预压缩代码（checkAndTriggerCompaction 等）仍存在；[实施计划](notes/2026-08-12-core-plugin-refactor-plan.md) 阶段 2/3 |
-| [0008](decisions/0008-remove-summary-capture-and-scene-recovery.md) | 删除摘要捕获与现场恢复 | 未开始 | waitForSummaryMessage/recoverAgentConfig 等仍存在；[实施计划](notes/2026-08-12-core-plugin-refactor-plan.md) 阶段 2/3 |
+| [0003](decisions/0003-inject-api-convergence.md) | 注入接口收敛为 /context-inject 单一路径 | 已实现 | 前端复合注入路径/semantic-dedup/embedding-cache/useBackendDedup 已删除 |
+| [0004](decisions/0004-context-inject-graceful-degradation.md) | /context-inject 子模块优雅降级 | 已实现 | 后端 failed_channels + 单通道降级 + 全失败 500 已落地 |
+| [0005](decisions/0005-inject-failure-notice-policy.md) | 注入失败提示策略（log + toast 节流） | 已实现 | toast 节流（每会话不超过 3 次）+ session.deleted 清理已落地 |
+| [0006](decisions/0006-session-summary-not-stored-as-memory.md) | 会话摘要不写入记忆库 | 已实现 | summary.ts 死代码已删除 |
+| [0007](decisions/0007-compaction-converge-to-official-hook.md) | 压缩机制收敛到官方 hook | 已实现 | 预压缩/私有存储写入已删除；官方 hook 仅 push context |
+| [0008](decisions/0008-remove-summary-capture-and-scene-recovery.md) | 删除摘要捕获与现场恢复 | 已实现 | 摘要捕获/现场恢复/summary.ts 已删除 |
 
 ## 下一步
 
-1. 按[实施计划](notes/2026-08-12-core-plugin-refactor-plan.md)阶段 1 开始：
-   后端 `/context-inject` 优雅降级 + 移除旧 `container_tag` 模式；
-2. 阶段 2/3：插件注入收敛、压缩收敛（context-only + fail-open 防御层 + 共存检测）；
-3. 阶段 4：toast 节流、版本对齐；
-4. 阶段 5：残留检查、测试、手工验证（抛错 hook / 超时 / 共存检测实测）。
+1. 提交本次实施（代码 + 文档一起 commit）；
+2. 收尾：后端 fast unit loop 全绿 + 插件 bun test 全绿（已完成）；
+   剩余手工验证项见实施计划阶段 5（需真实 opencode 运行时）：
+   - 压缩 hook 抛错 / 超时 / 共存检测实测；
+   - /context-inject 单通道失败返回部分结果 + failed_channels；
+   - 注入失败 toast 不超过每会话 3 次。
 
 ## 等待项 / 阻塞
 
-- 暂无（外部调研已完成；等待开始实施）。
+- 暂无阻塞（手工验证需真实 opencode 运行时，可延后）。
 
 *状态: ACTIVE · 最后更新: 2026-08-13*

@@ -39,86 +39,6 @@ from src.embedding.client import get_embedding_client
 
 
 class ContextInjectService:
-    async def inject(
-        self,
-        container_tag: str,
-        query: Optional[str],
-        config: Dict[str, Any],
-        include_trace: bool = False,
-        trace: Optional[RecallTrace] = None,
-    ) -> Dict[str, Any]:
-        trace = trace or RecallTrace(
-            mode="single",
-            container_tag=container_tag,
-            user_tag=container_tag,
-            project_tag=None,
-            query=query,
-            config=config,
-        )
-
-        try:
-            profile = await self._get_profile(container_tag, config)
-            trace.record_profile(
-                profile.get("static", []),
-                profile.get("dynamic", []),
-                # enabled 由实际注入结果推导（修复默认值 False 与 _get_profile True 不一致）
-                enabled=None,
-            )
-            trace.mark_profile()
-
-            memories = await self._get_memories(container_tag, query, config, trace)
-            trace.mark_memories()
-
-            chunks = await self._get_chunks(container_tag, query, config, trace)
-            trace.mark_chunks()
-
-            all_items = self._collect_items(profile, memories, chunks)
-
-            dropped_log: List[Dict[str, Any]] = []
-            if config.get("enable_semantic_dedup", True):
-                deduped_items = await semantic_dedup_service.deduplicate(
-                    all_items,
-                    threshold=config.get("dedup_threshold", 0.85),
-                    dropped_log=dropped_log,
-                )
-            else:
-                deduped_items = all_items
-            trace.record_dedup(
-                deduped_items,
-                dropped_log,
-                config.get("dedup_threshold", 0.85),
-            )
-            trace.mark_dedup()
-
-            capped_items = self._apply_injection_caps(deduped_items)
-
-            context = self._format_context(capped_items, config.get("language", "auto"))
-            trace.record_final(capped_items)
-            trace.mark_format()
-
-            sources = self._build_sources(profile, memories, chunks, capped_items)
-            stats = self._build_stats(all_items, deduped_items, capped_items)
-
-            if await recall_trace_service.should_record(force=include_trace):
-                await recall_trace_service.save(trace)
-
-            result = {
-                "context": context,
-                "sources": sources,
-                "stats": stats,
-            }
-            if include_trace:
-                result["trace"] = trace.to_dict()
-            return result
-        except Exception as e:
-            trace.mark_error(str(e))
-            try:
-                if await recall_trace_service.should_record(force=include_trace):
-                    await recall_trace_service.save(trace)
-            except Exception:
-                pass
-            raise
-
     async def inject_with_tags(
         self,
         user_tag: str,
@@ -137,6 +57,8 @@ class ContextInjectService:
             config=config,
         )
 
+        failed_channels: List[str] = []
+        # --- profile 通道 ---
         try:
             profile = await self._get_profile(user_tag, config)
             trace.record_profile(
@@ -145,80 +67,105 @@ class ContextInjectService:
                 # enabled 由实际注入结果推导（修复默认值 False 与 _get_profile True 不一致）
                 enabled=None,
             )
-            trace.mark_profile()
+        except Exception as e:
+            profile = {"static": [], "dynamic": []}
+            trace.record_profile([], [], enabled=False)
+            trace.record_channel_failure("profile")
+            logger.warning("context-inject profile channel failed: %s", e)
+        trace.mark_profile()
 
+        try:
             user_memories = await self._get_memories(user_tag, query, config, trace, scope="user")
             if user_tag == project_tag:
                 # user/project 指向同一容器时复用结果，避免重复 embedding 搜索
                 project_memories = user_memories
             else:
                 project_memories = await self._get_memories(project_tag, query, config, trace, scope="project")
-            trace.mark_memories()
+        except Exception as e:
+            user_memories = []
+            project_memories = []
+            trace.record_channel_failure("memories")
+            logger.warning("context-inject memories channel failed: %s", e)
+        trace.mark_memories()
 
+        try:
             user_chunks = await self._get_chunks(user_tag, query, config, trace, scope="user")
             if user_tag == project_tag:
                 project_chunks = user_chunks
             else:
                 project_chunks = await self._get_chunks(project_tag, query, config, trace, scope="project")
-            trace.mark_chunks()
-
-            all_items = self._collect_items_with_tags(
-                profile, user_memories, project_memories, user_chunks, project_chunks
-            )
-
-            dropped_log: List[Dict[str, Any]] = []
-            if config.get("enable_semantic_dedup", True):
-                deduped_items = await semantic_dedup_service.deduplicate(
-                    all_items,
-                    threshold=config.get("dedup_threshold", 0.85),
-                    dropped_log=dropped_log,
-                )
-            else:
-                deduped_items = all_items
-            trace.record_dedup(
-                deduped_items,
-                dropped_log,
-                config.get("dedup_threshold", 0.85),
-            )
-            trace.mark_dedup()
-
-            capped_items = self._apply_injection_caps(deduped_items)
-
-            context = self._format_context_with_tags(
-                capped_items, config.get("language", "auto")
-            )
-            trace.record_final(capped_items)
-            trace.mark_format()
-
-            sources = self._build_sources_with_tags(
-                profile,
-                user_memories,
-                project_memories,
-                user_chunks,
-                project_chunks,
-                capped_items,
-            )
-            stats = self._build_stats_with_tags(all_items, deduped_items, capped_items)
-
-            if await recall_trace_service.should_record(force=include_trace):
-                await recall_trace_service.save(trace)
-
-            result = {
-                "context": context,
-                "sources": sources,
-                "stats": stats,
-            }
-            if include_trace:
-                result["trace"] = trace.to_dict()
-            return result
         except Exception as e:
-            trace.mark_error(str(e))
+            user_chunks = []
+            project_chunks = []
+            trace.record_channel_failure("chunks")
+            logger.warning("context-inject chunks channel failed: %s", e)
+        trace.mark_chunks()
+
+        failed_channels = list(trace.failed_channels)
+
+        # 仅当全部通道失败（系统性故障：存储/嵌入不可用）才视为请求级错误；
+        # 单通道失败返回已成功通道的部分结果。
+        if set(failed_channels) >= {"profile", "memories", "chunks"}:
+            err = f"all recall channels failed: {', '.join(failed_channels)}"
+            trace.mark_error(err)
             try:
                 if await recall_trace_service.should_record(force=include_trace):
                     await recall_trace_service.save(trace)
             except Exception:
                 pass
-            raise
+            raise RuntimeError(f"Context injection failed: {err}")
+
+        all_items = self._collect_items_with_tags(
+            profile, user_memories, project_memories, user_chunks, project_chunks
+        )
+
+        dropped_log: List[Dict[str, Any]] = []
+        if config.get("enable_semantic_dedup", True):
+            deduped_items = await semantic_dedup_service.deduplicate(
+                all_items,
+                threshold=config.get("dedup_threshold", 0.85),
+                dropped_log=dropped_log,
+            )
+        else:
+            deduped_items = all_items
+        trace.record_dedup(
+            deduped_items,
+            dropped_log,
+            config.get("dedup_threshold", 0.85),
+        )
+        trace.mark_dedup()
+
+        capped_items = self._apply_injection_caps(deduped_items)
+
+        context = self._format_context_with_tags(
+            capped_items, config.get("language", "auto")
+        )
+        trace.record_final(capped_items)
+        trace.mark_format()
+
+        sources = self._build_sources_with_tags(
+            profile,
+            user_memories,
+            project_memories,
+            user_chunks,
+            project_chunks,
+            capped_items,
+        )
+        stats = self._build_stats_with_tags(all_items, deduped_items, capped_items)
+        stats["failed_channels"] = failed_channels
+
+        if await recall_trace_service.should_record(force=include_trace):
+            await recall_trace_service.save(trace)
+
+        result = {
+            "context": context,
+            "sources": sources,
+            "stats": stats,
+            "failed_channels": failed_channels,
+        }
+        if include_trace:
+            result["trace"] = trace.to_dict()
+        return result
 
     async def _get_profile(
         self,
@@ -258,8 +205,9 @@ class ContextInjectService:
                 "static": static,
                 "dynamic": profile.get("dynamic", [])[:max_dynamic],
             }
-        except Exception:
-            return {"static": [], "dynamic": []}
+        except Exception as e:
+            logger.warning("profile fetch failed for %s: %s", container_tag, e)
+            raise
 
     def _is_transient_static(self, content: str) -> bool:
         """判定 static 事实是否为临时性记录（配置记录/一次性事件），而非永久行为规则。
@@ -531,8 +479,9 @@ class ContextInjectService:
             return (
                 core_items[: max_memories * 2] + entity_graph_items[:entity_quota]
             )
-        except Exception:
-            return []
+        except Exception as e:
+            logger.warning("memories fetch failed for %s: %s", container_tag, e)
+            raise
 
     async def _get_chunks(
         self,
@@ -692,8 +641,9 @@ class ContextInjectService:
             for c in filtered:
                 c.pop("_entity_hit", None)
             return filtered
-        except Exception:
-            return []
+        except Exception as e:
+            logger.warning("chunks fetch failed for %s: %s", container_tag, e)
+            raise
 
     def _chunk_similarity(
         self,
@@ -736,72 +686,6 @@ class ContextInjectService:
             ):
                 return True
         return len(q) > 800
-
-    def _collect_items(
-        self,
-        profile: Dict[str, List[str]],
-        memories: List[Dict[str, Any]],
-        chunks: List[Dict[str, Any]],
-    ) -> List[DedupItem]:
-        items = []
-
-        for fact in profile.get("static", []):
-            items.append(
-                DedupItem(
-                    content=fact,
-                    source="profile",
-                    priority=SOURCE_PRIORITY["profile"],
-                )
-            )
-
-        for fact in profile.get("dynamic", []):
-            items.append(
-                DedupItem(
-                    content=fact,
-                    source="profile",
-                    priority=SOURCE_PRIORITY["profile"],
-                )
-            )
-
-        for m in memories:
-            items.append(
-                DedupItem(
-                    content=m.get("content", ""),
-                    source="userMemory",
-                    # 边缘命中（low_confidence）降 1 级：让 cap 优先保留高分记忆，减少 0.40-0.45 噪音注入
-                    # entity_graph 增量（未被其他渠道召回的新信息）+0.5：在 dedup 排序与最终 cap 中存活
-                    priority=SOURCE_PRIORITY["userMemory"]
-                    - (1 if m.get("low_confidence") else 0)
-                    + (0.5 if m.get("source") == "entity_graph" else 0),
-                    embedding=m.get("embedding"),
-                    id=m.get("id"),
-                    relation_type=m.get("relation_type"),
-                )
-            )
-
-        for c in chunks:
-            content = c.get("content", "")
-            title = c.get("title")
-            source = c.get("source")
-
-            if title or source:
-                source_info = f" [{title or '未知'}"
-                if source:
-                    source_info += f" | {source}"
-                source_info += "]"
-                content = f"{content}{source_info}"
-
-            items.append(
-                DedupItem(
-                    content=content,
-                    source="chunk",
-                    priority=SOURCE_PRIORITY["chunk"],
-                    embedding=c.get("embedding"),
-                    id=c.get("id"),
-                )
-            )
-
-        return items
 
     def _collect_items_with_tags(
         self,
@@ -924,47 +808,6 @@ class ContextInjectService:
             profile_items + project_memory_items + user_memory_items + chunk_items
         )
 
-    def _format_context(
-        self,
-        items: List[DedupItem],
-        language: str,
-    ) -> str:
-        is_zh = language == "zh_CN" or (
-            language == "auto" and self._detect_chinese(items)
-        )
-
-        lines = []
-        lines.append("## 用户上下文" if is_zh else "## User Context")
-        lines.append("")
-
-        profile_items = [i for i in items if i.source == "profile"]
-        memory_items = [i for i in items if i.source in ("userMemory", "projectMemory")]
-        chunk_items = [i for i in items if i.source == "chunk"]
-
-        if profile_items:
-            lines.append("### 永久特征" if is_zh else "### Static Facts")
-            for item in profile_items:
-                lines.append(f"- {item.content}")
-            lines.append("")
-
-        if memory_items:
-            lines.append("### 相关记忆" if is_zh else "### Related Memories")
-            for item in memory_items:
-                content = self._format_memory_with_relation(item, is_zh)
-                lines.append(f"- {content}")
-            lines.append("")
-
-        if chunk_items:
-            lines.append("### 项目文档" if is_zh else "### Project Documents")
-            for item in chunk_items:
-                lines.append(f"- {item.content}")
-            lines.append("")
-
-        if len(lines) <= 3:
-            return ""
-
-        return "\n".join(lines)
-
     def _format_memory_with_relation(self, item: DedupItem, is_zh: bool) -> str:
         if not item.relation_type:
             return item.content
@@ -1035,25 +878,6 @@ class ContextInjectService:
                 return True
         return False
 
-    def _build_sources(
-        self,
-        profile: Dict[str, List[str]],
-        memories: List[Dict[str, Any]],
-        chunks: List[Dict[str, Any]],
-        capped_items: List[DedupItem],
-    ) -> Dict[str, Any]:
-        capped_memories = [
-            i for i in capped_items if i.source in ("userMemory", "projectMemory")
-        ]
-        capped_chunks = [i for i in capped_items if i.source == "chunk"]
-        return {
-            "profile": profile.get("static", []) + profile.get("dynamic", []),
-            "memories": [
-                {"id": i.id, "content": i.content} for i in capped_memories
-            ],
-            "chunks": [{"id": i.id, "content": i.content} for i in capped_chunks],
-        }
-
     def _build_sources_with_tags(
         self,
         profile: Dict[str, List[str]],
@@ -1083,31 +907,6 @@ class ContextInjectService:
             "user_chunks": [],
         }
 
-    def _build_stats(
-        self,
-        all_items: List[DedupItem],
-        deduped_items: List[DedupItem],
-        capped_items: List[DedupItem],
-    ) -> Dict[str, int]:
-        memories_count = len(
-            [i for i in capped_items if i.source in ("userMemory", "projectMemory")]
-        )
-        return {
-            "total_items": len(all_items),
-            "after_dedup": len(deduped_items),
-            "deduped_count": len(all_items) - len(deduped_items),
-            "capped_count": len(capped_items),
-            "profile_count": len([i for i in capped_items if i.source == "profile"]),
-            "memories_count": memories_count,
-            "project_memories_count": len(
-                [i for i in capped_items if i.source == "projectMemory"]
-            ),
-            "user_memories_count": len(
-                [i for i in capped_items if i.source == "userMemory"]
-            ),
-            "chunks_count": len([i for i in capped_items if i.source == "chunk"]),
-        }
-
     def _build_stats_with_tags(
         self,
         all_items: List[DedupItem],
@@ -1127,6 +926,14 @@ class ContextInjectService:
                 [i for i in capped_items if i.source == "userMemory"]
             ),
             "chunks_count": len([i for i in capped_items if i.source == "chunk"]),
+            # 向后兼容：单容器旧字段，取 project + user 记忆总数
+            "memories_count": len(
+                [
+                    i
+                    for i in capped_items
+                    if i.source in ("projectMemory", "userMemory")
+                ]
+            ),
         }
 
 
