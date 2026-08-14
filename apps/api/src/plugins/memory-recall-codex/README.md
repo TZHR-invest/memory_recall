@@ -16,8 +16,8 @@
 
 ## 组成
 
-- **MCP server**（`server.py`）：通过 MCP 协议暴露 15 个记忆工具（add / search /
-  profile / context-inject / update / forget / import-docs 等），实现与 hermes 插件
+- **MCP server**（`server.py`）：通过 MCP 协议暴露 11 个记忆工具（add / search /
+  profile / context-inject / update / forget / hybrid-search 等），实现与 hermes 插件
   完全一致的工具面，配置方式与 deepseek-tui 一致。
 - **Skill**（`skills/memory-recall/SKILL.md`）：指导 Codex 在任务开始前召回相关记忆、
   任务结束后沉淀关键信息。
@@ -131,8 +131,8 @@ codex plugin add memory-recall-codex@personal   # 重装
 - `status` 工具报"未配置 API Key" → 检查 `~/.config/codex/memory-recall.jsonc` 或环境变量
 - 工具报"无法连接" → 确认后端已启动且 `base_url` 正确
 - 修改配置后不生效 → 重启 Codex 会话（MCP server 随会话启动）
-- status 显示项目范围 0 记忆/0 文档但项目明明有记忆 → project_tag 与真实数据
-  所在 tag 不匹配（查数据库 memories/documents 表的 container_tag 核对），
+- status 显示项目范围 0 记忆但项目明明有记忆 → project_tag 与真实数据
+  所在 tag 不匹配（查数据库 memories 表的 container_tag 核对），
   修改 jsonc 的 project_tag 指向目标项目 tag。
 
 ## 已知限制（codex 0.147）
@@ -140,8 +140,7 @@ codex plugin add memory-recall-codex@personal   # 重装
 - 插件 `.mcp.json` 只支持 transport 字段（command/args/env/cwd）；策略字段
   （`default_tools_approval_mode`、`disabled_tools`）实测不生效，免审批配置必须走 config.toml（见上）。
 - **config.toml 层的策略字段生效**（与插件层不同）：`default_tools_approval_mode`
-  免审批、`disabled_tools` 禁用工具（本机已用 config.toml 禁用 delete_doc，
-  `codex mcp get` 实测生效）。插件 .mcp.json 里的同名字段才是死的。
+  免审批、`disabled_tools` 禁用工具（`codex mcp get` 实测生效）。插件 .mcp.json 里的同名字段才是死的。
 - MCP server 无法直接感知工作目录（spawn 时无 PWD/CODEX_CWD），但会从父进程
   cwd（CLI）或 codex 会话 rollout（VSCode）自动探测项目目录生成 project 容器；
   需要更细隔离时可在内容里标注项目名（如 `【项目X】...`）。

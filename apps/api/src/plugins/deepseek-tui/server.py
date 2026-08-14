@@ -4,9 +4,8 @@
 通过 MCP 协议在 DeepSeek TUI 中使用 memory_recall 记忆系统。
 配置优先级：环境变量 > ~/.deepseek/plugins/memory-recall/config.jsonc > 默认值
 
-15 tools: add, search, profile, forget, list, update, restore,
-import-docs, list-docs, read-doc, delete-doc, hybrid-search,
-extract-memory, context-inject, status
+11 tools: add, search, profile, forget, list, update, restore,
+hybrid-search, extract-memory, context-inject, status
 """
 
 import os, sys, json, logging, asyncio, re
@@ -99,14 +98,6 @@ async def list_tools() -> list[Tool]:
              inputSchema={"type":"object","properties":{"memoryId":{"type":"string"},"content":{"type":"string"}},"required":["memoryId","content"]}),
         Tool(name="restore", description="恢复已删除的记忆。",
              inputSchema={"type":"object","properties":{"memoryId":{"type":"string"}},"required":["memoryId"]}),
-        Tool(name="import-docs", description="导入文档。自动分块、生成 embedding。",
-             inputSchema={"type":"object","properties":{"content":{"type":"string"},"title":{"type":"string"},"source":{"type":"string"},"doc_type":{"type":"string","default":"text"}},"required":["content"]}),
-        Tool(name="list-docs", description="列出已导入的文档。",
-             inputSchema={"type":"object","properties":{"limit":{"type":"number"}}}),
-        Tool(name="read-doc", description="读取文档完整原文。",
-             inputSchema={"type":"object","properties":{"documentId":{"type":"string"}},"required":["documentId"]}),
-        Tool(name="delete-doc", description="删除文档及其所有 chunks（不可恢复）。",
-             inputSchema={"type":"object","properties":{"documentId":{"type":"string"}},"required":["documentId"]}),
         Tool(name="hybrid-search", description="混合搜索记忆和文档。",
              inputSchema={"type":"object","properties":{"query":{"type":"string"},"limit":{"type":"number"},"scope":{"type":"string","enum":["user","project"]}},"required":["query"]}),
         Tool(name="extract-memory", description="从会话摘要中提取值得长期保存的记忆。",
@@ -123,9 +114,7 @@ async def call_tool(name: str, args: dict) -> list[TextContent]:
         h = {
             "add": _add, "search": _search, "profile": _profile,
             "forget": _forget, "list": _list, "update": _update,
-            "restore": _restore, "import-docs": _import_docs,
-            "list-docs": _list_docs, "read-doc": _read_doc,
-            "delete-doc": _delete_doc, "hybrid-search": _hybrid_search,
+            "restore": _restore, "hybrid-search": _hybrid_search,
             "extract-memory": _extract_memory, "context-inject": _context_inject,
             "status": _status,
         }
@@ -191,31 +180,6 @@ async def _update(args):
 async def _restore(args):
     await api("POST", f"/memories/{quote(args['memoryId'], safe='')}/restore")
     return [TextContent(type="text", text=f"✅ Restored {args['memoryId']}")]
-
-async def _import_docs(args):
-    scope = args.get("scope", "project")
-    body = {"content": args["content"], "doc_type": args.get("doc_type","text"), "container_tag": _tag(scope)}
-    if args.get("title"): body["title"] = args["title"]
-    if args.get("source"): body["source"] = args["source"]
-    r = await api("POST", "/documents", body=body)
-    return [TextContent(type="text", text=f"✅ Imported doc\nID: {r.get('id','N/A')}\nScope: {scope}")]
-
-async def _list_docs(args):
-    r = (await api("GET", "/documents", params={"container_tag": _tag(args.get("scope","project")), "limit": args.get("limit",20)})).get("documents", [])
-    if not r: return [TextContent(type="text", text="No documents.")]
-    lines = [f"Total {len(r)} docs:\n"]
-    for i, d in enumerate(r, 1): lines.append(f"{i}. [{d.get('doc_type','text')}] {d.get('title','N/A')} ({d['id'][:12]}...)")
-    return [TextContent(type="text", text="\n".join(lines))]
-
-async def _read_doc(args):
-    r = await api("GET", f"/documents/{quote(args['documentId'], safe='')}")
-    c = r.get("content", "")
-    if len(c) > 5000: c = c[:5000] + "\n\n... (truncated)"
-    return [TextContent(type="text", text=f"📄 {r.get('title','N/A')}\n\n{c}")]
-
-async def _delete_doc(args):
-    await api("DELETE", f"/documents/{quote(args['documentId'], safe='')}")
-    return [TextContent(type="text", text=f"✅ Deleted doc {args['documentId']}")]
 
 async def _hybrid_search(args):
     r = (await api("POST", "/search/hybrid", body={"query": args["query"], "container_tag": _tag(args.get("scope","project")), "limit": args.get("limit",10)})).get("results", [])

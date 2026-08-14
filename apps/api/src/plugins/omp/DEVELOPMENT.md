@@ -70,7 +70,7 @@
 | `compaction.ts` | 改写为 `session_before_compact` 钩子形态 |
 | `events.ts` | 改写为 omp 事件 handler 形态 |
 | `index.ts` | 重写为 omp 入口（工厂函数 + 事件注册） |
-| `document-tracker.ts` / `file-watcher.ts` | 暂不移植（见 §8） |
+| ~~`document-tracker.ts` / `file-watcher.ts`~~ | ~~暂不移植~~ —— 已随 ADR-0010 从 opencode 删除，无需移植 |
 | `cli.ts` | 不移植——omp 安装无需 CLI，symlink / 配置一行即可 |
 
 > 注：`context.ts` 传递依赖 `i18n.ts`、`semantic-dedup.ts`、`embedding-cache.ts` 等均纯本地模块，复制时一并带上；`semantic-dedup.ts` 仅 type-import `ApiClient`，运行时依赖后端 embedding 接口。
@@ -119,5 +119,5 @@ MVP 范围：**上下文注入 + `memory_add` 工具**，跑通后再补齐其�
 - [ ] 安装方式：项目级 `.omp/extensions/`（进仓库） vs 全局 `~/.omp/agent/extensions/` symlink vs `config.yml#extensions` 指向仓库路径
 - [ ] 注入策略：是否完整移植 opencode 的 smart recall（首条注入 + 关键词触发 + 动态尺寸）
 - [ ] 工具集范围：MVP 只做 `memory_add`，还是同时做 `memory_recall` / `memory_search`
-- [ ] 是否移植文档跟踪（`document-tracker.ts` / `file-watcher.ts`）——omp 侧优先不移植（`resources_discover` 事件目前无调用点），如需再议
+- [x] ~~是否移植文档跟踪~~ —— 文档 RAG 已移出核心（ADR-0010），opencode 已删除 `document-tracker.ts` / `file-watcher.ts`，omp 不再考虑移植
 - [ ] 与宿主内置记忆（`ctx.memory` / `memory_edit` / `recall`）的交互：是否在召回结果中融合或提示宿主内置记忆，避免重复注入

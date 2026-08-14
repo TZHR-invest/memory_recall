@@ -98,8 +98,6 @@ export interface Config {
   maxStaticProfileItems: number;
   injectProfile: boolean;
   compactionThreshold: number;
-  enableDocumentTracking: boolean;
-  trackedDocPatterns: string[];
   language: "auto" | "zh_CN" | "en_US";
   logFile: string;
   logLevel: "debug" | "info" | "warn" | "error";
@@ -137,13 +135,6 @@ const DEFAULT_CONFIG: Omit<Config, "apiKey"> = {
   maxStaticProfileItems: 30,
   injectProfile: true,
   compactionThreshold: 0.8,
-  enableDocumentTracking: true,
-  trackedDocPatterns: [
-    "README*.md",
-    "CHANGELOG*.md",
-    "docs/*.md",
-    "AGENTS.md",
-  ],
   language: "auto",
   logFile: "~/.memory-recall-opencode.log",
   logLevel: "info",
@@ -294,14 +285,6 @@ function buildRawConfig(
       (overrides.compactionThreshold as number) ||
       (fileConfig.compactionThreshold as number) ||
       DEFAULT_CONFIG.compactionThreshold,
-    enableDocumentTracking:
-      (overrides.enableDocumentTracking as boolean) ??
-      (fileConfig.enableDocumentTracking as boolean) ??
-      DEFAULT_CONFIG.enableDocumentTracking,
-    trackedDocPatterns:
-      (overrides.trackedDocPatterns as string[]) ||
-      (fileConfig.trackedDocPatterns as string[]) ||
-      DEFAULT_CONFIG.trackedDocPatterns,
     language:
       (process.env.MEMORY_RECALL_LANGUAGE as Config["language"]) ||
       (overrides.language as Config["language"]) ||

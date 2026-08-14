@@ -6,22 +6,18 @@ Memory Recall MCP Server for Hermes Agent
 - 原生 memory: 精简关键事实（自动注入每轮对话）
 - memory_recall: 大量细节、语义搜索、知识图谱（按需调用）
 
-15 个工具:
+11 个工具:
 1. add              - 存储记忆
 2. search           - 语义搜索记忆
 3. profile          - 用户画像
 4. forget           - 删除记忆
 5. list             - 列出记忆
-6. import-docs      - 导入文档
-7. extract-memory   - 从会话摘要提取记忆
-8. hybrid-search    - 混合搜索（记忆+文档）
-9. status           - 系统状态检查
-10. update          - 更新记忆（版本化）
-11. restore         - 恢复已删除记忆
-12. context-inject  - 统一上下文注入（支持双重图谱扩展）
-13. list-docs       - 列出文档
-14. read-doc        - 读取文档原文
-15. delete-doc      - 删除文档
+6. extract-memory   - 从会话摘要提取记忆
+7. hybrid-search    - 混合搜索（记忆+文档）
+8. status           - 系统状态检查
+9. update           - 更新记忆（版本化）
+10. restore         - 恢复已删除记忆
+11. context-inject  - 统一上下文注入（支持双重图谱扩展）
 
 用法: python server.py
 """
@@ -206,38 +202,6 @@ async def list_tools() -> list[Tool]:
             },
         ),
         Tool(
-            name="import-docs",
-            description="导入文档到 memory_recall。文档会自动分块、生成 embedding，可通过 hybrid-search 或 context-inject 检索。适合导入项目文档、技术规范、API 文档等。",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "content": {
-                        "type": "string",
-                        "description": "文档内容",
-                    },
-                    "title": {
-                        "type": "string",
-                        "description": "文档标题",
-                    },
-                    "source": {
-                        "type": "string",
-                        "description": "文档来源（如文件路径、URL）",
-                    },
-                    "docType": {
-                        "type": "string",
-                        "enum": ["text", "markdown", "code"],
-                        "description": "文档类型（默认 text）",
-                    },
-                    "scope": {
-                        "type": "string",
-                        "enum": ["user", "project"],
-                        "description": "存储范围（默认 project）",
-                    },
-                },
-                "required": ["content", "title"],
-            },
-        ),
-        Tool(
             name="extract-memory",
             description="从会话摘要中提取值得长期保存的记忆。使用 LLM 自动判断哪些信息值得保存（用户偏好、项目约束、技术决策等），过滤掉临时状态和代码细节。",
             inputSchema={
@@ -390,56 +354,6 @@ async def list_tools() -> list[Tool]:
                 "required": ["query"],
             },
         ),
-        Tool(
-            name="list-docs",
-            description="列出已导入的文档。返回文档 ID、标题、类型、chunk 数量等元数据，支持分页。",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "scope": {
-                        "type": "string",
-                        "enum": ["user", "project"],
-                        "description": "存储范围（默认 project）",
-                    },
-                    "limit": {
-                        "type": "number",
-                        "description": "最大返回数量（默认 20）",
-                    },
-                    "offset": {
-                        "type": "number",
-                        "description": "分页偏移（默认 0）",
-                    },
-                },
-            },
-        ),
-        Tool(
-            name="read-doc",
-            description="按 ID 读取文档完整原文。返回文档内容、元数据和 chunk 列表。",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "documentId": {
-                        "type": "string",
-                        "description": "文档 ID（从 list-docs 或 import-docs 获取）",
-                    },
-                },
-                "required": ["documentId"],
-            },
-        ),
-        Tool(
-            name="delete-doc",
-            description="删除一个文档及其所有 chunks。不可恢复。",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "documentId": {
-                        "type": "string",
-                        "description": "要删除的文档 ID",
-                    },
-                },
-                "required": ["documentId"],
-            },
-        ),
     ]
 
 
@@ -453,16 +367,12 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             "profile": _handle_profile,
             "forget": _handle_forget,
             "list": _handle_list,
-            "import-docs": _handle_import_docs,
             "extract-memory": _handle_extract_memory,
             "hybrid-search": _handle_hybrid_search,
             "status": _handle_status,
             "update": _handle_update,
             "restore": _handle_restore,
             "context-inject": _handle_context_inject,
-            "list-docs": _handle_list_docs,
-            "read-doc": _handle_read_doc,
-            "delete-doc": _handle_delete_doc,
         }.get(name)
         if handler:
             return await handler(arguments)
@@ -617,31 +527,6 @@ async def _handle_list(args: dict) -> list[TextContent]:
     return [TextContent(type="text", text="\n".join(lines))]
 
 
-async def _handle_import_docs(args: dict) -> list[TextContent]:
-    content = args["content"]
-    title = args["title"]
-    source = args.get("source", "")
-    doc_type = args.get("docType", "text")
-    scope = args.get("scope", "project")
-
-    body = {
-        "content": content,
-        "container_tag": _tag(scope),
-        "title": title,
-        "source": source,
-        "doc_type": doc_type,
-    }
-
-    result = await api_request("POST", "/documents", body, timeout=60.0)
-    doc_id = result.get("id", "N/A")
-    doc_status = result.get("status", "queued")
-    status_hint = "（文档正在后台处理，处理完成后可通过搜索检索）" if doc_status == "queued" else ""
-    return [TextContent(
-        type="text",
-        text=f'✅ 文档已提交到 {scope} 范围{status_hint}\nID: {doc_id}\n标题: "{title}"',
-    )]
-
-
 async def _handle_extract_memory(args: dict) -> list[TextContent]:
     summary = args["summary"]
     language = args.get("language", "zh_CN")
@@ -723,21 +608,13 @@ async def _handle_status(args: dict) -> list[TextContent]:
         # 记忆数（用 total 字段，不受 limit 影响）
         mem_result = await api_request("GET", "/memories", params={"container_tag": PROJECT_TAG, "limit": 1}, timeout=5.0)
         mem_count = mem_result.get("total", mem_result.get("count", 0)) if isinstance(mem_result, dict) else "?"
-        # 文档数
-        doc_count = "?"
-        try:
-            doc_result = await api_request("GET", "/documents", params={"container_tag": PROJECT_TAG, "limit": 1}, timeout=5.0)
-            doc_count = doc_result.get("total", 0) if isinstance(doc_result, dict) else "?"
-        except Exception:
-            pass
         return [TextContent(
             type="text",
             text=f"✅ memory_recall 服务正常运行\n"
                  f"API: {API_BASE_URL}\n"
                  f"用户标签: {USER_TAG}\n"
                  f"项目标签: {PROJECT_TAG}\n"
-                 f"记忆总数: {mem_count}\n"
-                 f"文档总数: {doc_count}",
+                 f"记忆总数: {mem_count}",
         )]
     except Exception as e:
         return [TextContent(
@@ -844,109 +721,6 @@ async def _handle_context_inject(args: dict) -> list[TextContent]:
             lines.append(f"来源: {', '.join(src_parts)}")
 
     return [TextContent(type="text", text="\n".join(lines))]
-
-
-async def _handle_list_docs(args: dict) -> list[TextContent]:
-    scope = args.get("scope", "project")
-    limit = args.get("limit", 20)
-    offset = args.get("offset", 0)
-
-    params = {
-        "container_tag": _tag(scope),
-        "limit": limit,
-        "offset": offset,
-    }
-    result = await api_request("GET", "/documents", params=params)
-
-    documents = result.get("documents", [])
-    total = result.get("total", 0)
-
-    if not documents:
-        return [TextContent(type="text", text=f"📂 {scope} 范围内无文档")]
-
-    lines = [f"📂 {scope} 范围文档列表（共 {total} 个，显示 {len(documents)} 个）：\n"]
-    for doc in documents:
-        doc_id = doc.get("id", "N/A")
-        title = doc.get("title", "无标题")
-        doc_type = doc.get("doc_type", "?")
-        chunk_count = doc.get("chunk_count", 0)
-        created = doc.get("created_at", "?")
-        lines.append(f"  📄 [{doc_id[:8]}] \"{title}\" | 类型:{doc_type} | chunks:{chunk_count} | {created}")
-
-    if total > offset + limit:
-        lines.append(f"\n💡 还有更多（offset={offset + limit}）")
-
-    return [TextContent(type="text", text="\n".join(lines))]
-
-
-async def _handle_read_doc(args: dict) -> list[TextContent]:
-    document_id = args["documentId"]
-
-    result = await api_request("GET", f"/documents/{quote(document_id, safe='')}")
-
-    doc_id = result.get("id", "N/A")
-    content = result.get("content", "")
-    container_tag = result.get("container_tag", "")
-    metadata = result.get("metadata", {})
-    doc_status = result.get("status", "?")
-    created = result.get("created_at", "?")
-
-    # 如果 API 没返回 content（documents 表不存原文），通过 chunks 拼接
-    if not content:
-        try:
-            chunks_result = await api_request(
-                "GET",
-                f"/documents/{quote(document_id, safe='')}/chunks",
-                params={"limit": 200},
-            )
-            chunks = chunks_result if isinstance(chunks_result, list) else chunks_result.get("chunks", [])
-            if chunks:
-                chunks.sort(key=lambda c: c.get("position", 0))
-                # 拼接 chunks，去除 overlap 重复
-                parts = []
-                for c in chunks:
-                    text = c.get("content", "")
-                    if not text:
-                        continue
-                    # 如果上一段结尾和这一段开头重叠，去重
-                    if parts and text:
-                        # 检查 20-100 字符的 overlap
-                        found_overlap = False
-                        for overlap_len in range(min(100, len(text), len(parts[-1])), 15, -1):
-                            if parts[-1].rstrip().endswith(text[:overlap_len].strip()):
-                                text = text[overlap_len:]
-                                found_overlap = True
-                                break
-                    if text.strip():
-                        parts.append(text)
-                content = "\n\n".join(parts)
-        except Exception:
-            content = "（无法获取原文，文档可能未存储完整内容）"
-
-    lines = [
-        f"📄 文档详情",
-        f"ID: {doc_id}",
-        f"容器: {container_tag}",
-        f"状态: {doc_status}",
-        f"创建: {created}",
-    ]
-
-    if metadata:
-        lines.append(f"元数据: {json.dumps(metadata, ensure_ascii=False)}")
-
-    lines.append(f"\n--- 原文 ---\n{content}")
-
-    return [TextContent(type="text", text="\n".join(lines))]
-
-
-async def _handle_delete_doc(args: dict) -> list[TextContent]:
-    document_id = args["documentId"]
-
-    await api_request("DELETE", f"/documents/{quote(document_id, safe='')}")
-    return [TextContent(
-        type="text",
-        text=f"✅ 已删除文档 {document_id} 及其所有 chunks",
-    )]
 
 
 # ── 启动 ──────────────────────────────────────────────────────────
