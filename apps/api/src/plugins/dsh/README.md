@@ -106,6 +106,15 @@ node --test
 （store→search→profile→forget）；自动召回（smart 关键词触发、once 首次注入、
 摘要去重、后端不可达 fail-open）；自动捕获（turn 落库 + 无回复不落库）。
 
+## client.js 双模式（浏览器端注册，MR-023）
+
+client.js 同时是服务端 ESM 库（index.js import 它）和 dsh web 的浏览器端插件
+bundle。浏览器端必须调用 window.__ModuleLoader__.load({ id, factory }) 注册
+插件形状 { name, inject, apply }——只 export 不注册会在 HARNESS 报
+"loaded without registering ... via __ModuleLoader__.load"。注册块在文件底部，
+node 环境无 window 自动跳过，两端互不影响。改完 client.js 记得
+bash install.sh --restart 同步副本并重启。
+
 ## 已知限制 / 后续
 
 - 压缩（compaction）时未注入记忆摘要（opencode 插件有 compaction 注入，后续可对标）；

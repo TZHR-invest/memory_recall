@@ -4,6 +4,14 @@
  * 契约与 opencode 插件 client.ts 对齐：X-API-Key 头 + /auth/verify 解析 keyId，
  * 统一召回走 POST /context-inject，其余走 /memories /search /profile。
  * 所有请求带超时；调用方（工具 / 注入 / 捕获）负责 fail-open。
+ *
+ * 双模式：
+ *   - 服务端（node）：被 index.js 作为 ESM 库 import（文件底部 export）；
+ *   - 浏览器端（dsh web）：作为客户端插件 bundle 由 dsh 客户端模块系统 import()
+ *     求值。模块必须调用 window.__ModuleLoader__.load({ id, factory }) 注册插件
+ *     （factory 返回 { name, inject, apply } 形状）；只 export 不注册会报：
+ *     "bundle ... loaded without registering ... via __ModuleLoader__.load"。
+ *     注册块放在文件底部，node 环境无 window 自动跳过。
  */
 
 /** 后端 /context-inject 的注入配置（字段与后端 ContextInjectConfig 对齐，已做边界夹取） */
@@ -174,4 +182,32 @@ export class MemoryRecallClient {
       externalSignal,
     });
   }
+}
+
+// ── 浏览器端插件注册（dsh web bundle 环境；node 下 typeof window 为 undefined 自动跳过）──
+// dsh 客户端模块系统 import() 本文件后会检查是否已通过 __ModuleLoader__.load 注册，
+// 未注册即报 "loaded without registering"。注册的 factory 返回 cordis 插件形状
+// { name, inject, apply }（与 dsh-lan-access 等官方/既有客户端插件一致）。
+if (typeof window !== "undefined" && typeof window.__ModuleLoader__ !== "undefined") {
+  window.__ModuleLoader__.load({
+    id: "memory-recall-dsh",
+    factory: (require) => {
+      var module = { exports: {} };
+      var exports = module.exports;
+      Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
+
+      // 插件形状：name / inject / apply（组合装载校验：函数或带 apply 的对象）
+      exports.name = "memory-recall-dsh";
+      exports.inject = [];
+      exports.apply = function apply(ctx) {
+        ctx?.logger?.info?.("[memory-recall-dsh] browser client plugin loaded");
+      };
+
+      // 顺带暴露 HTTP 客户端（bundle 内自包含，供浏览器侧调试/扩展使用）
+      exports.MemoryRecallClient = MemoryRecallClient;
+      exports.buildInjectConfig = buildInjectConfig;
+      exports.ConfigurationError = ConfigurationError;
+      return module.exports;
+    }
+  });
 }
