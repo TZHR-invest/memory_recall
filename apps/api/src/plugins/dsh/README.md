@@ -21,6 +21,8 @@ FastAPI（`apps/api`）。
 | `always` | 每轮 step 1 都注入 |
 
 会话内按内容摘要去重：同一轮召回文本不会重复注入。
+跨轮次按已注入记忆 ID 去重（per-agent LRU，容量 100）：同一记忆被不同 query
+再次召回时由后端 exclude_memory_ids 排除，避免反复注入相同内容。
 
 ### 自动捕获（captureMode）
 

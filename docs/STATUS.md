@@ -1,6 +1,6 @@
 # Memory Recall 任务状态（实时工作台）
 
-> 状态: ACTIVE · 最后更新: 2026-08-14
+> 状态: ACTIVE · 最后更新: 2026-08-15
 >
 > 规则：本文件只放"当前活跃工作 + 下一步 + 等待项"；历史一律进 `docs/notes/`；
 > 每次任务收尾必须更新；无活跃工作则写"空闲"。
@@ -22,6 +22,7 @@
  | 记忆价值判据外部调研（S0+S1 第一刀） | 已收敛（v2：round-01 五平台无预设同题 + round-02 交叉追问三分歧收敛 + 回项目内验证；结论：判据 = 复用机会×有效性×影响−维护/遗忘成本，生命周期式沉淀，最大缺口为复用反馈回收） | [v2 调研卡](notes/research/2026-08-14-memory-value-criteria-v2/README.md) · [最终结论](notes/research/2026-08-14-memory-value-criteria-v2/99-final-conclusions.md) |
 | 复用反馈回收外部调研（Q2） | 已完成（round-01 五平台无预设同题 + round-02 交叉追问三分歧收敛，各平台主动修正；结论：缺的不是评分是 outcome 遥测，需建 Memory→Decision→Action→Outcome 事件链；实施待回项目内验证后进 ADR） | [调研卡](notes/research/2026-08-14-reuse-feedback-signals/README.md) · [最终结论](notes/research/2026-08-14-reuse-feedback-signals/99-final-conclusions.md) |
 | 测试记忆清理 | 已完成（2026-08-14：软删除 20 条散落测试记忆（主容器/hermes/memory_recall 容器）+ 7 类测试专用容器 95 条全部遗忘；含 capture-test 系列、e2e-test、recall-test、update-test、latency-probe、test_integration_*、test_perf_container；可经 restore 恢复） | 本次会话 |
+| dsh 插件跨轮注入去重（exclude_memory_ids + per-agent LRU） | 已完成（2026-08-15：后端 /context-inject 支持 exclude_memory_ids（seen_ids 预置，向量/图谱/实体全链路生效）；插件 per-agent LRU 容量 100 跟踪已注入记忆 ID，注入成功后记录、后续召回排除；bundle 重建 + 36 pytest 全绿 + bundle 防漂移过；待 install.sh --restart 生效） | [dsh 插件](../apps/api/src/plugins/dsh/README.md) |
 
 ## ADR 实施跟踪
 
