@@ -14,7 +14,7 @@
 | AGENTS.md 精炼重构（拆分到 ARCHITECTURE/TESTING/PLUGINS/RESEARCH_GUIDE） | 已完成（2026-08-13） | [记录](notes/2026-08-13-note.md) |
 | project-codex / project-.codex 双容器清理 | 已完成（记忆迁移 + opencode 插件点号目录过滤修复，待 opencode 重启生效） | [notes/2026-08-13-note.md](notes/2026-08-13-note.md#project-codex--project-codex-双容器来源解密用户提问排查) |
 | 记忆维护闭环（ADR-0009） | 已完成（注入陈旧标注 + 规则检查点，API 已重启生效） | [ADR-0009](decisions/0009-memory-maintenance-loop.md) |
-| 文档 RAG 移出核心（ADR-0010） | 决策已定（2026-08-13，文档配套已落地）；代码删除待排期（已确认存量数据直接删不导出） | [ADR-0010](decisions/0010-remove-document-rag.md) · [实施讨论](notes/2026-08-13-adr0010-implementation-discussion.md) |
+| 文档 RAG 移出核心（ADR-0010） | 实施计划已定（2026-08-13，三阶段：插件先行 → 用户升级 → 后端删除）；阶段 1 插件移除待开工 | [实施计划](notes/2026-08-13-adr0010-implementation-plan.md) · [ADR-0010](decisions/0010-remove-document-rag.md) |
 | 全量测试验证 + 回归修复 | 已完成（2026-08-13）：修复 16f3b8f 引入的 Entity 测试回归（user_tag/project_tag→container_tag，2 测试）+ performance 测试 LLM 依赖隔离（extract_entities=False，1 测试）；单元 383 + 集成 7 + 性能 5 + 去重 26 全绿 | 见 commit |
 | 记忆维护检查点（ADR-0009） | 已完成（2026-08-13：语义检索 5 主题 × 5 容器 + SQL 关键词预检；版本化修正 1 条过时记忆 `mem_12490fb23d474aa1996e` → `mem_a716b54e449a4003beef`） | [ADR-0009](decisions/0009-memory-maintenance-loop.md) |
 
@@ -36,13 +36,15 @@
 | [0007](decisions/0007-compaction-converge-to-official-hook.md) | 压缩机制收敛到官方 hook | 已实现 | 预压缩/私有存储写入已删除；官方 hook 仅 push context |
 | [0008](decisions/0008-remove-summary-capture-and-scene-recovery.md) | 删除摘要捕获与现场恢复 | 已实现 | 摘要捕获/现场恢复/summary.ts 已删除 |
 | [0009](decisions/0009-memory-maintenance-loop.md) | 记忆维护闭环：注入可见性 + 规则约束，不做自动写库 | 已实现 | commit 见 2026-08-13-note；MR-011 UI 主体仍 OPEN |
-| [0010](decisions/0010-remove-document-rag.md) | 文档 RAG 移出核心，文档不再是并行召回语料 | 未开始 | 删除清单实施计划待排期；MR-019 蒸馏评估冻结 |
+| [0010](decisions/0010-remove-document-rag.md) | 文档 RAG 移出核心，文档不再是并行召回语料 | 未开始 | [实施计划已定](notes/2026-08-13-adr0010-implementation-plan.md)（三阶段），阶段 1 待开工；MR-019 蒸馏评估冻结 |
 
 
 ## 下一步
 
-1. ADR-0010 实施排期：文档 RAG 删除清单（表/代码/路由/插件/测试）拆分任务；
-   已确认：存量数据直接删不导出；建议按 后端核心 → 插件 → 收尾 三个 commit 推进（[讨论记录](notes/2026-08-13-adr0010-implementation-discussion.md)）；
+1. ADR-0010 实施（[计划](notes/2026-08-13-adr0010-implementation-plan.md)）：
+   - 阶段 1：四端插件移除文档功能（opencode 打包不发版，版本 1.9.0；hermes/deepseek-tui/codex 同步删 document tools）；
+   - 阶段 2：通知 1-2 个在用用户升级插件（不强制）；
+   - 阶段 3：后端一次删除（schema 三表/服务/路由/chunks 通道/引用/测试/根目录文档），DROP TABLE 最后单独执行；
 2. 手工验证项（需真实 opencode 运行时，可延后）：
    - 压缩 hook 抛错 / 超时 / 共存检测实测；
    - /context-inject 单通道失败返回部分结果 + failed_channels；
