@@ -46,6 +46,25 @@ bash install.sh --uninstall          # 卸载
 
 安装完成（或 `--restart` 重启）后，新会话即生效；**已打开的会话需重启 dsh 才加载插件**。
 
+### 其他机器安装（一键分发包）
+
+```bash
+# 在开发机打包（--backend-url 指定目标机器可访问的后端地址，如局域网 IP）
+cd apps/api/src/plugins/dsh
+bash package.sh --backend-url http://192.168.0.206:8000
+# 产物: dist/memory-recall-dsh-install.tar.gz（自包含：插件 + 契约预检 + 安装脚本，
+#       目标机器无需 clone 仓库、无需 dsh-plugins）
+
+# 目标机器（已装 dsh web）三步安装
+scp dist/memory-recall-dsh-install.tar.gz user@目标机:~/
+tar xzf memory-recall-dsh-install.tar.gz && cd memory-recall-dsh-install
+bash install.sh --api-key rk_live_xxx   # 后端地址已按打包参数写入；可 MEMORY_RECALL_BASE_URL 覆盖
+bash install.sh --restart               # 终端执行，冒烟通过才重启
+```
+
+要求：Node.js 18.17+；dsh web 已初始化；memory-recall 后端可达；
+headless 冒烟需 headless profile（首次 `dsh --profile headless "1"` 自动初始化）。
+
 ### 配置
 
 配置写在目标 profile 的 `cordis.patch.yml`（install.sh 自动追加）：

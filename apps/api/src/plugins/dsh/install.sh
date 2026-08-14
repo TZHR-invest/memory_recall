@@ -91,10 +91,10 @@ done
 echo "  [OK] 插件源码完整，语法检查通过"
 
 # 契约预检（防 MR-022/023 重演）：dsh.client.platform / exports["./client"] / classic-script bundle
-# 通用预检已移至 dsh-plugins 仓库（scripts/preflight.mjs），此处探测引用：
-# DSH_PLUGINS_REPO 环境变量 > ~/dsh-plugins；缺失时跳过（本插件自带测试已覆盖契约）
+# 预检脚本探测顺序：安装包内（分发 tarball 自带，自包含）> DSH_PLUGINS_REPO >
+# ~/dsh-plugins；缺失时跳过（本插件自带测试已覆盖契约）
 PREFLIGHT=""
-for CAND in "${DSH_PLUGINS_REPO:-$HOME/dsh-plugins}/scripts/preflight.mjs"; do
+for CAND in "$HERE/preflight.mjs" "${DSH_PLUGINS_REPO:-$HOME/dsh-plugins}/scripts/preflight.mjs"; do
   [ -n "$CAND" ] && [ -f "$CAND" ] && PREFLIGHT="$CAND" && break
 done
 echo "== 0.5/4 契约预检（${PREFLIGHT:-未找到 dsh-plugins/preflight.mjs}）=="
