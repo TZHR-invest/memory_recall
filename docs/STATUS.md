@@ -1,6 +1,6 @@
 # Memory Recall 任务状态（实时工作台）
 
-> 状态: ACTIVE · 最后更新: 2026-08-13
+> 状态: ACTIVE · 最后更新: 2026-08-14
 >
 > 规则：本文件只放"当前活跃工作 + 下一步 + 等待项"；历史一律进 `docs/notes/`；
 > 每次任务收尾必须更新；无活跃工作则写"空闲"。
@@ -15,7 +15,7 @@
 | project-codex / project-.codex 双容器清理 | 已完成（记忆迁移 + opencode 插件点号目录过滤修复，待 opencode 重启生效） | [notes/2026-08-13-note.md](notes/2026-08-13-note.md#project-codex--project-codex-双容器来源解密用户提问排查) |
 | 记忆维护闭环（ADR-0009） | 已完成（注入陈旧标注 + 规则检查点，API 已重启生效） | [ADR-0009](decisions/0009-memory-maintenance-loop.md) |
 | 文档 RAG 移出核心（ADR-0010） | 实施计划已定（2026-08-13，三阶段：插件先行 → 用户升级 → 后端删除）；阶段 1 插件移除待开工 | [实施计划](notes/2026-08-13-adr0010-implementation-plan.md) · [ADR-0010](decisions/0010-remove-document-rag.md) |
-| 全量测试验证 + 回归修复 | 已完成（2026-08-13）：修复 16f3b8f 引入的 Entity 测试回归（user_tag/project_tag→container_tag，2 测试）+ performance 测试 LLM 依赖隔离（extract_entities=False，1 测试）；单元 383 + 集成 7 + 性能 5 + 去重 26 全绿 | 见 commit |
+| 全量测试验证 + 回归修复 | 已完成（2026-08-13）：修复 16f3b8f 引入的 Entity 测试回归（user_tag/project_tag→container_tag，2 测试）+ performance 测试 LLM 依赖隔离（extract_entities=False，1 测试）；单元 386（14 skip）+ 集成 7 + 性能 5 + 去重 26 全绿 | commit 6724313 |
 | 记忆维护检查点（ADR-0009） | 已完成（2026-08-13：语义检索 5 主题 × 5 容器 + SQL 关键词预检；版本化修正 1 条过时记忆 `mem_12490fb23d474aa1996e` → `mem_a716b54e449a4003beef`） | [ADR-0009](decisions/0009-memory-maintenance-loop.md) |
 
 ## ADR 实施跟踪
@@ -56,5 +56,10 @@
 - test_document/source_deduplication 两个文件一起跑必失败（全局 db 连接跨 asyncio loop 冲突，
   非顺序问题，pytest-order/改 loop scope 均无法解决），单独跑各自全绿；彻底修复需测试
   连接管理重构（TESTING.md 已记录根因，未排期）。
+- 讨论中 topic（2026-08-14 新增，待收敛后立项/升 ADR）：
+  - [记忆确信度 confidence](notes/2026-08-14-memory-confidence.md)（写入/召回/确认/编辑；关联 MR-011/017）
+  - [记忆分层 + 任务级上下文](notes/2026-08-14-memory-layering-and-recall.md)（近/长期 + L0/L1/L2；关联 MR-006/017/019）
+  - [个人 vs 团队边界 + 知识库 vs 记忆](notes/2026-08-14-personal-vs-shared-boundary.md)（边界句"拟采纳"待拍板升 ADR）
+  - [工作台 vs debug 权限](notes/2026-08-14-workbench-vs-debug-roles.md)（并入 MR-011）
 
-*状态: ACTIVE · 最后更新: 2026-08-13*
+*状态: ACTIVE · 最后更新: 2026-08-14*

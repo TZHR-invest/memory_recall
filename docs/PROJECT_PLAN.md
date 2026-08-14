@@ -1,6 +1,6 @@
 # Memory Recall 项目/产品长期规划
 
-> 状态: ACTIVE · 版本: v1.1 · 最后更新: 2026-08-13
+> 状态: ACTIVE · 版本: v1.2 · 最后更新: 2026-08-14
 >
 > 本文档替代 `docs/archive/requirements.md`、`docs/archive/user-pain-points.md`、
 > `docs/archive/development-plan.md` 作为项目当前的产品规划入口。历史版本见 archive。
@@ -88,14 +88,22 @@
 ## 5. 明确不做（除非重新立项）
 
 - 人类记忆愿景：照片 EXIF、位置记忆、语音 ASR、人脸识别、need_confirm 智能询问；
-- 移动端应用、社交/共享记忆；
+- 移动端应用、社交/共享记忆（人类记忆愿景语境）；
 - 通用知识管理（Notion 式手工整理）；
 - 多模态输入（图片/语音/视频作为一等输入）；
 - 文档 RAG：文档作为并行召回语料 / 知识库（chunk 分块向量检索）。
   文档对记忆系统的唯一潜在角色是入站蒸馏源，需 MR-019 评估通过才可能立项（ADR-0010）。
+- 编排与宿主耦合（2026-08-14 补充，对照 dsh-memory-evolve）：会话编排（spawn/房间/广播/唤醒/防冲突）、
+  外部 AI 派单（COI）、提示词注入库、书签/任意轮分支、无限画板、手机适配与 IM 渠道通知、模型配置、
+  技能管理/技能自我进化、四轨待办。**判定标准（长期规则）：删掉"记忆"一词功能仍成立则不属于主线；
+  编排/UX/宿主耦合一律不做；只有"影响记忆本质（写入信任、事实演进、归属边界）"才值得开题。**
 
 这些能力的用户故事与设计历史保留在 `docs/archive/requirements.md` 与 `docs/archive/user-pain-points.md`，
 不进入当前路线图。
+
+> 团队/项目共享记忆与上列"社交/共享记忆"（人类记忆愿景）不同，属"记忆本质（归属边界）"范畴：
+> 当前聚焦个人、暂不做但预留 `owner × project` + `visibility` 字段，讨论见
+> [notes/2026-08-14-personal-vs-shared-boundary.md](notes/2026-08-14-personal-vs-shared-boundary.md)。
 
 ## 6. 开发与文档约定
 
@@ -103,4 +111,4 @@
 - 文档生命周期见 [docs/README.md](README.md#文档生命周期)；
 - commit 消息沿用仓库既有 `feat:/fix:/docs:/refactor:/test:` 约定。
 
-*状态: ACTIVE · 版本: v1.1 · 最后更新: 2026-08-13*
+*状态: ACTIVE · 版本: v1.2 · 最后更新: 2026-08-14*
