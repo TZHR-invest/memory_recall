@@ -37,8 +37,11 @@ agent 主流程；**subagent 会话（header.origin="subagent"）不捕获**，�
 
 ```bash
 cd apps/api/src/plugins/dsh
-bash install.sh                      # 安装到 web profile（幂等）
-bash install.sh --api-key rk_live_xxx   # 把 API Key 写进 profile patch（可选）
+bash install.sh                                      # 安装到 web profile（幂等）
+bash install.sh --api-key rk_live_xxx \\               # 把 API Key 写进 profile patch（可选）
+  --backend-url http://<你的后端服务器>:8000             # 后端地址（自部署远程服务器，不固定）
+# 地址/Key 配置优先级：--backend-url/--api-key 参数 > MEMORY_RECALL_BASE_URL/MEMORY_RECALL_API_KEY
+# 环境变量 > 交互询问（仅安装时，输入不回显）
 bash install.sh --restart            # 安装后重启 dsh web 并验证（会短暂中断 web 服务）
 bash install.sh --check              # 只检查状态
 bash install.sh --uninstall          # 卸载
@@ -49,16 +52,16 @@ bash install.sh --uninstall          # 卸载
 ### 其他机器安装（一键分发包）
 
 ```bash
-# 在开发机打包（--backend-url 指定目标机器可访问的后端地址，如局域网 IP）
+# 在开发机打包（地址不在打包时写死——后端是各用户自部署的远程服务器）
 cd apps/api/src/plugins/dsh
-bash package.sh --backend-url http://192.168.0.206:8000
+bash package.sh
 # 产物: dist/memory-recall-dsh-install.tar.gz（自包含：插件 + 契约预检 + 安装脚本，
 #       目标机器无需 clone 仓库、无需 dsh-plugins）
 
-# 目标机器（已装 dsh web）三步安装
+# 目标机器（已装 dsh web）三步安装，后端地址由目标机器安装时配置
 scp dist/memory-recall-dsh-install.tar.gz user@目标机:~/
 tar xzf memory-recall-dsh-install.tar.gz && cd memory-recall-dsh-install
-bash install.sh --api-key rk_live_xxx   # 后端地址已按打包参数写入；可 MEMORY_RECALL_BASE_URL 覆盖
+bash install.sh --api-key rk_live_xxx --backend-url http://<你的后端服务器>:8000
 bash install.sh --restart               # 终端执行，冒烟通过才重启
 ```
 

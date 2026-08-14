@@ -12,6 +12,8 @@ All notable changes to Memory Recall will be documented in this file.
   - 自动捕获跳过 subagent 会话（`header.origin="subagent"`），子任务噪音不入库
   - 新增 `package.sh` 一键分发打包（自包含 tarball：插件 + 契约预检 + 安装脚本，`--backend-url` 注入后端地址），目标机器三步安装
   - install.sh 契约预检探测：包内 preflight.mjs > DSH_PLUGINS_REPO > ~/dsh-plugins
+  - 后端地址安装时配置（--backend-url / MEMORY_RECALL_BASE_URL / 交互询问，输入不回显）——
+    后端是各用户自部署的远程服务器，地址不固定，不再打包时写死
   - 版本基线：1.0.0（MR-022/023 修复后）→ 1.1.0（本组完善）
 - codex / hermes 插件：search/list 输出完整记忆 ID（此前仅 8 字符前缀，无法直接用于 update/forget）
 - codex 插件：search 描述明确纯向量边界（图谱/画像/文档请用 context-inject）；SKILL.md 新增"用户明确要求记住时立即 add"强制项

@@ -35,6 +35,7 @@ FILES_IDENTICAL() {
 MODE="apply"
 PROFILE="web"
 API_KEY=""
+BACKEND_URL=""
 
 i=0
 ARGS=("$@")
@@ -47,6 +48,7 @@ while [ $i -lt ${#ARGS[@]} ]; do
     --uninstall) MODE="uninstall" ;;
     --profile=*) PROFILE="${arg#--profile=}" ;;
     --api-key=*) API_KEY="${arg#--api-key=}" ;;
+    --backend-url=*) BACKEND_URL="${arg#--backend-url=}" ;;
     --profile)
       i=$((i + 1))
       [ $i -lt ${#ARGS[@]} ] || { echo "用法: --profile <name>"; exit 1; }
@@ -57,10 +59,47 @@ while [ $i -lt ${#ARGS[@]} ]; do
       [ $i -lt ${#ARGS[@]} ] || { echo "用法: --api-key <key>"; exit 1; }
       API_KEY="${ARGS[$i]}"
       ;;
+    --backend-url)
+      i=$((i + 1))
+      [ $i -lt ${#ARGS[@]} ] || { echo "用法: --backend-url <url>"; exit 1; }
+      BACKEND_URL="${ARGS[$i]}"
+      ;;
     --*) echo "未知参数: $arg"; exit 1 ;;
   esac
   i=$((i + 1))
 done
+
+# 后端地址解析：--backend-url > MEMORY_RECALL_BASE_URL > 交互询问（仅 apply 且终端）> 默认。
+# 后端是各用户自部署的远程服务器，地址不固定，安装时由用户配置。
+resolve_backend_url() {
+  if [ -n "$BACKEND_URL" ]; then echo "$BACKEND_URL"; return; fi
+  if [ -n "${MEMORY_RECALL_BASE_URL:-}" ]; then echo "$MEMORY_RECALL_BASE_URL"; return; fi
+  if [ "$MODE" = "apply" ] && [ -t 0 ]; then
+    printf "memory-recall 后端地址（默认 http://localhost:8000；自部署远程服务器如 http://<IP>:8000）: "
+    stty -echo 2>/dev/null || true   # 关回显，避免 pty 下提示文本被 read 吞入
+    read -r INPUT_URL || true
+    stty echo 2>/dev/null || true
+    echo ""
+    echo "${INPUT_URL:-http://localhost:8000}"
+    return
+  fi
+  echo "http://localhost:8000"
+}
+# API Key 解析：--api-key > MEMORY_RECALL_API_KEY > 交互询问（仅 apply 且终端）> 留空（运行时 env 兜底）
+resolve_api_key() {
+  if [ -n "$API_KEY" ]; then echo "$API_KEY"; return; fi
+  if [ -n "${MEMORY_RECALL_API_KEY:-}" ]; then echo "$MEMORY_RECALL_API_KEY"; return; fi
+  if [ "$MODE" = "apply" ] && [ -t 0 ]; then
+    printf "memory-recall API Key（可留空，运行时读环境变量 MEMORY_RECALL_API_KEY；输入不回显）: "
+    stty -echo 2>/dev/null || true   # 敏感信息不回显
+    read -r INPUT_KEY || true
+    stty echo 2>/dev/null || true
+    echo ""
+    echo "${INPUT_KEY:-}"
+    return
+  fi
+  echo ""
+}
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DSH="${DSH_HOME:-$HOME/.dsh}"
@@ -163,31 +202,20 @@ else
   if [ -f "$PATCH" ] && grep -q '^\[\]$' "$PATCH" 2>/dev/null; then
     sed -i '/^\[\]$/d' "$PATCH"
   fi
-  if [ -n "$API_KEY" ]; then
-    cat >> "$PATCH" <<PATCHEOF
+  BACKEND_URL="$(resolve_backend_url)"
+  API_KEY="$(resolve_api_key)"
+  cat >> "$PATCH" <<PATCHEOF
 
 # memory-recall-dsh：长期记忆插件（工具 + 自动召回 + 自动捕获）。
-# 配置项见 apps/api/src/plugins/dsh/README.md；API Key 也可用环境变量 MEMORY_RECALL_API_KEY。
+# 后端地址/API Key 由安装时配置；也可用环境变量 MEMORY_RECALL_API_KEY / MEMORY_RECALL_BASE_URL。
 - insert:
     - id: memory-recall-dsh
       name: 'memory-recall-dsh'
       config:
         apiKey: '$API_KEY'
-        baseUrl: '${MEMORY_RECALL_BASE_URL:-http://localhost:8000}'
+        baseUrl: '$BACKEND_URL'
 PATCHEOF
-  else
-    cat >> "$PATCH" <<PATCHEOF
-
-# memory-recall-dsh：长期记忆插件（工具 + 自动召回 + 自动捕获）。
-# 配置项见 apps/api/src/plugins/dsh/README.md；API Key 也可用环境变量 MEMORY_RECALL_API_KEY。
-- insert:
-    - id: memory-recall-dsh
-      name: 'memory-recall-dsh'
-      config:
-        baseUrl: '${MEMORY_RECALL_BASE_URL:-http://localhost:8000}'
-PATCHEOF
-  fi
-  echo "  [已加] $PATCH（apiKey: ${API_KEY:+已写入}${API_KEY:-未写入，运行时读环境变量}）"
+  echo "  [已加] $PATCH（baseUrl=$BACKEND_URL；apiKey: ${API_KEY:+已写入}${API_KEY:-未写入，运行时读环境变量}）"
 fi
 
 # ── 定位 dsh 安装根 ───────────────────────────────────────────────────────
@@ -217,6 +245,7 @@ SMOKE_TEST() {
     mkdir -p "$DSH/profiles/headless"
     [ -f "$DSH/profiles/headless/cordis.patch.yml" ] || printf '[]\n' > "$DSH/profiles/headless/cordis.patch.yml"
     sed -i '/^\[\]$/d' "$DSH/profiles/headless/cordis.patch.yml"
+    [ -n "$BACKEND_URL" ] || BACKEND_URL="$(resolve_backend_url)"
     cat >> "$DSH/profiles/headless/cordis.patch.yml" <<PATCHEOF
 
 # memory-recall-dsh：长期记忆插件（自动接入，供 headless 冒烟试启动）
@@ -224,7 +253,7 @@ SMOKE_TEST() {
     - id: memory-recall-dsh
       name: 'memory-recall-dsh'
       config:
-        baseUrl: '${MEMORY_RECALL_BASE_URL:-http://localhost:8000}'
+        baseUrl: '${BACKEND_URL:-http://localhost:8000}'
 PATCHEOF
     echo "  [已接线] headless profile（自动接入，仅用于冒烟）"
   fi

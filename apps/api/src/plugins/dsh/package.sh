@@ -7,26 +7,26 @@
 #   - 安装说明 README.INSTALL.md
 #
 # 用法:
-#   bash package.sh                          # 默认后端地址 http://localhost:8000
-#   bash package.sh --backend-url http://192.168.0.206:8000   # 局域网后端
-#   bash package.sh --version 1.0.1          # 指定版本号（覆盖 package.json）
+#   bash package.sh                          # 生成自包含安装包（版本取 package.json）
+#   bash package.sh --version 1.1.0          # 覆盖版本号
+#
+# 后端地址不在打包时写死：memory-recall 后端是各用户自部署的远程服务器，
+# 地址由目标机器安装时配置（install.sh --backend-url / MEMORY_RECALL_BASE_URL /
+# 交互询问）。
 #
 # 其他机器安装（三步）:
 #   1. scp dist/memory-recall-dsh-install.tar.gz user@目标机:~/
 #   2. cd ~ && tar xzf memory-recall-dsh-install.tar.gz && cd memory-recall-dsh-install
-#   3. bash install.sh --api-key rk_live_xxx     # 后端地址已按打包时 --backend-url 写入
-#      # 如需改后端：MEMORY_RECALL_BASE_URL=http://<IP>:8000 bash install.sh
+#   3. bash install.sh --api-key rk_live_xxx --backend-url http://<你的服务器>:8000
+#      # 不传 --backend-url 时会交互询问（默认 http://localhost:8000）
 #      # 激活：bash install.sh --restart（终端执行；冒烟通过才重启，插件问题自动中止）
 set -u
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"          # apps/api
-BACKEND_URL="${MEMORY_RECALL_BASE_URL:-http://localhost:8000}"
 VERSION=""
 while [ $# -gt 0 ]; do
   case "$1" in
-    --backend-url=*) BACKEND_URL="${1#--backend-url=}" ;;
-    --backend-url) BACKEND_URL="$2"; shift ;;
     --version=*) VERSION="${1#--version=}" ;;
     --version) VERSION="$2"; shift ;;
     *) echo "未知参数: $1"; exit 1 ;;
@@ -56,11 +56,6 @@ else
   echo "[警告] 未找到 dsh-plugins/scripts/preflight.mjs，安装包将不带契约预检（install.sh 会跳过预检）"
 fi
 
-# install.sh 内默认后端地址写入（install.sh 从 patch 接线处读 ${MEMORY_RECALL_BASE_URL:-...}，
-# 这里把默认值固化为打包时指定的地址，目标机器无需再设环境变量）
-sed -i "s|baseUrl: '\${MEMORY_RECALL_BASE_URL:-http://localhost:8000}'|baseUrl: '\${MEMORY_RECALL_BASE_URL:-$BACKEND_URL}'|g" "$STAGE/install.sh"
-grep -q "$BACKEND_URL" "$STAGE/install.sh" || { echo "[警告] 默认后端地址替换未生效，请检查 install.sh patch 模板"; }
-
 # 版本号覆盖
 if [ -n "$VERSION" ]; then
   node -e "
@@ -77,17 +72,19 @@ PKG_VERSION=$(node -e "console.log(require('$STAGE/package.json').version)")
 cat > "$STAGE/README.INSTALL.md" <<MDEOF
 # memory-recall-dsh 一键安装（版本 $PKG_VERSION）
 
-后端地址（打包时指定）: $BACKEND_URL
-（如需更改：MEMORY_RECALL_BASE_URL=http://<IP>:8000 bash install.sh）
+后端地址：**由你安装时配置**（memory-recall 后端是你自部署的服务器，地址不固定）。
+配置优先级：install.sh --backend-url 参数 > 环境变量 MEMORY_RECALL_BASE_URL > 交互询问（默认 http://localhost:8000）。
 
 ## 安装（目标机器，需已安装并运行过 dsh web）
 
 1. 解压: tar xzf memory-recall-dsh-install.tar.gz && cd memory-recall-dsh-install
-2. 安装: bash install.sh --api-key rk_live_xxx
-   （API Key 来自 memory-recall 后端，rk_live_/rk_test_ 开头；也可用环境变量 MEMORY_RECALL_API_KEY）
+2. 安装:
+   bash install.sh --api-key rk_live_xxx --backend-url http://<你的后端服务器>:8000
+   （API Key 来自 memory-recall 后端，rk_live_/rk_test_ 开头；也可用环境变量
+     MEMORY_RECALL_API_KEY / MEMORY_RECALL_BASE_URL；不传 --backend-url 会交互询问）
 3. 激活: bash install.sh --restart   # 终端执行！内置契约预检 + headless 冒烟，
                                      # 插件有问题自动中止，不会让 dsh 启动即崩
-4. 验证: 页面 200；/plugins/memory-recall-dsh/client.js 返回 200
+4. 验证: 页面 200；/plugins/memory-recall-dsh/client.js 返回 200；新会话注入召回上下文
 
 ## 其他命令
 
@@ -108,5 +105,5 @@ tar czf "$DIST/memory-recall-dsh-install.tar.gz" -C "$DIST" memory-recall-dsh-in
 echo "== 打包完成 =="
 echo "  产物: $DIST/memory-recall-dsh-install.tar.gz"
 echo "  解压目录: $DIST/memory-recall-dsh-install/"
-echo "  后端地址: $BACKEND_URL（版本 $PKG_VERSION）"
+echo "  版本: $PKG_VERSION（后端地址由目标机器安装时配置）"
 echo "  内容: $(ls "$DIST/memory-recall-dsh-install" | tr '\n' ' ')"
