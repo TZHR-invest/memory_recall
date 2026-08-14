@@ -59,3 +59,8 @@
 - 关键结论：value ≈ P(future need) × C(reacquisition)；项目内/跨项目是 scope 差异非价值差异；
   晋升触发用意外性/冲突（prediction error）而非定时摘要；四类失效（幻觉/过时/漂移/投毒）防护机制不同。
 - 下一步：按 [99-final-conclusions.md](99-final-conclusions.md) 决策映射回项目内验证/实现（进 ADR 前置条件）。
+- ChatGPT（Q1/Q2/Q3）：会话已归档原文（03 文件）；
+- Claude（Q1/Q4/Q5）：[会话](https://claude.ai/chat/1c3a61b5-0239-4112-afa3-621930e4893e)；
+- Grok（Q1/Q3）：[会话](https://grok.com/c/bc7ed28f-0121-4f27-b75c-b9089dd7b2ba)；
+- Gemini（Q4/Q5）：[会话](https://gemini.google.com/app/74c5daeb0f98df07)；
+- doubao（Q2/Q3）：[会话](https://www.doubao.com/chat/38437745338304514)。
