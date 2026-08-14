@@ -37,14 +37,14 @@
 | [0007](decisions/0007-compaction-converge-to-official-hook.md) | 压缩机制收敛到官方 hook | 已实现 | 预压缩/私有存储写入已删除；官方 hook 仅 push context |
 | [0008](decisions/0008-remove-summary-capture-and-scene-recovery.md) | 删除摘要捕获与现场恢复 | 已实现 | 摘要捕获/现场恢复/summary.ts 已删除 |
 | [0009](decisions/0009-memory-maintenance-loop.md) | 记忆维护闭环：注入可见性 + 规则约束，不做自动写库 | 已实现 | commit 见 2026-08-13-note；MR-011 UI 主体仍 OPEN |
-| [0010](decisions/0010-remove-document-rag.md) | 文档 RAG 移出核心，文档不再是并行召回语料 | 未开始 | [实施计划已定](notes/2026-08-13-adr0010-implementation-plan.md)（三阶段），阶段 1 待开工；MR-019 蒸馏评估冻结 |
+| [0010](decisions/0010-remove-document-rag.md) | 文档 RAG 移出核心，文档不再是并行召回语料 | 部分实现 | 阶段 1 完成（[commit 1282354](https://github.com/TZHR-invest/memory_recall/commit/1282354)：四端插件移除文档功能）；阶段 3 后端删除待排期；MR-019 蒸馏评估冻结 |
 
 
 ## 下一步
 
 1. ADR-0010 实施（[计划](notes/2026-08-13-adr0010-implementation-plan.md)）：
-   - 阶段 1：四端插件移除文档功能（opencode 打包不发版，版本 1.9.0；hermes/deepseek-tui/codex 同步删 document tools）；
-   - 阶段 2：通知 1-2 个在用用户升级插件（不强制）；
+   - ~~阶段 1 已完成~~（commit 1282354：四端插件移除文档功能，opencode 1.9.0）；
+   - 阶段 2：通知 1-2 个在用用户升级插件（opencode 拉代码 bun run build + install CLI；codex 拉代码重启；hermes/deepseek-tui 同步 server.py），以后端访问日志核对不再调用 /documents API；
    - 阶段 3：后端一次删除（schema 三表/服务/路由/chunks 通道/引用/测试/根目录文档），DROP TABLE 最后单独执行；
 2. 手工验证项（需真实 opencode 运行时，可延后）：
    - 压缩 hook 抛错 / 超时 / 共存检测实测；
