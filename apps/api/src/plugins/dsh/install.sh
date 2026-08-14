@@ -299,6 +299,8 @@ if [ "$MODE" = "restart" ]; then
   pkill -TERM -f 'node_modules/.bin/dsh web' 2>/dev/null
   pkill -TERM -f 'npm exec @deepseek-ai/dsh web' 2>/dev/null
   pkill -TERM -f 'sh -c dsh web' 2>/dev/null
+  # 实际 cmdline 是 node .../@deepseek-ai/dsh/lib/bin.js web（2026-08-15 实测：旧模式匹配不到，重启失败 EADDRINUSE）
+  pkill -TERM -f '@deepseek-ai/dsh/lib/bin.js web' 2>/dev/null
   sleep 3
   if [ -n "$ROOT" ] && [ -x "$ROOT/node_modules/.bin/dsh" ]; then
     cd "$ROOT" || exit 1
