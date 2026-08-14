@@ -240,7 +240,9 @@ class ContextInjectService:
                 max_memories = min(max_memories, 3)
 
             all_memories = []
-            seen_ids = set()
+            # 排除已注入记忆（插件侧 LRU 跟踪）：向量命中/图谱扩展/实体扩展
+            # 共用 seen_ids 判重，预置排除集合后全部链路自动生效
+            seen_ids = set(config.get("exclude_memory_ids") or [])
 
             if query:
                 embedding_client = get_embedding_client()

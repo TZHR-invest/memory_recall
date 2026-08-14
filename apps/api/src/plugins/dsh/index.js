@@ -80,6 +80,35 @@ function apply(ctx, config = {}) {
   });
   const logger = ctx.logger;
 
+  // ── 已注入记忆 ID 跟踪（per-agent LRU）───────────────────────────────────
+  // 跨轮次去重：同一记忆被不同 query 再次召回时不再重复注入。
+  // 与 opencode 插件 maxInjectedMemoryIds=100 对齐；按 agent 隔离，
+  // 各会话独立召回，互不排除。
+  const MAX_INJECTED_IDS = 100;
+  const injectedByAgent = new Map(); // agentId -> Map(memoryId -> true)（插入序即 LRU 序）
+
+  const rememberInjected = (agent, ids) => {
+    if (!agent?.id || !Array.isArray(ids) || ids.length === 0) return;
+    let lru = injectedByAgent.get(agent.id);
+    if (!lru) {
+      lru = new Map();
+      injectedByAgent.set(agent.id, lru);
+    }
+    for (const id of ids) {
+      lru.delete(id);
+      lru.set(id, true);
+      if (lru.size > MAX_INJECTED_IDS) {
+        const oldest = lru.keys().next().value;
+        lru.delete(oldest);
+      }
+    }
+  };
+
+  const excludedIdsFor = (agent) => {
+    const lru = agent?.id ? injectedByAgent.get(agent.id) : undefined;
+    return lru ? [...lru.keys()] : [];
+  };
+
   // ── keyId 解析（配置 > /auth/verify 自动获取）────────────────────────────
   const tagState = {
     keyId: resolved.keyId,
@@ -173,7 +202,10 @@ function apply(ctx, config = {}) {
           tags.user,
           tags.project,
           text,
-          buildInjectConfig(resolved, { injectProfile: isFirst }),
+          buildInjectConfig(resolved, {
+            injectProfile: isFirst,
+            excludeMemoryIds: excludedIdsFor(agent),
+          }),
           signal,
         ).catch(() => null),
         new Promise((resolve) => {
@@ -202,6 +234,8 @@ function apply(ctx, config = {}) {
           digest.slice(0, 8), resolved.injectionStrategy, isFirst,
           result.stats?.capped_count ?? 0);
       }
+      // 记录本轮实际注入的记忆 ID，后续轮次召回时排除（跨轮去重）
+      rememberInjected(agent, client.injectedMemoryIdsFrom(result));
       return { kind: "enter", messages: [...decision.messages, message] };
     } catch (error) {
       logger?.warn?.("[memory-recall-dsh] 自动召回失败（不影响本轮）: %s",

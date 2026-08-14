@@ -21,9 +21,10 @@ window.__ModuleLoader__.load({
  */
 
 /** 后端 /context-inject 的注入配置（字段与后端 ContextInjectConfig 对齐，已做边界夹取） */
-function buildInjectConfig(resolved, { injectProfile } = {}) {
+function buildInjectConfig(resolved, { injectProfile, excludeMemoryIds } = {}) {
   return {
     inject_profile: injectProfile === true && resolved.injectProfile,
+    exclude_memory_ids: excludeMemoryIds ?? [],
     max_profile_items: resolved.maxProfileItems,
     max_static_profile_items: resolved.maxStaticProfileItems,
     max_memories: resolved.maxMemories,
@@ -199,6 +200,16 @@ class MemoryRecallClient {
       },
       externalSignal,
     });
+  }
+
+  /** 从 /context-inject 响应中提取已注入的记忆 ID（project + user 容器） */
+  injectedMemoryIdsFrom(result) {
+    if (!result?.sources) return [];
+    const memories = Array.isArray(result.sources.memories) ? result.sources.memories : [];
+    const userMemories = Array.isArray(result.sources.user_memories) ? result.sources.user_memories : [];
+    return [...memories, ...userMemories]
+      .map((m) => m?.id)
+      .filter((id) => typeof id === "string" && id.length > 0);
   }
 
   /** POST /extract-memory → LLM 蒸馏会话摘要（不落库，落库由插件做） */

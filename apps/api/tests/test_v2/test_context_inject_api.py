@@ -60,6 +60,108 @@ class TestContextInjectAPI:
             mock.return_value = client
             yield mock
 
+
+    def test_context_inject_exclude_memory_ids(
+        self, mock_profile_service, mock_document_store, mock_embedding_client
+    ):
+        """exclude_memory_ids 预置 seen_ids：已注入记忆不再被向量召回"""
+        from src.services.core.context_inject_service import context_inject_service
+
+        with patch("src.services.core.context_inject_service.memory_store") as mock:
+            mock.search = AsyncMock(
+                return_value=[
+                    {
+                        "id": "mem_001",
+                        "content": "我喜欢吃蔬菜",
+                        "embedding": [0.1] * 1024,
+                        "similarity": 0.9,
+                        "created_at": None,
+                    },
+                    {
+                        "id": "mem_002",
+                        "content": "项目使用 FastAPI",
+                        "embedding": [0.5] * 1024,
+                        "similarity": 0.8,
+                        "created_at": None,
+                    },
+                ]
+            )
+            mock.get_by_id = AsyncMock(return_value=None)
+            mock.get_entities_for_memories = AsyncMock(return_value=[])
+            mock.find_memories_by_entities = AsyncMock(return_value=[])
+
+            result = asyncio.run(
+                context_inject_service.inject_with_tags(
+                    user_tag="user_test",
+                    project_tag="user_test",
+                    query="测试查询",
+                    config={
+                        "inject_profile": False,
+                        "max_memories": 5,
+                        "max_chunks": 0,
+                        "enable_memory_graph": False,
+                        "enable_entity_graph": False,
+                        "enable_semantic_dedup": False,
+                        "exclude_memory_ids": ["mem_001"],
+                        "language": "zh_CN",
+                    },
+                )
+            )
+
+            ids = [m["id"] for m in result["sources"]["memories"]]
+            assert "mem_001" not in ids, "已注入记忆不应被再次召回"
+            assert "mem_002" in ids, "未注入记忆应正常召回"
+
+    def test_context_inject_exclude_no_ids_preserves_behavior(
+        self, mock_profile_service, mock_document_store, mock_embedding_client
+    ):
+        """未传 exclude_memory_ids（缺省空）时行为不变：全部命中记忆正常召回"""
+        from src.services.core.context_inject_service import context_inject_service
+
+        with patch("src.services.core.context_inject_service.memory_store") as mock:
+            mock.search = AsyncMock(
+                return_value=[
+                    {
+                        "id": "mem_001",
+                        "content": "我喜欢吃蔬菜",
+                        "embedding": [0.1] * 1024,
+                        "similarity": 0.9,
+                        "created_at": None,
+                    },
+                    {
+                        "id": "mem_002",
+                        "content": "项目使用 FastAPI",
+                        "embedding": [0.5] * 1024,
+                        "similarity": 0.8,
+                        "created_at": None,
+                    },
+                ]
+            )
+            mock.get_by_id = AsyncMock(return_value=None)
+            mock.get_entities_for_memories = AsyncMock(return_value=[])
+            mock.find_memories_by_entities = AsyncMock(return_value=[])
+
+            result = asyncio.run(
+                context_inject_service.inject_with_tags(
+                    user_tag="user_test",
+                    project_tag="user_test",
+                    query="测试查询",
+                    config={
+                        "inject_profile": False,
+                        "max_memories": 5,
+                        "max_chunks": 0,
+                        "enable_memory_graph": False,
+                        "enable_entity_graph": False,
+                        "enable_semantic_dedup": False,
+                        "language": "zh_CN",
+                    },
+                )
+            )
+
+            ids = [m["id"] for m in result["sources"]["memories"]]
+            assert "mem_001" in ids
+            assert "mem_002" in ids
+
     def test_context_inject_returns_context(
         self, mock_profile_service, mock_memory_store, mock_document_store
     ):
