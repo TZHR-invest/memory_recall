@@ -5,6 +5,14 @@ All notable changes to Memory Recall will be documented in this file.
 ## [Unreleased] - 2026-08-14
 
 ### Changed
+- **dsh 插件 memory-recall-dsh 1.1.0**（`apps/api/src/plugins/dsh/`）：
+  - `memory_store` 默认异步（`async_process=true`），写入从 25s+ 降到 <1s 立即返回 `status=processing`；`asyncProcess` 参数可切同步
+  - 自动召回注入加预算（`injectTimeoutMs` 默认 3s），超预算跳过本轮注入，不拖慢模型请求
+  - 自动捕获 extract 模式：蒸馏判定"无值得保存"时静默不存（不再回退 raw 存全文）；仅接口报错回退 raw
+  - 自动捕获跳过 subagent 会话（`header.origin="subagent"`），子任务噪音不入库
+  - 新增 `package.sh` 一键分发打包（自包含 tarball：插件 + 契约预检 + 安装脚本，`--backend-url` 注入后端地址），目标机器三步安装
+  - install.sh 契约预检探测：包内 preflight.mjs > DSH_PLUGINS_REPO > ~/dsh-plugins
+  - 版本基线：1.0.0（MR-022/023 修复后）→ 1.1.0（本组完善）
 - codex / hermes 插件：search/list 输出完整记忆 ID（此前仅 8 字符前缀，无法直接用于 update/forget）
 - codex 插件：search 描述明确纯向量边界（图谱/画像/文档请用 context-inject）；SKILL.md 新增"用户明确要求记住时立即 add"强制项
 - debug.html：首次打开无 API key 时显示获取指引

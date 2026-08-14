@@ -167,6 +167,7 @@ function apply(ctx, config = {}) {
       // 注入预算：context-inject 是模型请求关键路径上的同步等待，
       // 超过预算直接跳过本轮注入（fail-open），不让记忆拖慢对话
       const injectBudgetMs = resolved.injectTimeoutMs;
+      let budgetTimer = null;
       const result = await Promise.race([
         client.injectContext(
           tags.user,
@@ -175,8 +176,11 @@ function apply(ctx, config = {}) {
           buildInjectConfig(resolved, { injectProfile: isFirst }),
           signal,
         ).catch(() => null),
-        new Promise((resolve) => setTimeout(() => resolve(null), injectBudgetMs)),
+        new Promise((resolve) => {
+          budgetTimer = setTimeout(() => resolve(null), injectBudgetMs);
+        }),
       ]);
+      if (budgetTimer !== null) clearTimeout(budgetTimer); // 预算内完成则回收 timer
       if (!result?.context || result.context.trim().length === 0) return decision;
 
       const locale = detectLocale(text, resolved.language);
