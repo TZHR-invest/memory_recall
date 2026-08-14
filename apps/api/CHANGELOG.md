@@ -23,6 +23,7 @@ All notable changes to Memory Recall will be documented in this file.
 - debug.html：首次打开无 API key 时显示获取指引
 
 ### Fixed
+- **context-inject 跨轮去重断链修复**：`exclude_memory_ids` 已实现但 HTTP 层 `ContextInjectConfig` Pydantic 模型缺字段声明，未知字段被静默丢弃，跨轮去重不生效（2026-08-15 实测发现：插件 LRU 传了排除集合，service 永远收到空）；补字段声明 + HTTP 层回归测试，37 pytest 全绿
 - TESTING.md/STATUS.md：修正 test_document/source_deduplication 一起跑失败的根因（全局 db 连接跨 asyncio loop 冲突，非缺 pytest-order）
 
 ## [5.2.3] - 2026-08-11

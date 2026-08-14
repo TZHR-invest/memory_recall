@@ -1444,3 +1444,24 @@ class TestContextInjectAPI:
                         },
                     )
                 )
+
+    def test_api_model_parses_exclude_memory_ids(self):
+        """HTTP 层回归：ContextInjectConfig 必须声明 exclude_memory_ids，
+        否则 Pydantic 静默丢弃未知字段，跨轮去重永远不生效（2026-08-15 实测发现）。"""
+        from src.api.context_inject import ContextInjectRequest
+
+        request = ContextInjectRequest.model_validate(
+            {
+                "user_tag": "user_test",
+                "project_tag": "project_test",
+                "query": "测试",
+                "config": {
+                    "exclude_memory_ids": ["mem_001", "mem_002"],
+                    "max_memories": 5,
+                },
+            }
+        )
+        dumped = request.config.model_dump()
+        assert dumped["exclude_memory_ids"] == ["mem_001", "mem_002"], (
+            "exclude_memory_ids 必须从 HTTP 请求体透传到 service config"
+        )

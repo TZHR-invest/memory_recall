@@ -50,6 +50,10 @@ class ContextInjectConfig(BaseModel):
         le=1.0,
         description="实体匹配文档片段相似度阈值（实体匹配是精确证据，阈值应低于向量检索）",
     )
+    exclude_memory_ids: List[str] = Field(
+        default_factory=list,
+        description="排除已注入记忆 ID（跨轮去重：插件 per-agent LRU 跟踪，向量/图谱/实体全链路生效）",
+    )
 
 
 class ContextInjectRequest(BaseModel):
