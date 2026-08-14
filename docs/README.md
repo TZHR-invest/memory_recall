@@ -20,7 +20,7 @@ docs/
 ├── MEMORY_FLOW.md       # 核心数据流：写入 → 处理 → 召回/注入 → 消费
 ├── ARCHITECTURE.md      # 架构与模块地图（后端分层、核心服务、惰性导入、死代码清单）
 ├── TESTING.md           # 测试指南（三层分级、环境注意点、常用命令）
-├── PLUGINS.md           # 客户端插件（opencode / deepseek-tui / hermes）
+├── PLUGINS.md           # 客户端插件（dsh / opencode / deepseek-tui / hermes）
 ├── RESEARCH_GUIDE.md    # 外部调研工作流（Human-in-the-Loop Research）
 ├── ISSUES.md            # 已知问题索引（open 清单，详情在 issues/）
 ├── issues/              # 问题详情（MR-xxx，每问题一文件）
@@ -68,7 +68,7 @@ docs/
 | [MEMORY_FLOW.md](MEMORY_FLOW.md) | ACTIVE | 2026-08-12 | 核心数据流：写入 → 处理 → 召回/注入 → 消费（含 /context-inject 契约） |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | ACTIVE | 2026-08-13 | 架构与模块地图：后端分层、核心服务、惰性导入、死代码清单 |
 | [TESTING.md](TESTING.md) | ACTIVE | 2026-08-13 | 测试指南：三层分级、环境注意点、常用命令 |
-| [PLUGINS.md](PLUGINS.md) | ACTIVE | 2026-08-13 | 客户端插件：opencode / deepseek-tui / hermes |
+| [PLUGINS.md](PLUGINS.md) | ACTIVE | 2026-08-14 | 客户端插件：dsh / opencode / deepseek-tui / hermes |
 | [RESEARCH_GUIDE.md](RESEARCH_GUIDE.md) | ACTIVE | 2026-08-13 | 外部调研工作流（Human-in-the-Loop Research） |
 | [archive/README.md](archive/README.md) | ACTIVE | 2026-08-12 | 归档索引：为什么归档、历史文档在哪 |
 

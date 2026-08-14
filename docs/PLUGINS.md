@@ -1,8 +1,25 @@
 # Memory Recall 客户端插件
 
-> 状态: ACTIVE · 版本: v1.0 · 最后更新: 2026-08-13
+> 状态: ACTIVE · 版本: v1.1 · 最后更新: 2026-08-14
 >
-> 三个独立子项目，位于 `apps/api/src/plugins/`。构建产物已 gitignore（`dist/`、`*.tgz`、`*.sh`）。
+> 多个独立子项目，位于 `apps/api/src/plugins/`。构建产物已 gitignore（`dist/`、`*.tgz`、`*.sh`）。
+
+## dsh（DeepSeek Harness，纯 ESM JS）
+
+插件名 `memory-recall-dsh`，目录 `apps/api/src/plugins/dsh/`。
+
+- **无构建步骤**：纯 ESM JavaScript，直接复制到 `~/.dsh/profiles/node_modules/memory-recall-dsh/`
+  （loader 解析目录），并在目标 profile 的 `cordis.patch.yml` 追加 insert 接线；
+  安装/检查/卸载用 `bash install.sh`（`--profile` 指定目标，默认 web；`--check` 只检查；
+  `--restart` 重启 dsh web 并验证）。
+- 能力：5 个记忆工具（`memory_store`/`memory_search`/`memory_profile`/`memory_list`/`memory_forget`）、
+  自动召回（`agent/pre-step` + `POST /context-inject`，策略 once/smart/always，`<system-reminder>` 框定注入）、
+  自动捕获（`turn/end` 摘要落库，extract 蒸馏 / raw 原文）。
+- **依赖契约**：只 import `@deepseek-ai/schemastery`（Config）、`@deepseek-ai/dsh-llm`
+  （createUserMessage）、`@deepseek-ai/dsh-tools`（defineTool）；声明 `inject: ["agents", "tools"]`。
+- 标签约定：`userTag = keyId`，`projectTag = {keyId}_project-<cwd 目录名>`（按 agent 会话 cwd 推导）；
+  API Key 写 profile patch `config.apiKey` 或环境变量 `MEMORY_RECALL_API_KEY`。
+- 测试：`node --test`（单元 + 集成，集成连真实后端、缺 Key 自动跳过）。详见插件 README.md。
 
 ## opencode（TypeScript/Bun）
 
@@ -25,8 +42,10 @@
 
 ## 标签约定与后端契约
 
-- `userTag = keyId`（跨项目），`projectTag = {keyId}_project-<dirName>`。
+- `userTag = keyId`（跨项目），`projectTag = {keyId}_project-<dirName>`（dsh/opencode/codex 一致）。
 - 后端契约：`X-API-Key` 头，`GET /auth/verify` → keyId；统一召回 `POST /context-inject`
   带 `user_tag` + `project_tag`。
+- 写入注意：`POST /memories` 同步含 embedding + LLM 实体提取 + 关系检测，实测 25s+；
+  插件写入超时（`writeTimeoutMs`）需单独放宽（dsh 插件默认 90s）。
 
-*状态: ACTIVE · 版本: v1.0 · 最后更新: 2026-08-13*
+*状态: ACTIVE · 版本: v1.1 · 最后更新: 2026-08-14*
