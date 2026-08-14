@@ -11,7 +11,8 @@
 #   bash install.sh --profile headless    # 安装到其他 profile
 #   bash install.sh --api-key rk_live_xxx # 把 API Key 写进 patch config（可选；不写则运行时读 MEMORY_RECALL_API_KEY）
 #   bash install.sh --check               # 只检查状态，不改任何文件
-#   bash install.sh --restart             # 安装后重启 dsh web 并验证（会中断当前 web 服务几秒）
+#   bash install.sh --smoke               # 只跑 headless 试启动冒烟（隔离环境，不动正式 web）
+#   bash install.sh --restart             # 冒烟通过后重启 dsh web 并验证（会中断当前 web 服务几秒）
 #   bash install.sh --uninstall           # 卸载（移除接线与安装副本）
 #
 # 环境变量: DSH_HOME（默认 ~/.dsh）、MEMORY_RECALL_API_KEY、MEMORY_RECALL_BASE_URL
@@ -42,6 +43,7 @@ while [ $i -lt ${#ARGS[@]} ]; do
   case "$arg" in
     --check) MODE="check" ;;
     --restart) MODE="restart" ;;
+    --smoke) MODE="smoke" ;;
     --uninstall) MODE="uninstall" ;;
     --profile=*) PROFILE="${arg#--profile=}" ;;
     --api-key=*) API_KEY="${arg#--api-key=}" ;;
@@ -182,20 +184,87 @@ PATCHEOF
   echo "  [已加] $PATCH（apiKey: ${API_KEY:+已写入}${API_KEY:-未写入，运行时读环境变量}）"
 fi
 
-# ── 4/4 重启（可选）───────────────────────────────────────────────────────
+# ── 定位 dsh 安装根 ───────────────────────────────────────────────────────
+ROOT=""
+for d in $(ls -dt "$HOME"/.npm/_npx/*/ 2>/dev/null); do
+  d=${d%/}
+  [ -d "$d/node_modules/@deepseek-ai" ] || continue
+  ROOT="$d"
+  break
+done
+
+# ── headless 试启动冒烟（隔离环境验证插件组合，防"启动即崩"）──────────────
+# 组合有问题（如 client-modules 契约错误）时 headless 在 boot 阶段即崩溃退出，
+# 命中插件关键字则判定为插件问题并中止正式重启；未命中（LLM/网络类）只警告。
+SMOKE_LOG=/tmp/mr-dsh-smoke.log
+SMOKE_TEST() {
+  local dsh_bin="$1"
+  echo "== 冒烟：headless 试启动（隔离环境，不影响正式 web）=="
+  if [ ! -d "$DSH/profiles/headless" ]; then
+    echo "  [跳过] headless profile 未初始化（首次运行 dsh --profile headless 可初始化），冒烟跳过"
+    return 0
+  fi
+  # 确保 headless profile 已接入插件（幂等）
+  if [ -f "$DSH/profiles/headless/cordis.patch.yml" ] && grep -q "memory-recall-dsh" "$DSH/profiles/headless/cordis.patch.yml" 2>/dev/null; then
+    echo "  [已有] headless 插件接线"
+  else
+    mkdir -p "$DSH/profiles/headless"
+    [ -f "$DSH/profiles/headless/cordis.patch.yml" ] || printf '[]\n' > "$DSH/profiles/headless/cordis.patch.yml"
+    sed -i '/^\[\]$/d' "$DSH/profiles/headless/cordis.patch.yml"
+    cat >> "$DSH/profiles/headless/cordis.patch.yml" <<PATCHEOF
+
+# memory-recall-dsh：长期记忆插件（自动接入，供 headless 冒烟试启动）
+- insert:
+    - id: memory-recall-dsh
+      name: 'memory-recall-dsh'
+      config:
+        baseUrl: '${MEMORY_RECALL_BASE_URL:-http://localhost:8000}'
+PATCHEOF
+    echo "  [已接线] headless profile（自动接入，仅用于冒烟）"
+  fi
+  local start_ts end_ts
+  start_ts=$(date +%s)
+  if timeout 120 env MEMORY_RECALL_API_KEY="${MEMORY_RECALL_API_KEY:-}" "$dsh_bin" --profile headless "1" > "$SMOKE_LOG" 2>&1; then
+    end_ts=$(date +%s)
+    echo "  [PASS] headless 试启动成功（$((end_ts - start_ts))s），插件组合无问题"
+    return 0
+  fi
+  end_ts=$(date +%s)
+  echo "  [FAIL] headless 试启动失败（$((end_ts - start_ts))s）"
+  if grep -qiE "client-modules|plugin tree failed|cannot resolve entry|memory-recall-dsh" "$SMOKE_LOG"; then
+    echo "  命中插件组合/加载错误关键字，判定为插件问题："
+    grep -iE "client-modules|plugin tree failed|cannot resolve entry|memory-recall-dsh" "$SMOKE_LOG" | head -5
+    echo "  完整日志: $SMOKE_LOG"
+    echo "  回滚：bash install.sh --uninstall 后重启 dsh web 即可恢复"
+    return 1
+  fi
+  echo "  未命中插件关键字（疑似 LLM/网络类问题，非插件导致），完整日志: $SMOKE_LOG"
+  return 2
+}
+
+# ── 4/4 冒烟 + 重启（可选）──────────────────────────────────────────────
+if [ "$MODE" = "smoke" ] || [ "$MODE" = "restart" ]; then
+  if [ -n "$ROOT" ] && [ -x "$ROOT/node_modules/.bin/dsh" ]; then
+    SMOKE_TEST "$ROOT/node_modules/.bin/dsh"
+    SMOKE_RC=$?
+    # smoke 模式：0=通过，1=插件问题，2=非插件问题（LLM/网络等），供 CI/人工判断
+    [ "$MODE" = "smoke" ] && exit "$SMOKE_RC"
+    # restart：命中插件关键字失败时中止重启，避免正式服务再次启动即崩
+    if [ "$SMOKE_RC" = "1" ]; then
+      echo "  [中止] 冒烟判定插件有问题，不重启 dsh web（正式服务保持当前状态）"
+      exit 1
+    fi
+  else
+    echo "  [警告] 无法定位 dsh 可执行文件，冒烟跳过"
+  fi
+fi
+
 if [ "$MODE" = "restart" ]; then
   echo "== 4/4 重启 dsh web =="
   pkill -TERM -f 'node_modules/.bin/dsh web' 2>/dev/null
   pkill -TERM -f 'npm exec @deepseek-ai/dsh web' 2>/dev/null
   pkill -TERM -f 'sh -c dsh web' 2>/dev/null
   sleep 3
-  ROOT=""
-  for d in $(ls -dt "$HOME"/.npm/_npx/*/ 2>/dev/null); do
-    d=${d%/}
-    [ -d "$d/node_modules/@deepseek-ai" ] || continue
-    ROOT="$d"
-    break
-  done
   if [ -n "$ROOT" ] && [ -x "$ROOT/node_modules/.bin/dsh" ]; then
     cd "$ROOT" || exit 1
     setsid nohup ./node_modules/.bin/dsh web >> /tmp/dsh-web.log 2>&1 < /dev/null &

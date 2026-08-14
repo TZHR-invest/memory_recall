@@ -141,12 +141,16 @@ dsh web 用 script 标签按 classic script 加载插件 bundle：不能含 impo
 
 4. **安装**：`bash install.sh --check`（先只查不装）→ `bash install.sh`。
 
-5. **激活**：在**终端**里执行 `bash install.sh --restart`（或手动重启 dsh web）。
-   ⚠️ **绝不在 agent（dsh 会话）内部重启宿主 dsh web 进程**——agent 就跑在
-   dsh web 里，重启等于杀掉自己；且 dsh web 无守护进程托管，崩溃后无人拉起
-   （2026-08-14 事故：GUI 挂机约 3 小时，靠手动重启恢复）。
+5. **冒烟试启动**（防"启动即崩"）：`bash install.sh --smoke` 在隔离的 headless
+   profile 里真实 boot 一次插件组合（约 10-30 秒），插件契约/加载有问题会在
+   boot 阶段崩溃并被判定中止（退出码 1），正式 web 完全不受影响。
+6. **激活**：在**终端**里执行 `bash install.sh --restart`（内置冒烟，插件问题
+   自动中止重启）。⚠️ **绝不在 agent（dsh 会话）内部重启宿主 dsh web 进程**
+   ——agent 就跑在 dsh web 里，重启等于杀掉自己；且 dsh web 无守护进程托管，
+   崩溃后无人拉起（2026-08-14 事故：GUI 挂机约 3 小时，靠手动重启恢复）。
+   回滚：`bash install.sh --uninstall` + 重启即可恢复上一个可用状态。
 
-6. **验证**：页面 200；`/plugins/<id>/client.js` 返回 200；boot 日志无
+7. **验证**：页面 200；`/plugins/<id>/client.js` 返回 200；boot 日志无
    `client-modules:` 报错；新会话里自动召回注入出现。
 
 ## 已知限制 / 后续
