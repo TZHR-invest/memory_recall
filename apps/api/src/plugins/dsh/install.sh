@@ -21,7 +21,7 @@ set -u
 # 比较插件全部关键文件（package.json + 所有 .js），任一变化都需要重装
 FILES_IDENTICAL() {
   local src="$1" dst="$2"
-  for f in "$src"/*.js "$src"/preflight.mjs; do
+  for f in "$src"/*.js; do
     [ -f "$f" ] || continue
     local base
     base="$(basename "$f")"
@@ -83,7 +83,7 @@ for f in package.json index.js config.js client.js client-lib.js context.js tool
     echo "  错误：缺少 $SRC/$f（安装包不完整）"; exit 1
   fi
 done
-for f in "$SRC"/*.js "$SRC"/preflight.mjs; do
+for f in "$SRC"/*.js; do
   [ -f "$f" ] || continue
   node --check "$f" >/dev/null 2>&1 || { echo "  错误：语法检查失败 $f"; FAIL=1; }
 done
@@ -91,9 +91,12 @@ done
 echo "  [OK] 插件源码完整，语法检查通过"
 
 # 契约预检（防 MR-022/023 重演）：dsh.client.platform / exports["./client"] / classic-script bundle
-echo "== 0.5/4 契约预检（preflight.mjs）=="
-if [ -f "$SRC/preflight.mjs" ]; then
-  if node "$SRC/preflight.mjs" "$SRC"; then
+# 通用预检位于 _dsh-common/，任何 dsh 插件共用
+COMMON="$(cd "$(dirname "${BASH_SOURCE[0]}")/../_dsh-common" && pwd)"
+PREFLIGHT="$COMMON/preflight.mjs"
+echo "== 0.5/4 契约预检（$PREFLIGHT）=="
+if [ -f "$PREFLIGHT" ]; then
+  if node "$PREFLIGHT" "$SRC"; then
     echo "  [OK] 加载器契约检查通过"
   else
     if [ "$MODE" = "check" ]; then
@@ -104,7 +107,7 @@ if [ -f "$SRC/preflight.mjs" ]; then
     fi
   fi
 else
-  echo "  [跳过] 无 preflight.mjs"
+  echo "  [跳过] 无共享 preflight.mjs（_dsh-common/preflight.mjs）"
 fi
 
 if [ ! -d "$DSH/profiles/$PROFILE" ]; then
@@ -124,7 +127,7 @@ else
     FAIL=1
   else
     mkdir -p "$DST_PLUGINS"
-    cp "$SRC"/package.json "$SRC"/*.js "$SRC"/preflight.mjs "$DST_PLUGINS/"
+    cp "$SRC"/package.json "$SRC"/*.js "$DST_PLUGINS/"
     echo "  [已装] $DST_PLUGINS"
   fi
 fi
@@ -139,7 +142,7 @@ else
     FAIL=1
   else
     mkdir -p "$DST_PROFILE"
-    cp "$SRC"/package.json "$SRC"/*.js "$SRC"/preflight.mjs "$DST_PROFILE/"
+    cp "$SRC"/package.json "$SRC"/*.js "$DST_PROFILE/"
     echo "  [已装] $DST_PROFILE"
   fi
 fi

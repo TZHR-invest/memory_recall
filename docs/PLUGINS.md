@@ -11,7 +11,10 @@
 - **无构建步骤**：纯 ESM JavaScript，直接复制到 `~/.dsh/profiles/node_modules/memory-recall-dsh/`
   （loader 解析目录），并在目标 profile 的 `cordis.patch.yml` 追加 insert 接线；
   安装/检查/卸载用 `bash install.sh`（`--profile` 指定目标，默认 web；`--check` 只检查；
-  `--restart` 重启 dsh web 并验证）。
+  `--smoke` headless 试启动冒烟；`--restart` 冒烟通过后重启 dsh web 并验证）。
+- **防崩基础设施共享**（MR-022/023 教训，新 dsh 插件复用）：`apps/api/src/plugins/_dsh-common/`
+  提供通用 `preflight.mjs`（manifest/classic-script 契约预检）与 `install-template.sh`
+  （通用安装器：契约预检 + headless 冒烟 + 幂等接线 + 回滚），见其 README。
 - 能力：5 个记忆工具（`memory_store`/`memory_search`/`memory_profile`/`memory_list`/`memory_forget`）、
   自动召回（`agent/pre-step` + `POST /context-inject`，策略 once/smart/always，`<system-reminder>` 框定注入）、
   自动捕获（`turn/end` 摘要落库，extract 蒸馏 / raw 原文）。
