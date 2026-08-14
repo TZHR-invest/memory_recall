@@ -32,7 +32,62 @@
 - **C（信息差/社区）**：生态共存、历史 issue、最佳实践等 → 2-3 个不同数据源平台；
 - **D（决策无关）**：不改变决策 → 直接砍掉。
 
-## 平台画像（2026-08 观察，按需更新）
+ ## 平台画像（2026-08-14 更新：补充两轮交叉调研观察）
+ 
+ | 平台 | 特点 | 适用 | 执行观察（codex 两轮实测） |
+ |------|------|------|---------------------------|
+ | ChatGPT | 源码级结论可靠，web/issue 检索强；最系统且会主动修正自身方案（round-02 主动把乘法公式改成期望净价值） | 源码核对、社区历史、开放题主轮 | 输入框 #prompt-textarea（textarea），fill 直接可用；回答可能很长（16k+ 字），等待要耐心；会话在服务端，Chrome 重启丢标签后可从侧栏历史找回 |
+ | Grok | 源码级结论可靠，X/社区信号强；裁决式回答、善于吸收其他框架 | 生态共存、社区实践、分歧裁决 | 输入框是 textarea，但 fill 偶发失败，改用 click + type 稳定；回答带「思考了 Ns」前缀需剥离；新会话 URL 为 grok.com/ |
+ | Claude | 诚实、会明确说不知道；来源标注最严谨、主动承认自身方案缺口；可能漏检新 API | 源码/公式推理、追问轮 | 输入框 textarea（placeholder 为 Write your prompt to Claude）；回答在 div.group/message-row 容器内，需剥离 Claude responded: 前缀与尾部图标字符 |
+ | Gemini | 高层结论可参考，具体字段容易编造；结构最工程化（L1/L2、三形态表） | 仅作广谱参考，字段细节一律源码复核 | 输入框是 [contenteditable=true]（placeholder 为问问 Gemini），用 click + type；回答在 message-content 元素内；尾部有建议按钮文本需剥离 |
+ | doubao | 同 Gemini，另有中文社区视角；交互设计最落地（确认疲劳/置信度分级） | 中文生态补充，字段细节一律源码复核 | 输入框 textarea（placeholder 为发消息或按住空格说话...）；回答在 div[class*=has-[.side-by-side] 容器内，需按内容特征定位（含标题的容器）；新会话 URL 为 doubao.com/chat/ |
+ 
+ ## codex 浏览器执行经验（2026-08-14 两轮实测沉淀）
+ 
+ > 适用：codex 操作浏览器执行外部调研时。这些是踩过的坑，不是理论。
+ 
+ ### 1. 并行是默认策略，不是优化
+ 
+ - 同一开放题发给 N 个平台：**每平台一个独立标签页**，全部发送后再统一等待，而不是串行「发一个等一个」。
+   五平台并行时总等待约等于最慢单平台，而不是五倍。
+ - 做法：批量开标签（tabs.new + goto）→ 逐平台填入发送 → 写一个轮询循环同时探测所有标签的完成状态。
+ - 完成判定：轮询页面是否还有 stop/停止生成 按钮，且 body 长度连续 3 次采样不变（约 30s），视为生成完毕。
+   单平台会误判，多平台并行轮询很可靠。
+ 
+ ### 2. Chrome 重启/断连后的恢复
+ 
+ - agent 创建的标签在 Chrome 重启后会丢失，但**对话在平台服务端**——从各平台侧栏/历史找回即可，不用重发。
+   ChatGPT 按会话标题找（自动生成的标题如「长期记忆价值判定」），Claude/Grok/Gemini/doubao 同理。
+ - 浏览器 binding 在重启后失效：重新 get chrome，重新 openTabs + claimTab。
+ - 重连后先 nameSession 起个带 emoji 的会话名，方便把调研标签分到一组（浏览器会自动分组）。
+ 
+ ### 3. 各平台输入框与 DOM 要点（详见平台画像表）
+ 
+ - ChatGPT：#prompt-textarea 是 textarea，fill 直接可用；发送按钮 button[data-testid=send-button]。
+ - Claude：getByRole(textbox, name=Write your prompt to Claude)；发送按钮 button[aria-label*=Send]。
+ - Grok：textarea 但 fill 可能报错（自定义编辑器），用 click + type；发送优先 Enter。
+ - Gemini：[contenteditable=true] 是富文本，必须 click + type（fill 不适用）；发送按钮 button[aria-label*=发送]。
+ - doubao：textarea，click + type 稳定；发送按钮 button[aria-label*=发送]，找不到就 Enter。
+ - 统一规律：**优先按 aria-label / placeholder 定位（getByRole/getByPlaceholder），少用裸 CSS 类名**——类名是混淆的，每次加载可能变。
+ 
+ ### 4. 回答提取（原文回填的关键）
+ 
+ - 每个平台的回答容器不同（平台画像表已列），提取时先定位「最后一条 assistant 消息」再取 innerText，避免把 UI 文案混进来。
+ - 需要剥离的噪音：ChatGPT 引用按钮（ojs.aaai.org +1）、Claude 的 Claude responded: 前缀 + 私有区图标字符、
+   Grok 的 思考了 Ns、Gemini 尾部建议按钮（是/要深入讨论...）、doubao 无（按标题容器定位即可）。
+ - 剥离用正则批量做，但**正文一个字不改**——纪律要求原始回答保留、不二次概括。
+ 
+ ### 5. 追问轮（round-02+）的浏览器技巧
+ 
+ - **在 round-01 原会话内继续追问**，不要开新会话——平台保有上下文，回答质量明显更高（能引用自己上一轮的话并主动修正）。
+ - 追问文本不要点名其他平台的具体表述，只针对该平台自己回答里的薄弱点/冲突点提问（避免锚点诱导，保持交叉验证纯度）。
+ - 等待轮询时，body 长度是累计的（含之前轮次），判断完成用「stop 按钮消失 + 长度连续稳定」即可，不用对比轮次。
+ 
+ ### 6. 其他
+ 
+ - 长回答（ChatGPT 16k+ 字）的等待：单次轮询 timeout 要留足（300s+），或拆多次探测；流式生成中页面会持续更新 DOM。
+ - 会话分组：浏览器会把 agent 会话的标签自动归到当前 session 的组，结束时 tabs.finalize(keep) 把调研会话保留成 handoff，方便用户查看/继续。
+ - 全程只读用户数据：不碰 cookies/密码/本地存储；浏览器发现保持只读。
 
 | 平台 | 特点 | 适用 |
 |------|------|------|

@@ -69,7 +69,7 @@ docs/
 | [ARCHITECTURE.md](ARCHITECTURE.md) | ACTIVE | 2026-08-13 | 架构与模块地图：后端分层、核心服务、惰性导入、死代码清单 |
 | [TESTING.md](TESTING.md) | ACTIVE | 2026-08-13 | 测试指南：三层分级、环境注意点、常用命令 |
 | [PLUGINS.md](PLUGINS.md) | ACTIVE | 2026-08-14 | 客户端插件：dsh / opencode / deepseek-tui / hermes |
-| [RESEARCH_GUIDE.md](RESEARCH_GUIDE.md) | ACTIVE | 2026-08-13 | 外部调研工作流（Human-in-the-Loop Research） |
+ | [RESEARCH_GUIDE.md](RESEARCH_GUIDE.md) | ACTIVE | 2026-08-14 | 外部调研工作流（Human-in-the-Loop Research）；2026-08-14 补充平台执行观察 + codex 浏览器经验（并行/恢复/DOM/追问） |
 | [archive/README.md](archive/README.md) | ACTIVE | 2026-08-12 | 归档索引：为什么归档、历史文档在哪 |
 
 > 完整的文档分类与生命周期规则见 [DOCUMENTATION_GUIDE.md](DOCUMENTATION_GUIDE.md)。

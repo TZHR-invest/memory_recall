@@ -19,7 +19,7 @@
 | 记忆维护检查点（ADR-0009） | 已完成（2026-08-13：语义检索 5 主题 × 5 容器 + SQL 关键词预检；版本化修正 1 条过时记忆 `mem_12490fb23d474aa1996e` → `mem_a716b54e449a4003beef`） | [ADR-0009](decisions/0009-memory-maintenance-loop.md) |
 | codex 插件容器探测启动竞态修复（MR-021） | 已完成（2026-08-14：config.py 惰性重探测 ensure_project_tag；同日补充修复 context-inject 直用冻结 PROJECT_TAG 的遗漏路径；重启 codex 会话使 MCP server 重生后全量生效） | [MR-021](issues/MR-021-codex-mcp-container-race.md) |
 | dsh 客户端插件（memory-recall-dsh） | 已完成（2026-08-14：5 工具 + 自动召回注入 + 自动捕获；21 测试全绿（含 bundle 生成/注册测试）；headless E2E + 无头 Chrome web 实测通过；修复 MR-022 平台元数据、MR-023 生成式 classic-script bundle，dsh web 正常） | [dsh 插件](../apps/api/src/plugins/dsh/README.md) |
- | 记忆价值判据外部调研（S0+S1 第一刀） | v2 round-01 已完成（2026-08-14：五平台无预设同题独立收敛——未来价值判据/非原始存储/生命周期/用户闸门/分层/衰减修正；待 round-02 追问公式因子/触发时机/留存形态，再回项目内验证） | [v2 调研卡](notes/research/2026-08-14-memory-value-criteria-v2/README.md) · [round-01 统一理解](notes/research/2026-08-14-memory-value-criteria-v2/08-round-01-conclusions.md) |
+ | 记忆价值判据外部调研（S0+S1 第一刀） | 已收敛（v2：round-01 五平台无预设同题 + round-02 交叉追问三分歧收敛 + 回项目内验证；结论：判据 = 复用机会×有效性×影响−维护/遗忘成本，生命周期式沉淀，最大缺口为复用反馈回收） | [v2 调研卡](notes/research/2026-08-14-memory-value-criteria-v2/README.md) · [最终结论](notes/research/2026-08-14-memory-value-criteria-v2/99-final-conclusions.md) |
 | 测试记忆清理 | 已完成（2026-08-14：软删除 20 条散落测试记忆（主容器/hermes/memory_recall 容器）+ 7 类测试专用容器 95 条全部遗忘；含 capture-test 系列、e2e-test、recall-test、update-test、latency-probe、test_integration_*、test_perf_container；可经 restore 恢复） | 本次会话 |
 
 ## ADR 实施跟踪
