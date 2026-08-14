@@ -20,6 +20,7 @@
 | codex 插件容器探测启动竞态修复（MR-021） | 已完成（2026-08-14：config.py 惰性重探测 ensure_project_tag；同日补充修复 context-inject 直用冻结 PROJECT_TAG 的遗漏路径；重启 codex 会话使 MCP server 重生后全量生效） | [MR-021](issues/MR-021-codex-mcp-container-race.md) |
 | dsh 客户端插件（memory-recall-dsh） | 已完成（2026-08-14：5 工具 + 自动召回注入 + 自动捕获；21 测试全绿（含 bundle 生成/注册测试）；headless E2E + 无头 Chrome web 实测通过；修复 MR-022 平台元数据、MR-023 生成式 classic-script bundle，dsh web 正常） | [dsh 插件](../apps/api/src/plugins/dsh/README.md) |
 | 记忆价值判据外部调研（S0+S1 第一刀） | round-01 已完成（2026-08-14：五平台回填 + 收敛，结论见 99-final-conclusions，待回项目内验证/实现） | [调研目录](notes/research/2026-08-14-memory-value-criteria/README.md) |
+| 测试记忆清理 | 已完成（2026-08-14：软删除 20 条散落测试记忆（主容器/hermes/memory_recall 容器）+ 7 类测试专用容器 95 条全部遗忘；含 capture-test 系列、e2e-test、recall-test、update-test、latency-probe、test_integration_*、test_perf_container；可经 restore 恢复） | 本次会话 |
 
 ## ADR 实施跟踪
 
