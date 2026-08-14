@@ -119,6 +119,36 @@ dsh web 用 script 标签按 classic script 加载插件 bundle：不能含 impo
   会校验产物同步，不同步测试即失败）；
 - 安装/重启：bash install.sh --restart。
 
+## 开发检查清单（防崩，MR-022/MR-023 教训固化）
+
+**任何改动 → 安装 → 激活前，按顺序过一遍：**
+
+1. **契约预检**（必做，防 dsh 启动即崩）：
+   ```bash
+   node preflight.mjs .
+   ```
+   检查 `dsh.client.platform` 为非空字符串（web profile 只接受 `"web"`）、
+   `exports["./client"]` 存在且指向 bundle、bundle 为 classic script（无顶层
+   import/export + 含 `__ModuleLoader__.load` 注册）。`install.sh` 的前置检查已内置
+   该预检，未通过会拒绝安装（MR-022 事故：platform 缺失 → 插件树组合失败 → dsh 启动即退出）。
+
+2. **改了库文件后重新生成 bundle**（`client.js` 是生成物，勿手改）：
+   ```bash
+   node build-bundle.mjs
+   ```
+
+3. **全量测试**：`node --test`（21 例全绿）。
+
+4. **安装**：`bash install.sh --check`（先只查不装）→ `bash install.sh`。
+
+5. **激活**：在**终端**里执行 `bash install.sh --restart`（或手动重启 dsh web）。
+   ⚠️ **绝不在 agent（dsh 会话）内部重启宿主 dsh web 进程**——agent 就跑在
+   dsh web 里，重启等于杀掉自己；且 dsh web 无守护进程托管，崩溃后无人拉起
+   （2026-08-14 事故：GUI 挂机约 3 小时，靠手动重启恢复）。
+
+6. **验证**：页面 200；`/plugins/<id>/client.js` 返回 200；boot 日志无
+   `client-modules:` 报错；新会话里自动召回注入出现。
+
 ## 已知限制 / 后续
 
 - 压缩（compaction）时未注入记忆摘要（opencode 插件有 compaction 注入，后续可对标）；
