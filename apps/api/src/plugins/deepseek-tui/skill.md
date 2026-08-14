@@ -46,7 +46,6 @@ description: Persistent memory across sessions via Memory Recall MCP tools.
 在一个新项目中，手动执行以下流程初始化记忆：
 
 ```
-mcp_memory-recall_import-docs  content="<粘贴 README.md 内容>"  title="README"
 mcp_memory-recall_add  content="<项目技术栈和核心架构>"  type="project-config"
 mcp_memory-recall_add  content="<构建、测试、部署方式>"  type="learned-pattern"
 ```

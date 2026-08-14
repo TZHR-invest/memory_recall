@@ -1,9 +1,7 @@
 import { tool } from "@opencode-ai/plugin";
-import * as path from "path";
 import type { ApiClient, SearchResult } from "./client";
 import type { Config } from "./config";
 import { stripPrivateTags, isFullyPrivate } from "./context";
-import type { DocumentTracker } from "./document-tracker";
 import { TaskQueue, type Task, type TaskExecutor } from "./queue";
 import { getAllKeywords } from "./i18n";
 
@@ -17,7 +15,7 @@ const MEMORY_TYPES = [
 ] as const;
 
 const toolSchema = {
-  mode: tool.schema.enum(["add", "search", "profile", "list", "forget", "import-docs", "status", "retry", "help"]).describe("Operation mode"),
+  mode: tool.schema.enum(["add", "search", "profile", "list", "forget", "status", "retry", "help"]).describe("Operation mode"),
   content: tool.schema.string().optional().describe("Content to store (for add mode)"),
   query: tool.schema.string().optional().describe("Search query (for search mode)"),
   type: tool.schema.enum(MEMORY_TYPES).optional().describe("Memory type (for add mode)"),
@@ -25,7 +23,6 @@ const toolSchema = {
   isStatic: tool.schema.boolean().optional().describe("Whether this is a permanent trait (default: false)"),
   memoryId: tool.schema.string().optional().describe("Memory ID to forget (for forget mode)"),
   limit: tool.schema.number().optional().describe("Max results (default: 10)"),
-  force: tool.schema.boolean().optional().describe("Force re-import all documents (for import-docs mode)"),
   taskId: tool.schema.string().optional().describe("Task ID to query or retry (for status/retry mode)"),
   // 图谱召回增强参数（search mode）
   enableMemoryGraph: tool.schema.boolean().optional().describe("Enable Memory Graph recall - traverses memory evolution relations (updates/extends/derives)"),
@@ -35,7 +32,7 @@ const toolSchema = {
 };
 
 type ToolArgs = {
-  mode: "add" | "search" | "profile" | "list" | "forget" | "import-docs" | "status" | "retry" | "help";
+  mode: "add" | "search" | "profile" | "list" | "forget" | "status" | "retry" | "help";
   content?: string;
   query?: string;
   type?: typeof MEMORY_TYPES[number];
@@ -43,7 +40,6 @@ type ToolArgs = {
   isStatic?: boolean;
   memoryId?: string;
   limit?: number;
-  force?: boolean;
   taskId?: string;
   // 图谱召回增强参数
   enableMemoryGraph?: boolean;
@@ -56,7 +52,7 @@ interface SearchWithScope extends SearchResult {
   scope?: string;
 }
 
-export function createTool(client: ApiClient, config: Config, documentTracker: DocumentTracker | null, taskQueue?: TaskQueue) {
+export function createTool(client: ApiClient, config: Config, taskQueue?: TaskQueue) {
   async function execute(args: ToolArgs, context: { sessionID: string; messageID: string; agent: string; directory: string; worktree: string; abort: AbortSignal; metadata: (input: { title?: string; metadata?: Record<string, unknown> }) => void }): Promise<string> {
     const mode = args.mode;
 
@@ -84,7 +80,6 @@ export function createTool(client: ApiClient, config: Config, documentTracker: D
             profile: "View user profile",
             list: "List recent memories",
             forget: "Remove a memory",
-            "import-docs": "Import project documents (README, docs/*.md, etc.)",
             status: "Query async task status",
             retry: "Retry a failed task",
           },
@@ -283,68 +278,6 @@ export function createTool(client: ApiClient, config: Config, documentTracker: D
         };
       }
 
-      case "import-docs": {
-        if (!documentTracker) {
-          return { success: false, error: "Document tracking is disabled. Enable 'enableDocumentTracking' in config." };
-        }
-
-        const force = args.force || false;
-
-        // 如果启用异步队列，批量入队每个文档
-        if (config.asyncQueue.enabled && taskQueue) {
-          // force 模式：清除状态，重新导入所有文档
-          if (force) {
-            documentTracker.clearState();
-          }
-
-          const pendingFiles = documentTracker.getPendingFiles();
-          
-          if (pendingFiles.length === 0) {
-            return {
-              success: true,
-              message: "No new documents to import",
-              queuedCount: 0,
-              patterns: config.trackedDocPatterns,
-            };
-          }
-
-          // 批量入队
-          const taskIds: string[] = [];
-          for (const filePath of pendingFiles) {
-            const relativePath = path.relative(documentTracker.getDirectory(), filePath);
-            const taskId = taskQueue.enqueue("import-doc", {
-              filePath,
-              relativePath,
-            });
-            taskIds.push(taskId);
-          }
-
-          return {
-            success: true,
-            message: `${taskIds.length} documents queued for async processing`,
-            queuedCount: taskIds.length,
-            taskIds,
-            patterns: config.trackedDocPatterns,
-          };
-        }
-
-        // 同步模式（默认）
-        if (force) {
-          documentTracker.clearState();
-        }
-
-        const importedCount = await documentTracker.scanAndMemorize();
-        const trackedDocs = documentTracker.getTrackedDocuments();
-
-        return {
-          success: true,
-          message: force ? "Force re-imported documents" : "Scanned and imported documents",
-          importedCount,
-          totalTracked: trackedDocs.length,
-          patterns: config.trackedDocPatterns,
-        };
-      }
-
       case "status": {
         const taskId = args.taskId;
         
@@ -426,7 +359,7 @@ export function createTool(client: ApiClient, config: Config, documentTracker: D
 
   return {
     "memory-recall": tool({
-      description: "Manage persistent memory across sessions. Modes: 'search' - find relevant memories (supports graph recall via enableMemoryGraph/enableEntityGraph), 'add' - store new knowledge, 'profile' - view user profile, 'list' - see recent memories, 'forget' - remove a memory, 'import-docs' - import project documents (README, docs/*.md, AGENTS.md), 'help' - show usage guide.",
+      description: "Manage persistent memory across sessions. Modes: 'search' - find relevant memories (supports graph recall via enableMemoryGraph/enableEntityGraph), 'add' - store new knowledge, 'profile' - view user profile, 'list' - see recent memories, 'forget' - remove a memory, 'help' - show usage guide.",
       args: toolSchema,
       execute,
     }),

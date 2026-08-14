@@ -13,7 +13,7 @@ import { randomUUID } from "crypto";
 /**
  * 任务类型
  */
-export type TaskType = "add" | "import-doc";
+export type TaskType = "add";
 
 /**
  * 任务状态
@@ -47,10 +47,6 @@ export interface TaskPayload {
   containerTag?: string;
   isStatic?: boolean;
   memoryType?: string;
-  
-  // import-doc mode
-  filePath?: string;
-  relativePath?: string;
 }
 
 /**

@@ -7,8 +7,6 @@ import { detectLocaleFromText, getLocale, type Locale } from "./i18n";
 import { initLogging } from "./logging";
 import { CompactionHook } from "./compaction";
 import { EventHandler } from "./events";
-import { DocumentTracker } from "./document-tracker";
-import { FileWatcher } from "./file-watcher";
 import {
   SessionTrackerManager,
   calculateDynamicRecallSize,
@@ -59,15 +57,6 @@ async function server(input: PluginInput, options: Record<string, unknown> = {})
     });
   }
 
-  let documentTracker: DocumentTracker | null = null;
-  if (config.enableDocumentTracking && isConfigured(config)) {
-    // DocumentTracker created but NOT auto-importing - user must trigger via tool
-    documentTracker = new DocumentTracker(client, config, input.directory);
-    logger.info("Document tracker ready", { 
-      hint: "Use 'import-docs' mode in memory-recall tool to import project documents" 
-    });
-  }
-
   // 初始化异步队列（如果启用）
   let taskQueue: TaskQueue | undefined;
   if (config.asyncQueue.enabled) {
@@ -85,10 +74,6 @@ async function server(input: PluginInput, options: Record<string, unknown> = {})
         if (content && containerTag) {
           await client.addMemory(content, containerTag, isStatic || false, memoryType, timeoutMs);
         }
-      } else if (task.type === "import-doc") {
-        if (documentTracker && task.payload.filePath) {
-          await documentTracker.importSingleFile(task.payload.filePath, timeoutMs);
-        }
       }
     });
 
@@ -100,16 +85,7 @@ async function server(input: PluginInput, options: Record<string, unknown> = {})
     });
   }
 
-  // 初始化文件监听（在 taskQueue 之后）
-  let fileWatcher: FileWatcher | null = null;
-  if (config.enableDocumentTracking && documentTracker) {
-    fileWatcher = new FileWatcher(config, documentTracker, logger, input.directory, taskQueue);
-    fileWatcher.start().catch((e) => {
-      logger.warn("File watcher failed to start", { error: String(e) });
-    });
-  }
-
-  const tool = createTool(client, config, documentTracker, taskQueue);
+  const tool = createTool(client, config, taskQueue);
 
   const opencodeClient = input.client;
   const compactionHook = new CompactionHook(client, config, tags, logger);

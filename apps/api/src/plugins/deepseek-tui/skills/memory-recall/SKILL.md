@@ -45,10 +45,6 @@ metadata:
 | 列出记忆 | `mcp_memory-recall_list` | 按 scope 列出 |
 | 更新记忆 | `mcp_memory-recall_update` | 修改内容 |
 | 恢复记忆 | `mcp_memory-recall_restore` | 取消软删除 |
-| 导入文档 | `mcp_memory-recall_import-docs` | 导入并自动分块 |
-| 列出文档 | `mcp_memory-recall_list-docs` | 已导入文档列表 |
-| 读取文档 | `mcp_memory-recall_read-doc` | 查看文档全文 |
-| 删除文档 | `mcp_memory-recall_delete-doc` | 删除及所有 chunks |
 | 混合搜索 | `mcp_memory-recall_hybrid-search` | 记忆+文档混合 |
 | 提取记忆 | `mcp_memory-recall_extract-memory` | 从摘要中提取 |
 | 完整召回 | `mcp_memory-recall_context-inject` | 画像+记忆+文档+图谱 |
@@ -59,7 +55,6 @@ metadata:
 在新项目中手动执行：
 
 ```
-mcp_memory-recall_import-docs  content="<粘贴 README.md>"  title="README"
 mcp_memory-recall_add  content="<技术栈和核心架构>"  type="project-config"
 mcp_memory-recall_add  content="<构建、测试、部署方式>"  type="learned-pattern"
 ```

@@ -17,26 +17,6 @@ export interface SearchResult {
   container_tag?: string;
 }
 
-export interface ChunkSearchResult {
-  id: string;
-  content: string;
-  document_id: string;
-  document_title?: string;
-  document_source?: string;
-  document_type?: string;
-  position?: number;
-  similarity: number;
-}
-
-export interface HybridSearchResult {
-  id: string;
-  content: string;
-  source: "memory" | "chunk";
-  similarity: number;
-  document_title?: string;
-  document_type?: string;
-}
-
 // Graph-related interfaces for knowledge graph recall
 export interface GraphNode {
   id: string;
@@ -313,48 +293,6 @@ export class ApiClient {
     await this.request(`/memories/${memoryId}/forget`, "POST");
   }
 
-  async searchChunks(
-    query: string,
-    containerTag: string,
-    limit: number = 10,
-    threshold: number = 0.5,
-    docTypes?: string[]
-  ): Promise<ChunkSearchResult[]> {
-    const response = await this.request<{ results: ChunkSearchResult[] }>(
-      "/documents/search",
-      "POST",
-      {
-        query,
-        container_tag: containerTag,
-        limit,
-        threshold,
-        doc_types: docTypes,
-      }
-    );
-    return response.results || [];
-  }
-
-  async searchHybrid(
-    query: string,
-    containerTag: string,
-    limit: number = 10,
-    threshold: number = 0.5,
-    sources?: ("memory" | "chunk")[]
-  ): Promise<HybridSearchResult[]> {
-    const response = await this.request<{ results: HybridSearchResult[] }>(
-      "/search/hybrid",
-      "POST",
-      {
-        query,
-        container_tag: containerTag,
-        limit,
-        threshold,
-        sources,
-      }
-    );
-    return response.results || [];
-  }
-
   async getGraph(
     containerTag: string,
     options?: {
@@ -411,76 +349,6 @@ export class ApiClient {
       throw new ConfigurationError(
         `Cannot connect to Memory Recall API at ${this.config.baseUrl}: ${e}`
       );
-    }
-  }
-
-  async addDocument(
-    content: string,
-    containerTag: string,
-    options?: {
-      title?: string;
-      source?: string;
-      docType?: string;
-      metadata?: Record<string, unknown>;
-    },
-    timeoutMs?: number
-  ): Promise<{ id: string; title?: string; chunkCount: number; isDuplicate: boolean }> {
-    const response = await this.request<{
-      id: string;
-      title?: string;
-      chunk_count: number;
-      is_duplicate: boolean;
-    }>(
-      "/documents",
-      "POST",
-      {
-        content,
-        container_tag: containerTag,
-        title: options?.title,
-        source: options?.source,
-        doc_type: options?.docType || "markdown",
-        metadata: options?.metadata,
-      },
-      timeoutMs
-    );
-
-    return {
-      id: response.id,
-      title: response.title,
-      chunkCount: response.chunk_count,
-      isDuplicate: response.is_duplicate,
-    };
-  }
-
-  async listDocuments(
-    containerTag: string,
-    limit: number = 20
-  ): Promise<{ id: string; title?: string; source?: string }[]> {
-    const params = new URLSearchParams({
-      container_tag: containerTag,
-      limit: limit.toString(),
-    });
-    const response = await this.request<{
-      documents: { id: string; title?: string; source?: string }[];
-    }>(`/documents?${params.toString()}`);
-    return response.documents || [];
-  }
-
-  async getDocument(documentId: string): Promise<{
-    id: string;
-    content: string;
-    container_tag: string;
-    metadata?: Record<string, unknown>;
-  } | null> {
-    try {
-      return await this.request<{
-        id: string;
-        content: string;
-        container_tag: string;
-        metadata?: Record<string, unknown>;
-      }>(`/documents/${documentId}`);
-    } catch {
-      return null;
     }
   }
 

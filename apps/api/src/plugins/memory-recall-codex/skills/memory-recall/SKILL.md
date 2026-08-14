@@ -78,7 +78,6 @@ description: 跨会话持久记忆。通过 Memory Recall MCP 工具在任务开
 | 更新 | `mcp__memory_recall__update` | 版本化更新（建版本链） |
 | 删除 | `mcp__memory_recall__forget` | 软删除，可恢复 |
 | 文档搜索 | `mcp__memory_recall__hybrid_search` | 记忆+文档混合 |
-| 导入文档 | `mcp__memory_recall__import_docs` | 项目文档入库分块 |
 | 会话提取 | `mcp__memory_recall__extract_memory` | 从摘要提取值得保存的记忆 |
 | 状态 | `mcp__memory_recall__status` | API 连通性与统计 |
 
@@ -88,13 +87,9 @@ description: 跨会话持久记忆。通过 Memory Recall MCP 工具在任务开
 手动执行以下流程初始化记忆：
 
 ```
-mcp__memory_recall__import_docs  content="<粘贴 README.md 内容>"  title="README"
 mcp__memory_recall__add  content="<项目技术栈和核心架构>"  type="project-config"
 mcp__memory_recall__add  content="<构建、测试、部署方式>"  type="learned-pattern"
 ```
-
-优先导入可自动分块检索的项目文档（`import_docs`，docType 可选 markdown/code）：
-- README.md、AGENTS.md、CHANGELOG.md、docs/*.md —— 让 `context_inject` 的文档片段检索能覆盖项目知识
 
 ## 核心原则
 

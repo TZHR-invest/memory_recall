@@ -1,6 +1,6 @@
 ---
 name: memory-recall-deepseek-tui
-description: Persistent memory plugin for DeepSeek TUI via MCP protocol. Provides 15 tools for memory storage, semantic search, user profiles, knowledge graph, and document management.
+description: Persistent memory plugin for DeepSeek TUI via MCP protocol. Provides 11 tools for memory storage, semantic search, user profiles, knowledge graph, and unified context injection.
 status: active
 ---
 
@@ -15,13 +15,11 @@ status: active
 - **记忆管理**: 更新、删除、恢复、历史版本追踪
 - **用户画像**: static（永久特征）+ dynamic（近期活动）
 - **知识图谱**: 双重图谱（记忆演进 + 实体关系）
-- **文档管理**: 导入、分块、搜索文档
 
-## 15 个工具
+## 11 个工具
 
 add, search, profile, forget, list, update, restore,
-import-docs, list-docs, read-doc, delete-doc, hybrid-search,
-extract-memory, context-inject, status
+hybrid-search, extract-memory, context-inject, status
 
 ## 激活方式
 

@@ -14,11 +14,12 @@
 | AGENTS.md 精炼重构（拆分到 ARCHITECTURE/TESTING/PLUGINS/RESEARCH_GUIDE） | 已完成（2026-08-13） | [记录](notes/2026-08-13-note.md) |
 | project-codex / project-.codex 双容器清理 | 已完成（记忆迁移 + opencode 插件点号目录过滤修复，待 opencode 重启生效） | [notes/2026-08-13-note.md](notes/2026-08-13-note.md#project-codex--project-codex-双容器来源解密用户提问排查) |
 | 记忆维护闭环（ADR-0009） | 已完成（注入陈旧标注 + 规则检查点，API 已重启生效） | [ADR-0009](decisions/0009-memory-maintenance-loop.md) |
-| 文档 RAG 移出核心（ADR-0010） | 实施计划已定（2026-08-13，三阶段：插件先行 → 用户升级 → 后端删除）；阶段 1 插件移除待开工 | [实施计划](notes/2026-08-13-adr0010-implementation-plan.md) · [ADR-0010](decisions/0010-remove-document-rag.md) |
+| 文档 RAG 移出核心（ADR-0010） | 阶段 1 已完成（2026-08-14：四端插件移除文档功能，opencode 1.9.0 待分发）；阶段 2 用户升级待通知 | [实施计划](notes/2026-08-13-adr0010-implementation-plan.md) · [ADR-0010](decisions/0010-remove-document-rag.md) |
 | 全量测试验证 + 回归修复 | 已完成（2026-08-13）：修复 16f3b8f 引入的 Entity 测试回归（user_tag/project_tag→container_tag，2 测试）+ performance 测试 LLM 依赖隔离（extract_entities=False，1 测试）；单元 386（14 skip）+ 集成 7 + 性能 5 + 去重 26 全绿 | commit 6724313 |
 | 记忆维护检查点（ADR-0009） | 已完成（2026-08-13：语义检索 5 主题 × 5 容器 + SQL 关键词预检；版本化修正 1 条过时记忆 `mem_12490fb23d474aa1996e` → `mem_a716b54e449a4003beef`） | [ADR-0009](decisions/0009-memory-maintenance-loop.md) |
 | codex 插件容器探测启动竞态修复（MR-021） | 已完成（2026-08-14：config.py 惰性重探测 ensure_project_tag；同日补充修复 context-inject 直用冻结 PROJECT_TAG 的遗漏路径；重启 codex 会话使 MCP server 重生后全量生效） | [MR-021](issues/MR-021-codex-mcp-container-race.md) |
 | dsh 客户端插件（memory-recall-dsh） | 已完成（2026-08-14：5 工具 + 自动召回注入 + 自动捕获；21 测试全绿（含 bundle 生成/注册测试）；headless E2E + 无头 Chrome web 实测通过；修复 MR-022 平台元数据、MR-023 生成式 classic-script bundle，dsh web 正常） | [dsh 插件](../apps/api/src/plugins/dsh/README.md) |
+| 记忆价值判据外部调研（S0+S1 第一刀） | round-01 已完成（2026-08-14：五平台回填 + 收敛，结论见 99-final-conclusions，待回项目内验证/实现） | [调研目录](notes/research/2026-08-14-memory-value-criteria/README.md) |
 
 ## ADR 实施跟踪
 
@@ -38,14 +39,14 @@
 | [0007](decisions/0007-compaction-converge-to-official-hook.md) | 压缩机制收敛到官方 hook | 已实现 | 预压缩/私有存储写入已删除；官方 hook 仅 push context |
 | [0008](decisions/0008-remove-summary-capture-and-scene-recovery.md) | 删除摘要捕获与现场恢复 | 已实现 | 摘要捕获/现场恢复/summary.ts 已删除 |
 | [0009](decisions/0009-memory-maintenance-loop.md) | 记忆维护闭环：注入可见性 + 规则约束，不做自动写库 | 已实现 | commit 见 2026-08-13-note；MR-011 UI 主体仍 OPEN |
-| [0010](decisions/0010-remove-document-rag.md) | 文档 RAG 移出核心，文档不再是并行召回语料 | 未开始 | [实施计划已定](notes/2026-08-13-adr0010-implementation-plan.md)（三阶段），阶段 1 待开工；MR-019 蒸馏评估冻结 |
+| [0010](decisions/0010-remove-document-rag.md) | 文档 RAG 移出核心，文档不再是并行召回语料 | 部分实现 | 阶段 1 完成（[commit 1282354](https://github.com/TZHR-invest/memory_recall/commit/1282354)：四端插件移除文档功能）；阶段 3 后端删除待排期；MR-019 蒸馏评估冻结 |
 
 
 ## 下一步
 
 1. ADR-0010 实施（[计划](notes/2026-08-13-adr0010-implementation-plan.md)）：
-   - 阶段 1：四端插件移除文档功能（opencode 打包不发版，版本 1.9.0；hermes/deepseek-tui/codex 同步删 document tools）；
-   - 阶段 2：通知 1-2 个在用用户升级插件（不强制）；
+   - ~~阶段 1 已完成~~（commit 1282354：四端插件移除文档功能，opencode 1.9.0）；
+   - 阶段 2：通知 1-2 个在用用户升级插件（opencode 拉代码 bun run build + install CLI；codex 拉代码重启；hermes/deepseek-tui 同步 server.py），以后端访问日志核对不再调用 /documents API；
    - 阶段 3：后端一次删除（schema 三表/服务/路由/chunks 通道/引用/测试/根目录文档），DROP TABLE 最后单独执行；
 2. 手工验证项（需真实 opencode 运行时，可延后）：
    - 压缩 hook 抛错 / 超时 / 共存检测实测；
@@ -58,10 +59,11 @@
 - test_document/source_deduplication 两个文件一起跑必失败（全局 db 连接跨 asyncio loop 冲突，
   非顺序问题，pytest-order/改 loop scope 均无法解决），单独跑各自全绿；彻底修复需测试
   连接管理重构（TESTING.md 已记录根因，未排期）。
-- 讨论中 topic（2026-08-14 新增，待收敛后立项/升 ADR）：
-  - [记忆确信度 confidence](notes/2026-08-14-memory-confidence.md)（写入/召回/确认/编辑；关联 MR-011/017）
-  - [记忆分层 + 任务级上下文](notes/2026-08-14-memory-layering-and-recall.md)（近/长期 + L0/L1/L2；关联 MR-006/017/019）
-  - [个人 vs 团队边界 + 知识库 vs 记忆](notes/2026-08-14-personal-vs-shared-boundary.md)（边界句"拟采纳"待拍板升 ADR）
-  - [工作台 vs debug 权限](notes/2026-08-14-workbench-vs-debug-roles.md)（并入 MR-011）
+- 讨论中 topic（2026-08-14 重定位，围绕 [命题晋升总纲](notes/2026-08-14-proposition-promotion.md) 展开）：
+  - S0 命题 6 维度 + S1 提炼机制（情景→语义）—— 灵魂；已拆出外部调研（[调研包](notes/research/2026-08-14-memory-value-criteria/README.md) 待 codex 多模型回填结论后回主线）
+  - S2 置信度涨落（[memory-confidence](notes/2026-08-14-memory-confidence.md)）
+  - S3 触发 + 判定（[workbench](notes/2026-08-14-workbench-vs-debug-roles.md) 裁决 + layering 触发）
+  - S4 归属迁移（[personal-vs-shared-boundary](notes/2026-08-14-personal-vs-shared-boundary.md)）
+  - S5 召回消费端（[memory-layering-and-recall](notes/2026-08-14-memory-layering-and-recall.md)）
 
 *状态: ACTIVE · 最后更新: 2026-08-14*

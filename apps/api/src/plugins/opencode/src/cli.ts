@@ -554,17 +554,7 @@ description: 初始化 Memory Recall，导入代码库知识
 
 # 初始化 Memory Recall
 
-## 第一步：导入项目文档
-
-首先导入现有文档：
-
-\`\`\`
-memory-recall(mode: "import-docs")
-\`\`\`
-
-这将导入 README.md、CHANGELOG.md、docs/*.md、AGENTS.md 等文件。
-
-## 第二步：探索代码库
+## 第一步：探索代码库
 
 并行使用多个 explore 查询：
 
@@ -574,7 +564,7 @@ Task(explore, "项目结构是怎样的？")
 Task(explore, "如何构建、测试和运行？")
 \`\`\`
 
-## 第三步：保存知识
+## 第二步：保存知识
 
 使用 \`memory-recall\` 工具保存每个发现：
 
@@ -585,7 +575,7 @@ memory-recall(mode: "add", content: "...", type: "project-config", scope: "proje
 **知识类型：** project-config（项目配置）、architecture（架构）、learned-pattern（学习到的模式）、preference（偏好）、error-solution（错误解决方案）
 **作用域：** project（本项目）、user（跨项目）
 
-## 第四步：确认
+## 第三步：确认
 
 告诉用户导入了什么、保存了什么。
 
@@ -674,8 +664,6 @@ function writeConfig(config: {
   "maxProjectMemories": 10,
   "injectProfile": true,
   "compactionThreshold": 0.8,
-  "enableDocumentTracking": true,
-  "trackedDocPatterns": ["README*.md", "CHANGELOG*.md", "docs/*.md", "AGENTS.md"],
 
   // Chunks 配置
   "enableChunksSearch": true,
