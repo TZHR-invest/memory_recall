@@ -888,7 +888,7 @@ async def _handle_context_inject(args: dict) -> list[TextContent]:
 
     body = {
         "user_tag": USER_TAG,
-        "project_tag": PROJECT_TAG,
+        "project_tag": ensure_project_tag(),
         "query": query,
         "config": {
             "max_memories": max_memories,

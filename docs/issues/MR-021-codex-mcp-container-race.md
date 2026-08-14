@@ -32,6 +32,13 @@ codex 插件项目容器探测链（apps/api/src/plugins/memory-recall-codex/con
 - server.py 的 _tag(scope) 与 status 工具改用 ensure_project_tag()；
 - 修复已同步 codex 缓存安装副本；重启 codex 会话（MCP server 重生）后生效。
 
+## 补充修复（2026-08-14 晚间，与 MR-022 同批）
+
+实测发现 context-inject 处理器仍直接使用模块级冻结常量 PROJECT_TAG
+（server.py 的 body 字段 project_tag），未走 ensure_project_tag()——
+启动竞态触发时该工具仍 403，而 status/search/add 等走 _tag() 的工具已自愈。
+已改为 ensure_project_tag()，仓库与缓存副本同步；需再次重启 codex 会话生效。
+
 ## 验证
 
 - 模拟启动冻结后调 ensure_project_tag()：返回

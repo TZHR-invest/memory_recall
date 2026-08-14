@@ -17,7 +17,7 @@
 | 文档 RAG 移出核心（ADR-0010） | 实施计划已定（2026-08-13，三阶段：插件先行 → 用户升级 → 后端删除）；阶段 1 插件移除待开工 | [实施计划](notes/2026-08-13-adr0010-implementation-plan.md) · [ADR-0010](decisions/0010-remove-document-rag.md) |
 | 全量测试验证 + 回归修复 | 已完成（2026-08-13）：修复 16f3b8f 引入的 Entity 测试回归（user_tag/project_tag→container_tag，2 测试）+ performance 测试 LLM 依赖隔离（extract_entities=False，1 测试）；单元 386（14 skip）+ 集成 7 + 性能 5 + 去重 26 全绿 | commit 6724313 |
 | 记忆维护检查点（ADR-0009） | 已完成（2026-08-13：语义检索 5 主题 × 5 容器 + SQL 关键词预检；版本化修正 1 条过时记忆 `mem_12490fb23d474aa1996e` → `mem_a716b54e449a4003beef`） | [ADR-0009](decisions/0009-memory-maintenance-loop.md) |
-| codex 插件容器探测启动竞态修复（MR-021） | 已完成（2026-08-14：config.py 惰性重探测 ensure_project_tag，server.py 改用之；需重启 codex 会话使 MCP server 重生后生效） | [MR-021](issues/MR-021-codex-mcp-container-race.md) |
+| codex 插件容器探测启动竞态修复（MR-021） | 已完成（2026-08-14：config.py 惰性重探测 ensure_project_tag；同日补充修复 context-inject 直用冻结 PROJECT_TAG 的遗漏路径；重启 codex 会话使 MCP server 重生后全量生效） | [MR-021](issues/MR-021-codex-mcp-container-race.md) |
 | dsh 客户端插件（memory-recall-dsh） | 已完成（2026-08-14：5 工具 + 自动召回注入 + 自动捕获；17 测试全绿；headless 真实运行时 E2E 验证通过；已安装到 ~/.dsh web profile 并生效；修复 MR-022：补 dsh.client.platform + exports["./client"] 后 dsh web 正常运行于 3080） | [dsh 插件](../apps/api/src/plugins/dsh/README.md) |
 
 ## ADR 实施跟踪
