@@ -129,11 +129,11 @@ test("插件导出契约", () => {
   assert.equal(typeof mod.apply, "function");
 });
 
-test("插件 apply 注册 5 个记忆工具（无 Key 时也注册，调用返回失败）", async () => {
+test("插件 apply 注册 6 个记忆工具（无 Key 时也注册，调用返回失败）", async () => {
   const ctx = makeCtx();
   apply(ctx, makeConfig({ apiKey: API_KEY ?? "rk_live_unset" }));
   const names = [...ctx.toolsMap.keys()].sort();
-  assert.deepEqual(names, ["memory_forget", "memory_list", "memory_profile", "memory_search", "memory_store"]);
+  assert.deepEqual(names, ["memory_forget", "memory_list", "memory_profile", "memory_search", "memory_store", "memory_update"]);
 });
 
 test("memory_store / memory_search / memory_profile / memory_forget 端到端（连真实后端）", { skip: !HAS_BACKEND }, async () => {
@@ -351,4 +351,38 @@ test("自动捕获：subagent 会话不入库（连真实后端）", { skip: !HA
   const found = await search.execute({ query: marker, limit: 10 }, { agent: makeFakeAgent(`/home/user/projects/${containerDir}`), signal: new AbortController().signal });
   assert.equal(found.success, true, JSON.stringify(found));
   assert.equal(found.results.filter((r) => r.content.includes(marker)).length, 0, "subagent 会话不应写入记忆");
+});
+
+test("memory_update 版本化修正：旧版过期 + updates 版本链（连真实后端，清理验证）", { skip: !HAS_BACKEND }, async () => {
+  const ctx = makeCtx();
+  apply(ctx, makeConfig());
+  const marker = `dsh-update-${Date.now()}`;
+  const exec = { agent: makeFakeAgent("/home/user/projects/update-test"), signal: new AbortController().signal };
+
+  // 先存一条（同步，确保立即可搜）
+  const store = ctx.toolsMap.get("memory_store");
+  const stored = await store.execute({ content: `${marker} 旧结论：后端用 MySQL`, scope: "project", asyncProcess: false }, exec);
+  assert.equal(stored.success, true, JSON.stringify(stored));
+  const oldId = stored.id;
+
+  // 版本化修正（同步，立即可搜）
+  const update = ctx.toolsMap.get("memory_update");
+  const updated = await update.execute({ memoryId: oldId, content: `${marker} 新结论：后端改用 PostgreSQL`, asyncProcess: false }, exec);
+  assert.equal(updated.success, true, JSON.stringify(updated));
+  assert.equal(updated.relation, "updates", "应建立 updates 关系");
+  assert.equal(updated.old_id, oldId, "old_id 应为旧记忆");
+  assert.equal(updated.status, "done", "同步更新应返回 done");
+
+  // 搜索新内容应命中新版本
+  const search = ctx.toolsMap.get("memory_search");
+  const found = await search.execute({ query: `${marker} 后端`, limit: 10 }, exec);
+  assert.equal(found.success, true, JSON.stringify(found));
+  assert.ok(found.results.some((r) => r.id === updated.id), "新版本应能被搜索到");
+
+  // 清理：删除新旧两条（forget 新版；旧版已被标记过期，直接 forget）
+  const forget = ctx.toolsMap.get("memory_forget");
+  const gone = await forget.execute({ memoryId: updated.id }, exec);
+  assert.equal(gone.success, true, JSON.stringify(gone));
+  const goneOld = await forget.execute({ memoryId: oldId }, exec);
+  assert.equal(goneOld.success, true, JSON.stringify(goneOld));
 });

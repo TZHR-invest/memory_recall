@@ -126,6 +126,22 @@ export class MemoryRecallClient {
     });
   }
 
+  /**
+   * POST /memories/{id}/update → 版本化修正（旧记忆 is_latest=false + updates 关系）。
+   * ADR-0009：过时记忆应版本化修正，勿 forget+store（会丢失版本链）。
+   */
+  updateMemory(memoryId, content, { asyncProcess = false } = {}, externalSignal) {
+    return this.#request(`/memories/${encodeURIComponent(memoryId)}/update`, {
+      method: "POST",
+      timeoutMs: this.writeTimeoutMs,
+      body: {
+        content,
+        async_process: asyncProcess,
+      },
+      externalSignal,
+    });
+  }
+
   /** POST /search → { results: [{id, content, similarity, ...}] } */
   search(query, containerTag, { limit = 10, threshold = 0.4 } = {}, externalSignal) {
     return this.#request("/search", {

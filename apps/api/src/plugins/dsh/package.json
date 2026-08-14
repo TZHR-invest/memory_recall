@@ -1,6 +1,6 @@
 {
   "name": "memory-recall-dsh",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Memory Recall client plugin for DeepSeek Harness (dsh): long-term memory tools, auto-recall injection, and auto-capture. Backend: memory-recall FastAPI (apps/api).",
   "type": "module",
   "main": "index.js",

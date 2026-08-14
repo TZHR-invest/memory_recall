@@ -14,6 +14,9 @@ All notable changes to Memory Recall will be documented in this file.
   - install.sh 契约预检探测：包内 preflight.mjs > DSH_PLUGINS_REPO > ~/dsh-plugins
   - 后端地址安装时配置（--backend-url / MEMORY_RECALL_BASE_URL / 交互询问，输入不回显）——
     后端是各用户自部署的远程服务器，地址不固定，不再打包时写死
+  - 新增 `memory_update` 工具（1.2.0）：版本化修正旧记忆（旧版 is_latest=false +
+    updates 版本链），对齐 ADR-0009「过时记忆用 update 修正，勿 forget+store」；
+    默认异步，asyncProcess 可切同步
   - 版本基线：1.0.0（MR-022/023 修复后）→ 1.1.0（本组完善）
 - codex / hermes 插件：search/list 输出完整记忆 ID（此前仅 8 字符前缀，无法直接用于 update/forget）
 - codex 插件：search 描述明确纯向量边界（图谱/画像/文档请用 context-inject）；SKILL.md 新增"用户明确要求记住时立即 add"强制项

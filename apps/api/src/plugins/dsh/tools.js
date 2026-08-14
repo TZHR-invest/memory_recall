@@ -121,6 +121,66 @@ export function registerTools(ctx, { client, config, resolveTags }) {
     }),
   }));
 
+
+  ctx.tools.register(defineTool({
+    name: "memory_update",
+    description: "版本化修正一条旧记忆（按 memoryId）：后端把旧版本标记为 is_latest=false 并建立 updates 版本链。用于纠正错误或过时的记忆——ADR-0009 要求：不要只新增一条新记忆（旧结论会继续误导召回），也不要 forget+store（会丢失版本链），应优先用本工具。",
+    parameters: {
+      memoryId: {
+        type: "string",
+        required: true,
+        description: "要修正的旧记忆 ID（用 memory_search / memory_list 获取）",
+      },
+      content: {
+        type: "string",
+        required: true,
+        description: "修正后的新内容（简洁、一句话以内）",
+      },
+      asyncProcess: {
+        type: "boolean",
+        description: "是否异步处理（默认 true：立即返回；false 则同步等待 embedding 完成后返回）",
+      },
+      containerTag: {
+        type: "string",
+        description: "容器 tag（仅供校验，默认按旧记忆所在容器）",
+      },
+    },
+    output: {
+      schema: resultSchema({
+        id: { type: "string" },
+        old_id: { type: "string" },
+        relation: { type: "string" },
+        status: { type: "string" },
+      }),
+      render: (_args, value) => [TEXT(value.message)],
+    },
+    execute(args, exec) {
+      return call(exec, async (tags) => {
+        const content = String(args.content).trim();
+        if (!args.memoryId) return { success: false, message: "memoryId 不能为空" };
+        if (!content) return { success: false, message: "content 不能为空" };
+        const updated = await client.updateMemory(String(args.memoryId), content, {
+          asyncProcess: args.asyncProcess !== false,
+        }, exec?.signal);
+        const asyncNote = updated.status === "processing" ? "（异步处理中，稍后即可搜索到）" : "";
+        return {
+          success: true,
+          message: `已生成新版本 ${updated.id}（旧版 ${updated.old_id} 已标记为过期，updates 版本链）${asyncNote}`,
+          id: updated.id,
+          old_id: updated.old_id,
+          relation: updated.relation,
+          status: updated.status ?? "done",
+        };
+      });
+    },
+    presentCall: (args) => ({
+      card: "generic",
+      title: "Update memory (versioned)",
+      kind: "other",
+      rawInput: args.content,
+    }),
+  }));
+
   ctx.tools.register(defineTool({
     name: "memory_search",
     description: "语义搜索长期记忆，返回与查询最相关的记忆条目（含相似度）。了解项目历史、用户偏好、之前讨论过的决策前先调用它。",

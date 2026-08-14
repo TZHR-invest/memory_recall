@@ -8,7 +8,7 @@ FastAPI（`apps/api`）。
 
 | 能力 | 说明 |
 |------|------|
-| 记忆工具 | `memory_store`（默认异步，立即返回）/ `memory_search` / `memory_profile` / `memory_list` / `memory_forget` |
+| 记忆工具 | `memory_store`（默认异步，立即返回）/ `memory_search` / `memory_profile` / `memory_list` / `memory_forget` / `memory_update`（版本化修正，ADR-0009） |
 | 自动召回 | `agent/pre-step` 时按策略调 `POST /context-inject`，把召回上下文以 `<system-reminder>` 框定消息折入本轮请求 |
 | 自动捕获 | `turn/end` 时把该轮 user+assistant 摘要写入长期记忆（`extract` 蒸馏 / `raw` 原文，默认 `extract`） |
 
@@ -127,9 +127,11 @@ ln -sfn ~/.dsh/profiles/node_modules node_modules
 node --test
 ```
 
-测试覆盖：配置解析/边界夹取/标签推导/语言检测/关键词触发；5 个工具端到端
-（store→search→profile→forget）；自动召回（smart 关键词触发、once 首次注入、
-摘要去重、后端不可达 fail-open）；自动捕获（turn 落库 + 无回复不落库）。
+测试覆盖：配置解析/边界夹取/标签推导/语言检测/关键词触发；6 个工具端到端
+（store→update 版本链→search→profile→forget）；自动召回（smart 关键词触发、
+once 首次注入、摘要去重、后端不可达 fail-open）；自动捕获（turn 落库 + 无回复
+不落库）；bundle 生成产物同步性 + classic-script 合法性 + `__ModuleLoader__.load`
+注册形态。
 
 ## 客户端 bundle 生成（MR-023）
 
