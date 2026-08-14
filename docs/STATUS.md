@@ -18,7 +18,7 @@
 | 全量测试验证 + 回归修复 | 已完成（2026-08-13）：修复 16f3b8f 引入的 Entity 测试回归（user_tag/project_tag→container_tag，2 测试）+ performance 测试 LLM 依赖隔离（extract_entities=False，1 测试）；单元 386（14 skip）+ 集成 7 + 性能 5 + 去重 26 全绿 | commit 6724313 |
 | 记忆维护检查点（ADR-0009） | 已完成（2026-08-13：语义检索 5 主题 × 5 容器 + SQL 关键词预检；版本化修正 1 条过时记忆 `mem_12490fb23d474aa1996e` → `mem_a716b54e449a4003beef`） | [ADR-0009](decisions/0009-memory-maintenance-loop.md) |
 | codex 插件容器探测启动竞态修复（MR-021） | 已完成（2026-08-14：config.py 惰性重探测 ensure_project_tag，server.py 改用之；需重启 codex 会话使 MCP server 重生后生效） | [MR-021](issues/MR-021-codex-mcp-container-race.md) |
-| 记忆价值判据外部调研（S0+S1 第一刀） | round-01 待执行（提示词就绪，codex 浏览器多模型粘贴 + 回填） | [调研目录](notes/research/2026-08-14-memory-value-criteria/README.md) |
+| 记忆价值判据外部调研（S0+S1 第一刀） | round-01 已完成（2026-08-14：五平台回填 + 收敛，结论见 99-final-conclusions，待回项目内验证/实现） | [调研目录](notes/research/2026-08-14-memory-value-criteria/README.md) |
 
 ## ADR 实施跟踪
 

@@ -1,6 +1,6 @@
 # 2026-08-14: 记忆价值判据——外部调研
 
-> 类型: 外部调研 · 状态: round-01 待执行（codex 浏览器多模型粘贴） · 日期: 2026-08-14
+> 类型: 外部调研 · 状态: round-01 已完成（五平台回填 + 收敛，待回项目内验证） · 日期: 2026-08-14
 > 归属: [命题晋升总纲](../2026-08-14-proposition-promotion.md)（S0+S1 第一刀：什么值得晋升为知识）
 
 ## 目标（一句话）
@@ -36,9 +36,13 @@
 |------|------|
 | [01-goals.md](01-goals.md) | 背景、锚点、已知源码事实、研究问题清单 |
 | [02-round-01-prompts.md](02-round-01-prompts.md) | round-01 提示词（按平台打包，codex 逐平台复制粘贴） |
-| NN-round-01-answers-&lt;platform&gt;.md | （codex 回填）各平台原始回答，一平台一文件 |
-| NN-round-01-conclusions.md | （收敛后）round-01 统一理解 |
-| 99-final-conclusions.md | （收敛后）最终对照表与决策映射 |
+| [03-round-01-answers-chatgpt.md](03-round-01-answers-chatgpt.md) | ChatGPT 回答原文（Q1/Q2/Q3） |
+| [04-round-01-answers-claude.md](04-round-01-answers-claude.md) | Claude 回答原文（Q1/Q4/Q5） |
+| [05-round-01-answers-grok.md](05-round-01-answers-grok.md) | Grok 回答原文（Q1/Q3） |
+| [06-round-01-answers-gemini.md](06-round-01-answers-gemini.md) | Gemini 回答原文（Q4/Q5） |
+| [07-round-01-answers-doubao.md](07-round-01-answers-doubao.md) | doubao 回答原文（Q2/Q3） |
+| [08-round-01-conclusions.md](08-round-01-conclusions.md) | round-01 统一理解（五平台收敛 + 假设验证） |
+| [99-final-conclusions.md](99-final-conclusions.md) | 最终对照表与决策映射（候选判据表 + 源码落点） |
 
 ## 执行方式
 
@@ -46,3 +50,12 @@
 [02-round-01-prompts.md](02-round-01-prompts.md) 里各平台文本块整块粘贴到对应平台，回答原文回填到
 `NN-round-01-answers-<platform>.md`。纪律不变：原文事实 / 推断 / 不知道三档 + 给链接；C 类结论回项目内
 验证后才能进 ADR / 根目录。
+
+## round-01 执行记录（2026-08-14）
+
+- ChatGPT / Claude / Grok / Gemini / doubao 五平台均已粘贴对应题组并回填原文（Chrome 浏览器自动化）。
+- 统一理解与收敛见 [08-round-01-conclusions.md](08-round-01-conclusions.md)；
+  候选判据对照表 + 决策映射见 [99-final-conclusions.md](99-final-conclusions.md)。
+- 关键结论：value ≈ P(future need) × C(reacquisition)；项目内/跨项目是 scope 差异非价值差异；
+  晋升触发用意外性/冲突（prediction error）而非定时摘要；四类失效（幻觉/过时/漂移/投毒）防护机制不同。
+- 下一步：按 [99-final-conclusions.md](99-final-conclusions.md) 决策映射回项目内验证/实现（进 ADR 前置条件）。
