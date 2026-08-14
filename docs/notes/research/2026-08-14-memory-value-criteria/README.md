@@ -1,6 +1,6 @@
 # 2026-08-14: 记忆价值判据——外部调研
 
-> 类型: 外部调研 · 状态: 待执行（交给另一 agent） · 日期: 2026-08-14
+> 类型: 外部调研 · 状态: round-01 待执行（codex 浏览器多模型粘贴） · 日期: 2026-08-14
 > 归属: [命题晋升总纲](../2026-08-14-proposition-promotion.md)（S0+S1 第一刀：什么值得晋升为知识）
 
 ## 目标（一句话）
@@ -20,16 +20,29 @@
 一张「候选判据对照表」：每条 = 名称 + 通俗含义 + 出处（链接）+ 怎么操作化 + 适用层级（项目内 / 跨项目）+
 证据强度（原文事实 / 推断）。外加每问的"原文事实 / 推断 / 不知道"标注。
 
+## 平台分配（round-01，每题 2-3 个，C 类）
+
+| 题 | 平台 |
+|----|------|
+| Q1 判据本体 | ChatGPT / Claude / Grok |
+| Q2 项目内 vs 跨项目 | ChatGPT / doubao |
+| Q3 价值度量 | ChatGPT / Grok / doubao |
+| Q4 晋升 / 抽象时点 | Claude / Gemini |
+| Q5 负例 / 污染 | Claude / Gemini |
+
 ## 文件索引
 
 | 文件 | 内容 |
 |------|------|
 | [01-goals.md](01-goals.md) | 背景、锚点、已知源码事实、研究问题清单 |
-| [02-agent-brief.md](02-agent-brief.md) | 交给执行 agent 的自包含上下文 + 执行指令 + 产出要求 |
-| 99-final-conclusions.md | （执行 agent 产出）最终对照表与决策映射 |
+| [02-round-01-prompts.md](02-round-01-prompts.md) | round-01 提示词（按平台打包，codex 逐平台复制粘贴） |
+| NN-round-01-answers-&lt;platform&gt;.md | （codex 回填）各平台原始回答，一平台一文件 |
+| NN-round-01-conclusions.md | （收敛后）round-01 统一理解 |
+| 99-final-conclusions.md | （收敛后）最终对照表与决策映射 |
 
-## 执行方式（偏离 HITL 的说明）
+## 执行方式
 
-本调研不走 RESEARCH_GUIDE 的多模型人工粘贴流程（chatgpt / grok / ...），改为**由另一 agent 用
-web_search + 一手文献执行**。保留的纪律：文件夹结构、提问纪律（区分原文事实 / 推断 / 不知道 + 给链接）、
-三阶段漏斗精神（定向 → 交叉 → 收敛）、C 类结论必须回项目内验证后才能进 ADR / 根目录。
+走 RESEARCH_GUIDE 的 Human-in-the-Loop 多模型流程：**codex 操作浏览器**，把
+[02-round-01-prompts.md](02-round-01-prompts.md) 里各平台文本块整块粘贴到对应平台，回答原文回填到
+`NN-round-01-answers-<platform>.md`。纪律不变：原文事实 / 推断 / 不知道三档 + 给链接；C 类结论回项目内
+验证后才能进 ADR / 根目录。
