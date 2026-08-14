@@ -3,6 +3,7 @@
 > 类型: 讨论 · 日期: 2026-08-14
 > 关联: MR-011（知识浏览/纠错）· MR-017（注入 cap）· ADR-0009（记忆维护闭环）·
 > [memory-layering-and-recall](2026-08-14-memory-layering-and-recall.md)（confidence 是分层晋升的输入）
+> 重定位: 已并入 [命题晋升总纲](2026-08-14-proposition-promotion.md)（S2 信号），讨论改走总纲主线
 
 ## 背景
 

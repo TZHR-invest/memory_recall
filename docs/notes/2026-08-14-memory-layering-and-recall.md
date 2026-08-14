@@ -3,6 +3,7 @@
 > 类型: 讨论 · 日期: 2026-08-14
 > 关联: MR-006（单一事实源）· MR-017（注入 cap）· MR-019（文档→记忆蒸馏）· ADR-0010（文档 RAG 移出）·
 > [memory-confidence](2026-08-14-memory-confidence.md)
+> 重定位: 已并入 [命题晋升总纲](2026-08-14-proposition-promotion.md)（S3 触发 + S5 消费），讨论改走总纲主线
 
 ## 背景
 

@@ -57,10 +57,11 @@
 - test_document/source_deduplication 两个文件一起跑必失败（全局 db 连接跨 asyncio loop 冲突，
   非顺序问题，pytest-order/改 loop scope 均无法解决），单独跑各自全绿；彻底修复需测试
   连接管理重构（TESTING.md 已记录根因，未排期）。
-- 讨论中 topic（2026-08-14 新增，待收敛后立项/升 ADR）：
-  - [记忆确信度 confidence](notes/2026-08-14-memory-confidence.md)（写入/召回/确认/编辑；关联 MR-011/017）
-  - [记忆分层 + 任务级上下文](notes/2026-08-14-memory-layering-and-recall.md)（近/长期 + L0/L1/L2；关联 MR-006/017/019）
-  - [个人 vs 团队边界 + 知识库 vs 记忆](notes/2026-08-14-personal-vs-shared-boundary.md)（边界句"拟采纳"待拍板升 ADR）
-  - [工作台 vs debug 权限](notes/2026-08-14-workbench-vs-debug-roles.md)（并入 MR-011）
+- 讨论中 topic（2026-08-14 重定位，围绕 [命题晋升总纲](notes/2026-08-14-proposition-promotion.md) 展开）：
+  - S0 命题 6 维度模型 + S1 提炼机制（情景→语义）—— 灵魂，下一步先聊
+  - S2 置信度涨落（[memory-confidence](notes/2026-08-14-memory-confidence.md)）
+  - S3 触发 + 判定（[workbench](notes/2026-08-14-workbench-vs-debug-roles.md) 裁决 + layering 触发）
+  - S4 归属迁移（[personal-vs-shared-boundary](notes/2026-08-14-personal-vs-shared-boundary.md)）
+  - S5 召回消费端（[memory-layering-and-recall](notes/2026-08-14-memory-layering-and-recall.md)）
 
 *状态: ACTIVE · 最后更新: 2026-08-14*
