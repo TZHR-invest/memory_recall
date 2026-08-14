@@ -87,7 +87,7 @@ from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent
 
 # ── 配置（config.py：环境变量 > ~/.config/codex/memory-recall.jsonc > 默认值）
-from config import API_BASE_URL, API_KEY, USER_TAG, PROJECT_TAG
+from config import API_BASE_URL, API_KEY, USER_TAG, PROJECT_TAG, ensure_project_tag
 from config import CONFIG
 
 app = Server("memory-recall")
@@ -130,7 +130,7 @@ async def api_request(
 
 def _tag(scope: str) -> str:
     """根据 scope 返回 container_tag"""
-    return USER_TAG if scope == "user" else PROJECT_TAG
+    return USER_TAG if scope == "user" else ensure_project_tag()
 
 
 # ── 工具定义 ──────────────────────────────────────────────────────
@@ -814,9 +814,9 @@ async def _handle_status(args: dict) -> list[TextContent]:
                     raise
                 return "?"
         mem_user = await _count("/memories", USER_TAG, strict=True)
-        mem_project = await _count("/memories", PROJECT_TAG, strict=True)
+        mem_project = await _count("/memories", ensure_project_tag(), strict=True)
         doc_user = await _count("/documents", USER_TAG)
-        doc_project = await _count("/documents", PROJECT_TAG)
+        doc_project = await _count("/documents", ensure_project_tag())
         config_src = "配置文件"
         if not (Path.home() / ".config" / "codex" / "memory-recall.jsonc").exists():
             config_src = "默认值（未找到配置文件）"
@@ -830,7 +830,7 @@ async def _handle_status(args: dict) -> list[TextContent]:
             text=f"✅ memory_recall 服务正常运行\n"
                  f"API: {API_BASE_URL}\n"
                  f"用户标签: {USER_TAG}\n"
-                 f"项目标签: {PROJECT_TAG}\n"
+                 f"项目标签: {ensure_project_tag()}\n"
                  f"用户范围: 记忆 {mem_user} / 文档 {doc_user}\n"
                  f"项目范围: 记忆 {mem_project} / 文档 {doc_project}\n"
                  f"配置来源: {config_src}",

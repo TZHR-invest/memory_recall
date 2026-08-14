@@ -230,3 +230,26 @@ _START_TIME = time.time()  # 模块导入时刻 ≈ MCP server 进程启动时�
 CONFIG = load_config()
 API_BASE_URL, API_KEY = CONFIG["base_url"], CONFIG["api_key"]
 USER_TAG, PROJECT_TAG = CONFIG["user_tag"], CONFIG["project_tag"]
+
+
+_PROJECT_TAG_FALLBACK = "codex-default"
+
+
+def ensure_project_tag() -> str:
+    """项目容器启动竞态兜底（VSCode 扩展模式）。
+
+    MCP server 与 codex 会话 rollout 文件几乎同时创建：若 server 的模块导入
+    先于 rollout 落盘，启动探测会回退 codex-default 并被冻结，导致 project
+    范围所有请求 403（容器前缀不匹配 API Key）。首次使用工具时重新探测一次
+    （此时 rollout 通常已存在）；仍未成功则保持回退值，下次调用再试，直到成功。
+    """
+    global PROJECT_TAG
+    if PROJECT_TAG == _PROJECT_TAG_FALLBACK:
+        detected = detect_project_tag(USER_TAG)
+        if detected and detected != _PROJECT_TAG_FALLBACK:
+            logger.info(
+                "项目容器启动探测回退 %r，首次使用重探测为 %r",
+                _PROJECT_TAG_FALLBACK, detected,
+            )
+            PROJECT_TAG = detected
+    return PROJECT_TAG

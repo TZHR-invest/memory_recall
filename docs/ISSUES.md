@@ -1,6 +1,6 @@
 # Memory Recall 已知问题清单（索引）
 
-> 状态: ACTIVE · 版本: v1.4 · 最后更新: 2026-08-13
+> 状态: ACTIVE · 版本: v1.4 · 最后更新: 2026-08-14
 >
 > 本文件是问题清单**索引**（进知识库，Agent 一眼看到当前有哪些坑）；
 > 每个问题的详情在 `docs/issues/MR-xxx-短slug.md`。
@@ -51,6 +51,7 @@
 
 | ID | 标题 | 解决版本/commit |
 |----|------|----------------|
+| MR-021 | codex 插件项目容器探测启动竞态（VSCode 扩展模式偶发 403，容器回退 codex-default 被冻结） | 见 [MR-021 详情](issues/MR-021-codex-mcp-container-race.md)（2026-08-14 修复，config.py 惰性重探测） |
 
 ## 优先行动建议
 
