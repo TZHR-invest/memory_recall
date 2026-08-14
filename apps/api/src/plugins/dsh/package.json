@@ -6,6 +6,7 @@
   "main": "index.js",
   "exports": {
     ".": "./index.js",
+    "./client": "./client.js",
     "./package.json": "./package.json"
   },
   "license": "MIT",
@@ -14,7 +15,8 @@
   },
   "dsh": {
     "client": {
-      "inject": []
+      "inject": [],
+      "platform": "web"
     }
   }
 }
