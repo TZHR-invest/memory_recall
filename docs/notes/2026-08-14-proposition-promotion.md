@@ -2,7 +2,7 @@
 
 > 类型: 讨论（方向重定位 + 讨论路线图）· 日期: 2026-08-14
 > 关联: [memory-confidence](2026-08-14-memory-confidence.md)（S2）· [memory-layering-and-recall](2026-08-14-memory-layering-and-recall.md)（S3/S5）·
-> [personal-vs-shared-boundary](2026-08-14-personal-vs-shared-boundary.md)（S4）· [workbench-vs-debug-roles](2026-08-14-workbench-vs-debug-roles.md)（S3）·
+> [personal-vs-shared-boundary](2026-08-14-personal-vs-shared-boundary.md)（S4）· [workbench-vs-debug-roles](2026-08-14-workbench-vs-debug-roles.md)（S3）· [promotion-judgment](2026-08-14-promotion-judgment.md)（S0+S1 判据）·
 > MR-006（统一知识对象）· MR-008 · MR-011 · MR-019
 
 ## 背景
@@ -36,7 +36,7 @@
 | [personal-vs-shared-boundary](2026-08-14-personal-vs-shared-boundary.md) | S4 迁移 | 团队知识的归属/载体 |
 | [workbench-vs-debug-roles](2026-08-14-workbench-vs-debug-roles.md) | S3 裁决 | 人确认/纠错（晋升的判定界面） |
 
-**缺口**：没有 note 覆盖"提炼/泛化机制本身"（情景→语义）——即 S1，这是灵魂，需新开。
+**缺口（进行中）**：[promotion-judgment](2026-08-14-promotion-judgment.md) 记录了 S0+S1 第一轮判据讨论（四桶 + P×C），但"提炼/泛化机制本身"仍未拍板。
 
 ## 结论
 
