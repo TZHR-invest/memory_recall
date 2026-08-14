@@ -69,6 +69,9 @@ const DEFAULTS = {
   // 写入超时单独放宽：POST /memories 同步包含 embedding + LLM 实体提取 + 关系检测，
   // 实测可到 25s+（后端 LLM 调用延迟），30s 默认读超时会误杀写入
   writeTimeoutMs: 90000,
+  // 自动召回注入预算：context-inject 是模型请求关键路径上的同步等待，
+  // 超过预算跳过本轮注入，不让记忆拖慢对话
+  injectTimeoutMs: 3000,
   debug: false,
 };
 
@@ -155,6 +158,7 @@ export function resolveConfig(raw = {}) {
     captureMaxChars: clampInt(raw.captureMaxChars, 200, 20000, DEFAULTS.captureMaxChars),
     requestTimeoutMs: clampInt(raw.requestTimeoutMs, 1000, 120000, DEFAULTS.requestTimeoutMs),
     writeTimeoutMs: clampInt(raw.writeTimeoutMs, 5000, 300000, DEFAULTS.writeTimeoutMs),
+    injectTimeoutMs: clampInt(raw.injectTimeoutMs, 500, 15000, DEFAULTS.injectTimeoutMs),
     debug: raw.debug ?? DEFAULTS.debug,
   };
 }

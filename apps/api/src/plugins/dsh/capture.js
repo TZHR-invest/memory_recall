@@ -31,18 +31,26 @@ export function createCaptureHandler({ client, config, resolveTags, logger }) {
             await client.addMemory(m.content, tags.project, {
               isStatic: type === "preference",
               type,
+              asyncProcess: true, // 后台写入，捕获路径无需等待 embedding
             });
           }
           logger?.info?.("[memory-recall-dsh] 蒸馏捕获 %d 条记忆", extracted.memories.length);
           return;
         }
+        // 蒸馏判断"无值得保存的内容"：尊重判断，不落库（不再回退 raw 存全文，
+        // 避免把临时对话灌进长期记忆）；仅接口报错才走下方 raw 回退保全信息
+        logger?.debug?.("[memory-recall-dsh] 蒸馏判定无可保存记忆，跳过本轮捕获");
+        return;
       } catch (error) {
         logger?.warn?.("[memory-recall-dsh] /extract-memory 失败，回退 raw 捕获: %s", error instanceof Error ? error.message : String(error));
       }
     }
 
     try {
-      await client.addMemory(summary, tags.project, { type: "conversation" });
+      await client.addMemory(summary, tags.project, {
+        type: "conversation",
+        asyncProcess: true, // 后台写入
+      });
       logger?.info?.("[memory-recall-dsh] 已捕获会话摘要（%d 字符）", summary.length);
     } catch (error) {
       logger?.warn?.("[memory-recall-dsh] 捕获失败: %s", error instanceof Error ? error.message : String(error));
@@ -51,6 +59,8 @@ export function createCaptureHandler({ client, config, resolveTags, logger }) {
 
   return (session, event) => {
     if (!config.autoCapture || !client.isConfigured()) return;
+    // 跳过子 agent 会话：subagent 是任务分解的临时执行者，其对话不应作为记忆入库
+    if (session?.header?.origin === "subagent") return;
     switch (event.type) {
       case "turn/start": {
         sessions.set(session, { turn: event.data.turn, userText: "", assistantText: "" });

@@ -8,7 +8,7 @@ FastAPI（`apps/api`）。
 
 | 能力 | 说明 |
 |------|------|
-| 记忆工具 | `memory_store` / `memory_search` / `memory_profile` / `memory_list` / `memory_forget` |
+| 记忆工具 | `memory_store`（默认异步，立即返回）/ `memory_search` / `memory_profile` / `memory_list` / `memory_forget` |
 | 自动召回 | `agent/pre-step` 时按策略调 `POST /context-inject`，把召回上下文以 `<system-reminder>` 框定消息折入本轮请求 |
 | 自动捕获 | `turn/end` 时把该轮 user+assistant 摘要写入长期记忆（`extract` 蒸馏 / `raw` 原文，默认 `extract`） |
 
@@ -25,11 +25,13 @@ FastAPI（`apps/api`）。
 ### 自动捕获（captureMode）
 
 - `extract`（默认）：`POST /extract-memory` 用后端 LLM 蒸馏出值得保存的记忆再逐条落库
-  （`type=preference` 自动归为永久特征）；蒸馏无价值或失败时回退 raw；
+  （`type=preference` 自动归为永久特征）。**蒸馏判定"无值得保存"时静默不存**
+  （尊重判断，避免临时对话灌入长期记忆）；仅蒸馏接口报错才回退 raw 保全信息；
 - `raw`：把摘要原文存为 `conversation` 类型记忆（截断到 `captureMaxChars`）。
 
-捕获为 fire-and-forget + fail-open，绝不阻塞 agent 主流程。注意：后端对语义相似内容
-有合并去重（threshold 0.85），重复捕获会自动合并到最新版本，不会堆积。
+捕获为 fire-and-forget + fail-open（写入走 `async_process` 后台完成），绝不阻塞
+agent 主流程；**subagent 会话（header.origin="subagent"）不捕获**，避免子任务噪音。
+后端对语义相似内容有合并去重（threshold 0.85），重复捕获会自动合并到最新版本。
 
 ## 安装
 
@@ -75,6 +77,7 @@ bash install.sh --uninstall          # 卸载
 | `captureMode` | `extract` | `extract` / `raw` |
 | `captureMinLength` / `captureMaxChars` | 40 / 4000 | 捕获门槛与截断 |
 | `requestTimeoutMs` / `writeTimeoutMs` | 30000 / 90000 | 读/写超时（写入含 LLM 提取，实测 25s+） |
+| `injectTimeoutMs` | 3000 | 自动召回注入预算：超过则跳过本轮注入（模型请求关键路径不被拖慢） |
 | `debug` | `false` | 打印注入明细日志 |
 
 ## 依赖契约

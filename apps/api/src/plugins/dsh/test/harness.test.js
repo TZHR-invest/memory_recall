@@ -143,10 +143,11 @@ test("memory_store / memory_search / memory_profile / memory_forget 端到端（
   const agent = makeFakeAgent("/home/user/projects/e2e-test");
   const exec = { agent, signal: new AbortController().signal };
 
-  // store
+  // store（同步模式：测试需要立即可搜索）
   const store = ctx.toolsMap.get("memory_store");
-  const stored = await store.execute({ content: `${marker} 这是 dsh 插件的端到端测试记忆`, scope: "project" }, exec);
+  const stored = await store.execute({ content: `${marker} 这是 dsh 插件的端到端测试记忆`, scope: "project", asyncProcess: false }, exec);
   assert.equal(stored.success, true, JSON.stringify(stored));
+  assert.equal(stored.status, "done", "同步写入应返回 done");
   const memoryId = stored.id;
 
   // search
@@ -174,9 +175,9 @@ test("自动召回：smart 策略下关键词触发注入（连真实后端）",
   const exec = { agent, signal: new AbortController().signal };
   const marker = `dsh-recall-marker-${Date.now()}`;
 
-  // 先向项目容器写入一条记忆（关键词触发的注入才有内容可召回）
+  // 先向项目容器写入一条记忆（关键词触发的注入才有内容可召回；同步模式保证立即可搜）
   const store = ctx.toolsMap.get("memory_store");
-  const stored = await store.execute({ content: `${marker} 项目架构决策：后端用 FastAPI，前端用 React`, scope: "project" }, exec);
+  const stored = await store.execute({ content: `${marker} 项目架构决策：后端用 FastAPI，前端用 React`, scope: "project", asyncProcess: false }, exec);
   assert.equal(stored.success, true, JSON.stringify(stored));
 
   // 非首次 + 关键词触发
@@ -306,4 +307,48 @@ test("自动捕获：turn/end 前未产生助手回复 → 不落库", { skip: !
   // 无助手文本 → 不应有任何后端调用；这里仅验证不抛异常
   await new Promise((r) => setTimeout(r, 300));
   assert.ok(true);
+});
+
+test("memory_store 默认异步：立即返回 status=processing（连真实后端）", { skip: !HAS_BACKEND }, async () => {
+  const ctx = makeCtx();
+  apply(ctx, makeConfig());
+  const marker = `dsh-async-store-${Date.now()}`;
+  const exec = { agent: makeFakeAgent("/home/user/projects/e2e-test"), signal: new AbortController().signal };
+  const start = Date.now();
+  const stored = await ctx.toolsMap.get("memory_store").execute({ content: `${marker} 异步写入测试`, scope: "project" }, exec);
+  const elapsed = Date.now() - start;
+  assert.equal(stored.success, true, JSON.stringify(stored));
+  assert.equal(stored.status, "processing", "默认异步应返回 processing");
+  assert.ok(elapsed < 5000, `异步写入应快速返回（实际 ${elapsed}ms）`);
+  // 清理：异步写入的 embedding 尚未完成，forget 不依赖 embedding，可直接删
+  const forget = ctx.toolsMap.get("memory_forget");
+  const gone = await forget.execute({ memoryId: stored.id }, exec);
+  assert.equal(gone.success, true, JSON.stringify(gone));
+});
+
+test("自动捕获：subagent 会话不入库（连真实后端）", { skip: !HAS_BACKEND }, async () => {
+  const ctx = makeCtx();
+  apply(ctx, makeConfig({ captureMode: "raw" }));
+  const containerDir = `subagent-capture-${Date.now()}`;
+  // 子 agent 会话：header.origin === "subagent"
+  const session = { header: { cwd: `/home/user/projects/${containerDir}`, origin: "subagent" } };
+  const marker = `dsh-subagent-${Date.now()}`;
+
+  ctx.emitSessionEvent(session, { type: "turn/start", data: { turn: 1 } });
+  ctx.emitSessionEvent(session, {
+    type: "user/message",
+    data: { source: { kind: "user" }, content: [{ type: "text", text: `${marker} 子任务输入` }] },
+  });
+  ctx.emitSessionEvent(session, {
+    type: "assistant/message",
+    data: { message: { content: [{ type: "text", text: `${marker} 子任务回复内容，足够长以触发捕获条件`.repeat(4) }] } },
+  });
+  ctx.emitSessionEvent(session, { type: "turn/end", data: { turn: 1, reason: "success" } });
+
+  // 等待可能存在的（错误的）写入完成，再断言容器为空
+  await new Promise((r) => setTimeout(r, 3000));
+  const search = ctx.toolsMap.get("memory_search");
+  const found = await search.execute({ query: marker, limit: 10 }, { agent: makeFakeAgent(`/home/user/projects/${containerDir}`), signal: new AbortController().signal });
+  assert.equal(found.success, true, JSON.stringify(found));
+  assert.equal(found.results.filter((r) => r.content.includes(marker)).length, 0, "subagent 会话不应写入记忆");
 });

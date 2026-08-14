@@ -113,8 +113,13 @@ class MemoryRecallClient {
     return this.#request("/auth/verify", { externalSignal });
   }
 
-  /** POST /memories → 新建记忆 */
-  addMemory(content, containerTag, { isStatic = false, type = null } = {}, externalSignal) {
+  /**
+   * POST /memories → 新建记忆
+   * @param asyncProcess - true 时后端后台处理 embedding/实体提取/关系检测，
+   *   立即返回 status="processing"（写入从 25s+ 降到 <1s）；默认 false 保持同步
+   *   （可立即搜索到）。
+   */
+  addMemory(content, containerTag, { isStatic = false, type = null, asyncProcess = false } = {}, externalSignal) {
     const metadata = type ? { type } : {};
     return this.#request("/memories", {
       method: "POST",
@@ -124,6 +129,7 @@ class MemoryRecallClient {
         container_tag: containerTag,
         is_static: isStatic,
         metadata,
+        async_process: asyncProcess,
       },
       externalSignal,
     });

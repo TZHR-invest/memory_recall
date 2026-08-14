@@ -53,7 +53,7 @@ export function registerTools(ctx, { client, config, resolveTags }) {
 
   ctx.tools.register(defineTool({
     name: "memory_store",
-    description: "把一条信息存入长期记忆（后端自动提取实体、检测关系；type=preference 自动归为永久特征）。用于保存用户偏好、项目约束、技术决策、踩坑经验等跨会话有用的信息。",
+    description: "把一条信息存入长期记忆（后端自动提取实体、检测关系；type=preference 自动归为永久特征）。用于保存用户偏好、项目约束、技术决策、踩坑经验等跨会话有用的信息。默认异步：立即返回提交成功，embedding/实体提取在后台完成（约几秒后可被搜索到）。",
     parameters: {
       content: {
         type: "string",
@@ -78,11 +78,16 @@ export function registerTools(ctx, { client, config, resolveTags }) {
         type: "string",
         description: "容器 tag 覆盖（一般不需要）",
       },
+      asyncProcess: {
+        type: "boolean",
+        description: "是否异步处理（默认 true：立即返回；false 则同步等待 embedding 完成后返回，可立即搜索到）",
+      },
     },
     output: {
       schema: resultSchema({
         id: { type: "string" },
         container_tag: { type: "string" },
+        status: { type: "string" },
       }),
       render: (_args, value) => [TEXT(value.message)],
     },
@@ -96,12 +101,15 @@ export function registerTools(ctx, { client, config, resolveTags }) {
         const memory = await client.addMemory(content, containerTag, {
           isStatic,
           type: args.type ?? null,
+          asyncProcess: args.asyncProcess !== false,
         }, exec?.signal);
+        const asyncNote = memory.status === "processing" ? "（异步处理中，稍后即可搜索到）" : "";
         return {
           success: true,
-          message: `已保存记忆（${memory.id}，容器 ${memory.container_tag}）`,
+          message: `已保存记忆（${memory.id}，容器 ${memory.container_tag}）${asyncNote}`,
           id: memory.id,
           container_tag: memory.container_tag,
+          status: memory.status ?? "done",
         };
       });
     },
