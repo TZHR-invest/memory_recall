@@ -1036,24 +1036,38 @@ async def extract_memory_from_summary(
     import json
 
     if request.language == "zh_CN":
-        system_prompt = """你是一个记忆提取专家。你的任务是从会话摘要中提取值得长期保存的记忆。
+        system_prompt = """你是一个记忆提取专家。你的任务是从会话摘要中提取值得长期保存的记忆，并准确分类。
 
-**保存标准**（必须同时满足）：
-1. 跨会话有效：这个信息在未来的对话中仍然有用
-2. 非临时状态：不是"正在做什么"，而是"应该怎么做"
-3. 非代码细节：代码实现在代码库中，不需要记忆
+## 类型判定标准（严格按此分类）
 
-**值得保存的例子**：
-- 用户偏好："用户偏好使用中文回复"
-- 项目约束："测试不能跳过"
-- 学到的模式："语义去重阈值 0.85 最合适"
-- 技术决策："使用 PostgreSQL 而不是 MySQL"
+**preference — 用户的主观喜好/习惯/语言风格/工作方式**
+- 判定特征：主语是用户本人，表达"喜欢/偏好/习惯/倾向"
+- ✓ 正确："用户偏好使用中文回复"、"用户习惯先写测试再写实现"
+- ✗ 反例："推荐使用语义去重"（这是建议，不是用户偏好）
+- 影响：preference 会进入用户画像跨会话长期注入，分类必须准确
 
-**不值得保存的例子**：
-- 临时任务："实现登录功能"（完成后就没意义）
-- 当前状态："正在编辑 auth.ts"（下次不同）
-- 代码细节："函数签名是..."（在代码中）
-- 已完成工作："已创建 3 个文件"（历史记录）
+**constraint — 项目/任务的硬性边界、必须遵守的规则**
+- 判定特征：违反会产生后果，常含"必须/不能/禁止/不允许"
+- ✓ 正确："测试不能跳过"、"生产环境禁止直接改数据库"
+- ✗ 反例："测试覆盖率提高了"（事实陈述，不是约束）
+
+**learned-pattern — 实践中验证有效的做法/技术决策/踩坑教训**
+- 判定特征：基于实际操作验证过，含"发现/验证/踩坑/最合适/改用"
+- ✓ 正确："语义去重阈值 0.85 最合适"、"改用 PostgreSQL 而不是 MySQL"（有验证）
+- ✗ 反例："语义去重很重要"（无验证的泛泛之言）
+
+## 硬性排除（以下内容一律不保存）
+1. 对话流水账："我们讨论了X"、"用户问了X"、"我解释了X"（事后无价值）
+2. 系统/API 描述性知识："该端点支持XX参数"、"XX是兜底类型"（文档可查）
+3. 无验证的泛泛结论："XX很重要"、"要注意XX"
+4. 与已提取条目语义重复的内容
+
+## 输出要求
+1. content 用一句话，简洁自包含（脱离原对话也能理解）
+2. 每条 reason 必须引用保存标准或类型判定特征（如"跨会话有效：..."、"有验证：..."）
+3. 相同主题只保留信息量最大的一条，避免重复
+4. 最多 5 条，宁缺毋滥
+5. 没有任何值得保存的内容时返回：{"memories": []}
 
 请分析摘要，返回 JSON 格式：
 ```json
@@ -1062,33 +1076,45 @@ async def extract_memory_from_summary(
     {
       "content": "提取的记忆内容（简洁，一句话）",
       "type": "preference|constraint|learned-pattern",
-      "reason": "为什么值得保存（一句话）"
+      "reason": "为什么值得保存（引用保存标准）"
     }
   ]
 }
-```
-
-如果没有值得保存的内容，返回：`{"memories": []}`"""
+```"""
 
     else:
-        system_prompt = """You are a memory extraction expert. Your task is to extract memories worth long-term preservation from a session summary.
+        system_prompt = """You are a memory extraction expert. Your task is to extract memories worth long-term preservation from a session summary, and classify them accurately.
 
-**Save Criteria** (must meet all):
-1. Cross-session validity: This information will still be useful in future conversations
-2. Non-temporary state: Not "what is being done", but "how things should be done"
-3. Non-code details: Code implementation is in the codebase, no need to memorize
+## Type Classification Rules (strict)
 
-**Worth saving examples**:
-- User preference: "User prefers Chinese responses"
-- Project constraint: "Tests cannot be skipped"
-- Learned pattern: "Semantic dedup threshold 0.85 works best"
-- Technical decision: "Use PostgreSQL instead of MySQL"
+**preference — user's subjective likes/habits/language style/working style**
+- Signals: subject is the user themselves, expressing "like/prefer/habit/tendency"
+- ✓ "User prefers Chinese responses", "User habitually writes tests before implementation"
+- ✗ "Semantic dedup is recommended" (a suggestion, not a user preference)
+- Impact: preference enters the user profile and is injected across sessions; classification must be accurate
 
-**Not worth saving examples**:
-- Temporary task: "Implement login function" (meaningless after completion)
-- Current state: "Editing auth.ts" (different next time)
-- Code details: "Function signature is..." (in code)
-- Completed work: "Created 3 files" (history)
+**constraint — hard boundaries/must-follow rules of a project or task**
+- Signals: violating it has consequences; often contains "must/cannot/forbidden/not allowed"
+- ✓ "Tests cannot be skipped", "Production database must not be modified directly"
+- ✗ "Test coverage improved" (a factual statement, not a constraint)
+
+**learned-pattern — verified practices/technical decisions/lessons learned**
+- Signals: validated through actual operation; contains "discovered/verified/learned/best/switch to"
+- ✓ "Semantic dedup threshold 0.85 works best", "Switched to PostgreSQL instead of MySQL" (verified)
+- ✗ "Semantic dedup is important" (unverified generalization)
+
+## Hard Exclusions (never save)
+1. Conversation transcripts: "We discussed X", "User asked X", "I explained X" (no value afterward)
+2. System/API descriptive knowledge: "This endpoint supports XX params" (findable in docs)
+3. Unverified generalizations: "XX is important", "be careful with XX"
+4. Content semantically duplicating already-extracted items
+
+## Output Requirements
+1. content in one sentence, concise and self-contained (understandable without the original conversation)
+2. Each reason MUST cite a save criterion or type signal (e.g. "cross-session:", "verified:")
+3. For the same topic keep only the single most informative item, avoid duplicates
+4. At most 5 items; better none than noise
+5. If nothing worth saving, return: {"memories": []}
 
 Analyze the summary and return JSON format:
 ```json
@@ -1097,29 +1123,30 @@ Analyze the summary and return JSON format:
     {
       "content": "Extracted memory content (concise, one sentence)",
       "type": "preference|constraint|learned-pattern",
-      "reason": "Why worth saving (one sentence)"
+      "reason": "Why worth saving (cite a save criterion)"
     }
   ]
 }
-```
-
-If nothing worth saving, return: `{"memories": []}`"""
+```"""
 
     try:
         llm = get_llm_client()
         result = await llm.aextract_json(
             prompt=f"{system_prompt}\n\n会话摘要：\n{request.summary}",
             temperature=0.3,
-            max_tokens=1000
+            max_tokens=1500
         )
 
         if not result or "memories" not in result:
             return ExtractMemoryResponse(memories=[], has_worthwhile=False)
 
+        # 类型白名单：LLM 乱填/未知类型一律归 learned-pattern（与插件端 fallback 对齐，服务端统一校验）
+        # 2026-08-15：此前无校验，LLM 返回的任意 type 原样透传（曾出现 learn-pattern 等错拼入库）
+        ALLOWED_DISTILL_TYPES = {"preference", "constraint", "learned-pattern"}
         memories = [
             ExtractedMemory(
                 content=m.get("content", ""),
-                type=m.get("type", "learned-pattern"),
+                type=m.get("type") if m.get("type") in ALLOWED_DISTILL_TYPES else "learned-pattern",
                 reason=m.get("reason", "")
             )
             for m in result.get("memories", [])

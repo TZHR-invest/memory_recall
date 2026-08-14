@@ -22,6 +22,10 @@ All notable changes to Memory Recall will be documented in this file.
 - codex 插件：search 描述明确纯向量边界（图谱/画像/文档请用 context-inject）；SKILL.md 新增"用户明确要求记住时立即 add"强制项
 - debug.html：首次打开无 API key 时显示获取指引
 
+### Changed
+- **蒸馏 prompt 重构**（/extract-memory）：为 preference/constraint/learned-pattern 增加判定特征 + 正反例（此前仅给例子，LLM 分类不稳定——实测本对话产物把分析结论误标 constraint）；新增硬性排除（对话流水账/系统描述知识/无验证泛论/重复内容）；reason 必须引用保存标准；最多 5 条宁缺毋滥；max_tokens 1000→1500（实测：混合摘要 3 条分类全对、纯寒暄 0 条、英文同样正确）
+- **蒸馏类型白名单校验**（服务端）：LLM 返回未知/错拼 type 一律归一 learned-pattern（此前任意 type 原样透传，曾出现 learn-pattern 错拼入库）；新增单测 test_extract_memory_whitelist
+
 ### Fixed
 - **context-inject 跨轮去重断链修复**：`exclude_memory_ids` 已实现但 HTTP 层 `ContextInjectConfig` Pydantic 模型缺字段声明，未知字段被静默丢弃，跨轮去重不生效（2026-08-15 实测发现：插件 LRU 传了排除集合，service 永远收到空）；补字段声明 + HTTP 层回归测试，37 pytest 全绿
 - TESTING.md/STATUS.md：修正 test_document/source_deduplication 一起跑失败的根因（全局 db 连接跨 asyncio loop 冲突，非缺 pytest-order）
