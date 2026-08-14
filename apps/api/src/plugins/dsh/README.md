@@ -106,14 +106,18 @@ node --test
 （store→search→profile→forget）；自动召回（smart 关键词触发、once 首次注入、
 摘要去重、后端不可达 fail-open）；自动捕获（turn 落库 + 无回复不落库）。
 
-## client.js 双模式（浏览器端注册，MR-023）
+## 客户端 bundle 生成（MR-023）
 
-client.js 同时是服务端 ESM 库（index.js import 它）和 dsh web 的浏览器端插件
-bundle。浏览器端必须调用 window.__ModuleLoader__.load({ id, factory }) 注册
-插件形状 { name, inject, apply }——只 export 不注册会在 HARNESS 报
-"loaded without registering ... via __ModuleLoader__.load"。注册块在文件底部，
-node 环境无 window 自动跳过，两端互不影响。改完 client.js 记得
-bash install.sh --restart 同步副本并重启。
+dsh web 用 script 标签按 classic script 加载插件 bundle：不能含 import/export
+（否则直接 SyntaxError），且必须顶层调用 window.__ModuleLoader__.load
+注册插件形状 { name, inject, apply }。因此：
+
+- client-lib.js —— node（服务端）ESM 库，index.js 从它 import；
+- client.js —— 浏览器端 bundle，由 build-bundle.mjs 从 client-lib.js 生成
+  （剥离 export + 包上注册壳），产物提交进仓库；
+- 改 client-lib.js 后执行 node build-bundle.mjs 重新生成（test/bundle.test.js
+  会校验产物同步，不同步测试即失败）；
+- 安装/重启：bash install.sh --restart。
 
 ## 已知限制 / 后续
 

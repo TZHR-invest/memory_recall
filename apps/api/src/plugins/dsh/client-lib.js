@@ -1,12 +1,3 @@
-/* 本文件由 build-bundle.mjs 从 client-lib.js 自动生成，勿手改；改库后重跑 node build-bundle.mjs */
-window.__ModuleLoader__.load({
-  id: "memory-recall-dsh",
-  factory: (require) => {
-    var module = { exports: {} };
-    var exports = module.exports;
-    Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
-
-    // ── 以下为 client-lib.js 源码（已剥离 export）──
 /**
  * memory-recall-dsh 后端 HTTP 客户端
  *
@@ -21,7 +12,7 @@ window.__ModuleLoader__.load({
  */
 
 /** 后端 /context-inject 的注入配置（字段与后端 ContextInjectConfig 对齐，已做边界夹取） */
-function buildInjectConfig(resolved, { injectProfile } = {}) {
+export function buildInjectConfig(resolved, { injectProfile } = {}) {
   return {
     inject_profile: injectProfile === true && resolved.injectProfile,
     max_profile_items: resolved.maxProfileItems,
@@ -44,14 +35,14 @@ function buildInjectConfig(resolved, { injectProfile } = {}) {
   };
 }
 
-class ConfigurationError extends Error {
+export class ConfigurationError extends Error {
   constructor(message) {
     super(message);
     this.name = "ConfigurationError";
   }
 }
 
-class MemoryRecallClient {
+export class MemoryRecallClient {
   constructor({ baseUrl, apiKey, requestTimeoutMs = 30000, writeTimeoutMs = 90000, debug = false }) {
     this.baseUrl = baseUrl;
     this.apiKey = apiKey ?? null;
@@ -189,18 +180,3 @@ class MemoryRecallClient {
     });
   }
 }
-
-    // ── 插件形状：name / inject / apply（组合装载校验：函数或带 apply 的对象）──
-    exports.name = "memory-recall-dsh";
-    exports.inject = [];
-    exports.apply = function apply(ctx) {
-      ctx?.logger?.info?.('[memory-recall-dsh] browser client plugin loaded');
-    };
-
-    // 顺带暴露 HTTP 客户端（bundle 内自包含，供浏览器侧调试/扩展使用）
-    exports.MemoryRecallClient = MemoryRecallClient;
-    exports.buildInjectConfig = buildInjectConfig;
-    exports.ConfigurationError = ConfigurationError;
-    return module.exports;
-  }
-});

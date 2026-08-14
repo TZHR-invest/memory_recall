@@ -19,7 +19,7 @@
 import z from "@deepseek-ai/schemastery";
 import { createUserMessage } from "@deepseek-ai/dsh-llm";
 import { resolveConfig, projectTagFor, detectLocale, shouldTriggerRecall } from "./config.js";
-import { MemoryRecallClient, buildInjectConfig } from "./client.js";
+import { MemoryRecallClient, buildInjectConfig } from "./client-lib.js";
 import { buildInjectionText, contextDigest, firstUserText, hasInjectedDigest, hasDirectUserMessage } from "./context.js";
 import { registerTools } from "./tools.js";
 import { createCaptureHandler } from "./capture.js";

@@ -53,7 +53,7 @@
 |----|------|----------------|
 | MR-021 | codex 插件项目容器探测启动竞态（VSCode 扩展模式偶发 403，容器回退 codex-default 被冻结） | 见 [MR-021 详情](issues/MR-021-codex-mcp-container-race.md)（2026-08-14 修复，config.py 惰性重探测） |
 | MR-022 | memory-recall-dsh 缺 dsh.client.platform + exports["./client"]，dsh web 启动即崩溃（3080 无监听） | 见 [MR-022 详情](issues/MR-022-dsh-client-platform-missing.md)（2026-08-14 修复，package.json 补元数据 + install.sh --restart） |
-| MR-023 | memory-recall-dsh 浏览器端未注册（HARNESS: loaded without registering ... via __ModuleLoader__.load） | 见 [MR-023 详情](issues/MR-023-dsh-client-registration.md)（2026-08-14 修复，client.js 双模式 + 注册块） |
+| MR-023 | memory-recall-dsh 浏览器端未注册（HARNESS: loaded without registering ... via __ModuleLoader__.load） | 见 [MR-023 详情](issues/MR-023-dsh-client-registration.md)（2026-08-14 修复，生成式 classic-script bundle：client-lib.js + build-bundle.mjs） |
 
 ## 优先行动建议
 

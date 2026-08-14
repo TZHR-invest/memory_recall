@@ -75,7 +75,7 @@ echo "  源码目录: $SRC"
 
 # ── 0/4 前置检查 ──────────────────────────────────────────────────────────
 echo "== 0/4 前置检查 =="
-for f in package.json index.js config.js client.js context.js tools.js capture.js; do
+for f in package.json index.js config.js client.js client-lib.js context.js tools.js capture.js; do
   if [ ! -f "$SRC/$f" ]; then
     echo "  错误：缺少 $SRC/$f（安装包不完整）"; exit 1
   fi
@@ -183,6 +183,7 @@ if [ "$MODE" = "restart" ]; then
     echo "  新进程 PID=$!"
     sleep 8
     curl -s -o /dev/null -w "  127.0.0.1:3080 页面 -> %{http_code}\n" http://127.0.0.1:3080/ || echo "  [警告] 页面未就绪，请稍后手动刷新"
+    curl -s -o /dev/null -w "  memory-recall-dsh bundle -> %{http_code}\n" http://127.0.0.1:3080/plugins/memory-recall-dsh/client.js
   else
     echo "  [警告] 无法定位 dsh 可执行文件，请手动重启 dsh web"
   fi
