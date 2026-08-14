@@ -104,3 +104,4 @@ storage/images/*.gif
 
 .memory-recall-docs.json
 zhihu-article.md
+apps/api/src/plugins/dsh/node_modules
