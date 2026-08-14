@@ -91,11 +91,14 @@ done
 echo "  [OK] 插件源码完整，语法检查通过"
 
 # 契约预检（防 MR-022/023 重演）：dsh.client.platform / exports["./client"] / classic-script bundle
-# 通用预检位于 _dsh-common/，任何 dsh 插件共用
-COMMON="$(cd "$(dirname "${BASH_SOURCE[0]}")/../_dsh-common" && pwd)"
-PREFLIGHT="$COMMON/preflight.mjs"
-echo "== 0.5/4 契约预检（$PREFLIGHT）=="
-if [ -f "$PREFLIGHT" ]; then
+# 通用预检已移至 dsh-plugins 仓库（scripts/preflight.mjs），此处探测引用：
+# DSH_PLUGINS_REPO 环境变量 > ~/dsh-plugins；缺失时跳过（本插件自带测试已覆盖契约）
+PREFLIGHT=""
+for CAND in "${DSH_PLUGINS_REPO:-$HOME/dsh-plugins}/scripts/preflight.mjs"; do
+  [ -n "$CAND" ] && [ -f "$CAND" ] && PREFLIGHT="$CAND" && break
+done
+echo "== 0.5/4 契约预检（${PREFLIGHT:-未找到 dsh-plugins/preflight.mjs}）=="
+if [ -n "$PREFLIGHT" ]; then
   if node "$PREFLIGHT" "$SRC"; then
     echo "  [OK] 加载器契约检查通过"
   else
@@ -107,7 +110,7 @@ if [ -f "$PREFLIGHT" ]; then
     fi
   fi
 else
-  echo "  [跳过] 无共享 preflight.mjs（_dsh-common/preflight.mjs）"
+  echo "  [跳过] 未找到共享 preflight.mjs（可安装 dsh-plugins 仓库或设置 DSH_PLUGINS_REPO）"
 fi
 
 if [ ! -d "$DSH/profiles/$PROFILE" ]; then
