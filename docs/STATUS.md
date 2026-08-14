@@ -18,6 +18,7 @@
 | 全量测试验证 + 回归修复 | 已完成（2026-08-13）：修复 16f3b8f 引入的 Entity 测试回归（user_tag/project_tag→container_tag，2 测试）+ performance 测试 LLM 依赖隔离（extract_entities=False，1 测试）；单元 386（14 skip）+ 集成 7 + 性能 5 + 去重 26 全绿 | commit 6724313 |
 | 记忆维护检查点（ADR-0009） | 已完成（2026-08-13：语义检索 5 主题 × 5 容器 + SQL 关键词预检；版本化修正 1 条过时记忆 `mem_12490fb23d474aa1996e` → `mem_a716b54e449a4003beef`） | [ADR-0009](decisions/0009-memory-maintenance-loop.md) |
 | codex 插件容器探测启动竞态修复（MR-021） | 已完成（2026-08-14：config.py 惰性重探测 ensure_project_tag，server.py 改用之；需重启 codex 会话使 MCP server 重生后生效） | [MR-021](issues/MR-021-codex-mcp-container-race.md) |
+| 记忆价值判据外部调研（S0+S1 第一刀） | 待执行（调研包已就绪，交给另一 agent） | [调研目录](notes/research/2026-08-14-memory-value-criteria/README.md) |
 
 ## ADR 实施跟踪
 
@@ -58,7 +59,7 @@
   非顺序问题，pytest-order/改 loop scope 均无法解决），单独跑各自全绿；彻底修复需测试
   连接管理重构（TESTING.md 已记录根因，未排期）。
 - 讨论中 topic（2026-08-14 重定位，围绕 [命题晋升总纲](notes/2026-08-14-proposition-promotion.md) 展开）：
-  - S0 命题 6 维度模型 + S1 提炼机制（情景→语义）—— 灵魂，下一步先聊
+  - S0 命题 6 维度 + S1 提炼机制（情景→语义）—— 灵魂；已拆出外部调研（[调研包](notes/research/2026-08-14-memory-value-criteria/README.md) 待执行 agent 出结论后回主线）
   - S2 置信度涨落（[memory-confidence](notes/2026-08-14-memory-confidence.md)）
   - S3 触发 + 判定（[workbench](notes/2026-08-14-workbench-vs-debug-roles.md) 裁决 + layering 触发）
   - S4 归属迁移（[personal-vs-shared-boundary](notes/2026-08-14-personal-vs-shared-boundary.md)）
