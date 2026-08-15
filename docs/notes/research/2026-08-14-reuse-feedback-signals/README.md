@@ -25,6 +25,7 @@
 | 03-round-01-answers-&lt;platform&gt;.md | （codex 回填）各平台回答原文 |
 | 08-round-01-conclusions.md | （收敛后）round-01 统一理解 |
 | 99-final-conclusions.md | （收敛后）最终结论与实施映射 |
+| [10-plugin-signal-surface.md](10-plugin-signal-surface.md) | 插件信号面盘点（C 类验证项 #1，回项目内代码事实） |
 
 ## 执行方式
 

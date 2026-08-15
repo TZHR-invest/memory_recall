@@ -86,6 +86,8 @@
 ## 六、待回项目内验证项（C 类，进 ADR 前必须）
 
 1. 插件实际能观测到的信号面（每端插件能拿到什么：最终输出？工具调用？用户动作？）——决定哪些信号根本采不到；
+   ✅ **已盘点**（见 [10-plugin-signal-surface.md](10-plugin-signal-surface.md)）：仅 opencode/dsh 两端能被动收事件并采到开发结果痕迹；
+   MCP 四端采不到 outcome；最底层缺口是全端无「注入清单→outcome」配对索引。→ S-pre 阶段 1 先补配对索引 + opencode D 类接线 + dsh 赞踩接线；
 2. 开发结果痕迹在真实会话中的覆盖率（diff/测试/命令事件在对话型会话中的占比）；
 3. 自陈 ref 信号在当前模型（doubao）上的真实噪声率（小样本实测）；
 4. detect_contradiction 当前误判率与延迟提交的收益（对照 Gemini 的置信度卡点建议）。

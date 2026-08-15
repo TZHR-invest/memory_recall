@@ -69,5 +69,12 @@ ADR 只记录**已定**的决策，没有 Proposed / Rejected 状态：
 | [0008](0008-remove-summary-capture-and-scene-recovery.md) | 删除摘要捕获与现场恢复 | Accepted | 2026-08-12 |
 | [0009](0009-memory-maintenance-loop.md) | 记忆维护闭环：注入可见性 + 规则约束，不做自动写库 | Accepted | 2026-08-13 |
 | [0010](0010-remove-document-rag.md) | 文档 RAG 移出核心：文档不再是并行召回语料 | Accepted | 2026-08-13 |
+| [0011](0011-north-star-value-formula.md) | 北极星 = 价值公式（错误信息按负价值计；状态有效性降级为因子） | Accepted | 2026-08-14 |
+| [0012](0012-evidence-claim-separation.md) | 证据/结论分离：Evidence 是不可再生地基，Claim 全部派生可重算 | Accepted | 2026-08-14 |
+| [0013](0013-derived-current-state-no-is-latest.md) | 当前状态派生，废除 is_latest 手工标志位（推理在边） | Accepted | 2026-08-14 |
+| [0014](0014-confidence-two-axes-evidence-derived.md) | 置信度拆两轴（内容∥复用），由证据推导 | Accepted | 2026-08-14 |
+| [0015](0015-scope-owner-promotion.md) | scope 与 owner 归属 + 提权机制（scope 提权审计 / owner 提权审批） | Accepted | 2026-08-14 |
+| [0016](0016-evidence-capture-scope.md) | Evidence 采集范围分四档 P0–P3（整个上下文理解不做） | Accepted | 2026-08-14 |
+| [0017](0017-entity-topic-p2-optional.md) | Entity/主题降级为 P2 可选附属，不进核心 | Accepted | 2026-08-14 |
 
-*状态: ACTIVE · 最后更新: 2026-08-13*
+*状态: ACTIVE · 最后更新: 2026-08-14*
