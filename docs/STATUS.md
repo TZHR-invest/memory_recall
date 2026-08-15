@@ -26,7 +26,7 @@
 | 0有效记忆容器清理 | 已完成（2026-08-14：用户确认『没有的容器就删』。按用户指令物理删除 444 个 0 有效记忆的测试残留容器：文档去重/分块/优先级/生命周期单元测试生成的 url_dedup_*/hash_dedup_*/priority_*/container1_2_a_*/changed_*/more_fewer_chunks_*/lifecycle_*/preserve_*/source_*/no_source_*/find_source_*/rechunk_*/chunk_link_*/unchanged_*/SAME 等 442 个 + project-codex/latency-probe 孤儿测试实体容器 2 个；删除 documents 470 + entities 232 + memories 2 + traces 6 + emb_logs 14（级联清 chunks 与实体关联）。**保留** b262d2f1 旧 user_id 真实实体容器 5 个（1602 实体：stock_selection/memory_recall/hermes/shuihu_card_game）与默认兜底容器。现 0 有效记忆容器仅剩上述 6 个保留项；全库记忆 3157 条 active 1931，服务健康） | 本次会话 |
 | dsh 插件跨轮注入去重（exclude_memory_ids + per-agent LRU） | 已完成（2026-08-15：后端 /context-inject 支持 exclude_memory_ids（seen_ids 预置，向量/图谱/实体全链路生效）；插件 per-agent LRU 容量 100 跟踪已注入记忆 ID，注入成功后记录、后续召回排除；bundle 重建 + 36 pytest 全绿 + bundle 防漂移过）。**2026-08-15 已拉取远端代码并重启 API（docker compose restart api，健康 + exclude_memory_ids 实测生效）；dsh web 已由用户在终端 `install.sh --restart` 成功重启（新 PID 1420081，bundle 含 exclude_memory_ids，跨轮去重全链路激活）；期间修复 install.sh pkill 模式匹配不到实际 cmdline 的 bug（commit 86ded26）** | [dsh 插件](../apps/api/src/plugins/dsh/README.md) |
 | 记忆维护检查点（ADR-0009，Q2 三决策收尾） | 已完成（2026-08-14：SQL 关键词预检覆盖全库 14 个主题词，命中仅 3 条无关 LensDiary；memory_recall 项目容器 6 条记忆逐一核对，无涉及「S-pre/置信度拆两轴/复用反馈回收」的旧结论 → 无需版本化更新） | 本次会话 |
-| 目标模型（北极星）设计 | 草稿 v1 已写，已拍板 15 项；**已抽 ADR 0011–0017**（价值公式 / 证据结论分离 / 当前状态派生 / 置信度两轴 / scope-owner 提权 / 采集四档 / Entity-主题 P2）；待拍板：3 份待落文档（迁移路径 / workbench / 实体属性文档）+ 15 个拍板问题（A/B/C 三档） | [v1](designs/target-model/v1.md) · [LATEST](designs/target-model/LATEST.md) |
+| 目标模型（北极星）设计 | 草稿 v1，已拍板 21 项（A 档 5 项 2026-08-15 拍板）；**已抽 ADR 0011–0017**（价值公式 / 证据结论分离 / 当前状态派生 / 置信度两轴 / scope-owner 提权 / 采集四档 / Entity-主题 P2）；待拍板：3 份待落文档（迁移路径 / workbench / 实体属性文档）+ 10 个拍板问题（B/C 两档） | [v1](designs/target-model/v1.md) · [LATEST](designs/target-model/LATEST.md) |
 | 蒸馏 prompt 重构（/extract-memory） | 已完成（2026-08-15，commit 3311a40）：三类记忆加判定特征+正反例+影响、硬性排除（对话流水账/系统描述/无验证泛论/重复）、reason 引用标准、最多 5 条、max_tokens 1500；服务端类型白名单归一（learn-pattern 错拼入库修复）；测试 78 全绿 + E2E 混合摘要 3 条分类全对/纯寒暄 0 条。**基线：8-15 产出 42 条（learned-pattern 39 / constraint 1 / error-solution 2，preference 0）——样本不足，待 3-5 天观测期后对比 learned-pattern 占比是否下降** | [CHANGELOG](../apps/api/CHANGELOG.md) |
 | 注入去重机制验证 + smart 策略误诊回滚 | 已完成（2026-08-15）：真实会话日志分析确认去重三层协作正常（画像仅首轮 1/11、记忆跨轮重复 0/57）；曾误诊 `agent.session.events` 不存在（实为 tab 缩进 getter 漏匹配）提交错误修复 10edc9a，经源码+日志验证后 revert（4597033）。**教训：改插件前核实宿主 API，现象先区分设计行为 vs bug** | [dsh 插件](../apps/api/src/plugins/dsh/README.md) |
 
@@ -60,7 +60,7 @@
 
 ## 下一步
 
-1. 按 [目标模型 v1](designs/target-model/v1.md) 的拍板问题 **A 档**逐条讨论定稿（画像地位 → Evidence 采集可靠性 → 提炼判据 → 知识库边界 → 任务级上下文），再写 3 份待落文档（迁移路径 / workbench / 实体属性文档）。
+1. 写 3 份待落文档（实体属性文档 / 渐进迁移路径 / workbench 裁决界面），其间逐步销 B/C 档 10 个拍板问题。
 
 ## 等待项 / 阻塞
 
