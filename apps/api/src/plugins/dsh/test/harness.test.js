@@ -46,10 +46,20 @@ const HAS_BACKEND = API_KEY !== null;
 
 /** 最小可用的 agents 服务替身 */
 function makeFakeAgent(cwd, events = []) {
+  // 2026-08-15 修复：真实 dsh-session 的 Session 无 events 成员，公开 API 是
+  // deriveMessages()（返回 Message[]）。fake 同步对齐——保留 events 便于
+  // harness 内部 push 事件，另补 deriveMessages() 从 events 派生消息数组。
   return {
     session: {
       header: { cwd },
       events,
+      deriveMessages() {
+        // 真实 dsh-session：user/message 事件的 data 就是 UserMessage（含 role/source/content）。
+        // fake events 的 data 省略了 role，这里补上 role="user" 以对齐真实形态。
+        return events
+          .filter((ev) => ev && ev.type === "user/message" && ev.data)
+          .map((ev) => ({ role: "user", ...ev.data }));
+      },
     },
     inbox: {
       nextStep: [],

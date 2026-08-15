@@ -18,6 +18,7 @@ All notable changes to Memory Recall will be documented in this file.
     updates 版本链），对齐 ADR-0009「过时记忆用 update 修正，勿 forget+store」；
     默认异步，asyncProcess 可切同步
   - 版本基线：1.0.0（MR-022/023 修复后）→ 1.1.0（本组完善）
+  - **smart/once 策略退化修复**：`hasDirectUserMessage` / `hasInjectedDigest` 原读 `agent.session.events`（dsh-session 的 Session 无此成员，恒 undefined）→ smart 策略每轮都注入、会话内摘要去重失效；改用公开 API `session.deriveMessages()`；harness fake agent 同步对齐 + 新增 context.test.js 6 例，插件测试 30 全绿
 - codex / hermes 插件：search/list 输出完整记忆 ID（此前仅 8 字符前缀，无法直接用于 update/forget）
 - codex 插件：search 描述明确纯向量边界（图谱/画像/文档请用 context-inject）；SKILL.md 新增"用户明确要求记住时立即 add"强制项
 - debug.html：首次打开无 API key 时显示获取指引

@@ -74,13 +74,15 @@ export function textFromContent(content) {
 
 /** 会话内去重：检查 agent 会话历史中是否已注入过同一摘要的召回消息 */
 export function hasInjectedDigest(agent, digest) {
-  const events = agent?.session?.events;
-  if (!events) return false;
-  for (const event of events) {
-    if (!event || event.type !== "user/message") continue;
-    const data = event.data;
-    if (data?.source?.kind !== "plugin" || data.source.plugin !== "memory-recall-dsh") continue;
-    const text = textFromContent(data.content);
+  // 2026-08-15 修复：dsh-session 的 Session 没有 events 成员（公开 API 是
+  // deriveMessages()），此前读 agent.session.events 恒为 undefined，会话内
+  // 去重静默失效——同一摘要的召回可跨轮重复注入。
+  const messages = agent?.session?.deriveMessages?.();
+  if (!Array.isArray(messages)) return false;
+  for (const message of messages) {
+    if (!message || message.role !== "user") continue;
+    if (message.source?.kind !== "plugin" || message.source.plugin !== "memory-recall-dsh") continue;
+    const text = textFromContent(message.content);
     if (text && contextDigest(text) === digest) return true;
   }
   return false;
@@ -88,11 +90,14 @@ export function hasInjectedDigest(agent, digest) {
 
 /** 会话内是否已存在直接用户输入（用于判定"首次请求"；插件注入不算） */
 export function hasDirectUserMessage(agent) {
-  const events = agent?.session?.events;
-  if (!events) return false;
-  for (const event of events) {
-    if (!event || event.type !== "user/message") continue;
-    if (event.data?.source?.kind === "user") return true;
+  // 2026-08-15 修复：dsh-session 的 Session 没有 events 成员（公开 API 是
+  // deriveMessages()），此前读 agent.session.events 恒为 undefined → 恒返回
+  // false → isFirst 恒 true → smart/once 策略退化为每轮注入。
+  const messages = agent?.session?.deriveMessages?.();
+  if (!Array.isArray(messages)) return false;
+  for (const message of messages) {
+    if (!message || message.role !== "user") continue;
+    if (message.source?.kind === "user") return true;
   }
   return false;
 }
