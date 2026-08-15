@@ -1,6 +1,6 @@
 # Memory Recall 已知问题清单（索引）
 
-> 状态: ACTIVE · 版本: v1.4 · 最后更新: 2026-08-14
+> 状态: ACTIVE · 版本: v1.5 · 最后更新: 2026-08-15
 >
 > 本文件是问题清单**索引**（进知识库，Agent 一眼看到当前有哪些坑）；
 > 每个问题的详情在 `docs/issues/MR-xxx-短slug.md`。
@@ -31,6 +31,7 @@
 | MR-018 | profile 写入路径无 embedding，semantic_dedup 对画像失效 | P2 | [详情](issues/MR-018-profile-dedup.md) |
 | MR-019 | 文档 → 记忆蒸馏是否值得做（ADR-0010 遗留） | P2 | [详情](issues/MR-019-document-to-memory-distillation.md) |
 | MR-020 | /history 端点对显式版本链返回空（版本历史双路径不一致） | P2 | [详情](issues/MR-020-version-history-gap.md) |
+| MR-024 | 测试文件全局 db 连接跨 asyncio loop 冲突（两文件不能同跑） | P2 | [详情](issues/MR-024-test-loop-conflict.md) |
 
 ## 已关闭（决策导致不再适用）
 
@@ -62,4 +63,4 @@
 3. **同时做产品面最小闭环**（MR-011）：让用户看到并纠正系统记住了什么，这是信任与留存的基础。
 4. **清理工程债**（MR-013 迁移框架 / MR-015 死代码 / MR-017 cap 配置化 / MR-018 画像去重 / MR-020 版本历史读取）。
 
-*状态: ACTIVE · 版本: v1.4 · 最后更新: 2026-08-13*
+*状态: ACTIVE · 版本: v1.5 · 最后更新: 2026-08-15*
