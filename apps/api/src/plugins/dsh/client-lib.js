@@ -111,8 +111,8 @@ export class MemoryRecallClient {
    *   立即返回 status="processing"（写入从 25s+ 降到 <1s）；默认 false 保持同步
    *   （可立即搜索到）。
    */
-  addMemory(content, containerTag, { isStatic = false, type = null, asyncProcess = false } = {}, externalSignal) {
-    const metadata = type ? { type } : {};
+  addMemory(content, containerTag, { isStatic = false, type = null, asyncProcess = false, metadata: extraMetadata = {} } = {}, externalSignal) {
+    const metadata = { ...(type ? { type } : {}), ...extraMetadata };
     return this.#request("/memories", {
       method: "POST",
       timeoutMs: this.writeTimeoutMs,
@@ -203,12 +203,13 @@ export class MemoryRecallClient {
       .filter((id) => typeof id === "string" && id.length > 0);
   }
 
-  /** POST /extract-memory → LLM 蒸馏会话摘要（不落库，落库由插件做） */
-  extractMemory(summary, language = "zh_CN", externalSignal) {
+  /** POST /extract-memory → LLM 蒸馏会话摘要（不落库，落库由插件做）
+   * @param containerTag - 去重检索容器（应与落库容器一致，2026-08-16） */
+  extractMemory(summary, language = "zh_CN", containerTag = null, externalSignal) {
     return this.#request("/extract-memory", {
       method: "POST",
       timeoutMs: this.writeTimeoutMs,
-      body: { summary, language },
+      body: { summary, language, ...(containerTag ? { container_tag: containerTag } : {}) },
       externalSignal,
     });
   }

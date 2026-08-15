@@ -58,6 +58,7 @@ const Config = z.object({
   captureMode: z.string(),
   captureMinLength: z.number(),
   captureMaxChars: z.number(),
+  captureMinIntervalMs: z.number(),
   requestTimeoutMs: z.number(),
   writeTimeoutMs: z.number(),
   injectTimeoutMs: z.number(),

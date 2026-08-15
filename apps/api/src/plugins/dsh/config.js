@@ -63,8 +63,10 @@ const DEFAULTS = {
   graphMaxNodes: 5,
   minRecallQueryLength: 5,
   captureMode: "extract",
-  captureMinLength: 40,
+  captureMinLength: 100,
   captureMaxChars: 4000,
+  // 捕获节流：两次蒸馏最小间隔（ms），0 = 关闭；会话级，窗口内摘要累计到下轮（2026-08-16 膨胀治理）
+  captureMinIntervalMs: 600000,
   requestTimeoutMs: 30000,
   // 写入超时单独放宽：POST /memories 同步包含 embedding + LLM 实体提取 + 关系检测，
   // 实测可到 25s+（后端 LLM 调用延迟），30s 默认读超时会误杀写入
@@ -156,6 +158,7 @@ export function resolveConfig(raw = {}) {
     captureMode,
     captureMinLength: clampInt(raw.captureMinLength, 1, 10000, DEFAULTS.captureMinLength),
     captureMaxChars: clampInt(raw.captureMaxChars, 200, 20000, DEFAULTS.captureMaxChars),
+    captureMinIntervalMs: clampInt(raw.captureMinIntervalMs, 0, 3600000, DEFAULTS.captureMinIntervalMs),
     requestTimeoutMs: clampInt(raw.requestTimeoutMs, 1000, 120000, DEFAULTS.requestTimeoutMs),
     writeTimeoutMs: clampInt(raw.writeTimeoutMs, 5000, 300000, DEFAULTS.writeTimeoutMs),
     injectTimeoutMs: clampInt(raw.injectTimeoutMs, 500, 15000, DEFAULTS.injectTimeoutMs),

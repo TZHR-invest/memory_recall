@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Query, Depends, BackgroundTasks
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 
+from src.config import settings
 from src.services.core.memory_store import memory_store
 from src.services.core.profile_service import profile_service
 from src.services.core.relation_service import relation_service
@@ -1009,6 +1010,11 @@ async def hybrid_search(
 class ExtractMemoryRequest(BaseModel):
     summary: str = Field(..., description="Session summary to extract memories from")
     language: str = Field("zh_CN", description="Language for extraction (zh_CN or en_US)")
+    container_tag: Optional[str] = Field(
+        None,
+        description="Container to dedup against (defaults to API key's container). "
+        "Plugins pass the project tag they will write to, so dedup matches the same scope.",
+    )
 
 
 class ExtractedMemory(BaseModel):
@@ -1020,6 +1026,10 @@ class ExtractedMemory(BaseModel):
 class ExtractMemoryResponse(BaseModel):
     memories: List[ExtractedMemory] = Field(..., description="Extracted memories")
     has_worthwhile: bool = Field(..., description="Whether any worthwhile memories found")
+    dropped: List[Dict[str, str]] = Field(
+        default_factory=list,
+        description="Dropped candidates (duplicates of existing memories, 2026-08-16 dedup)",
+    )
 
 
 @router.post(
@@ -1029,10 +1039,15 @@ class ExtractMemoryResponse(BaseModel):
 )
 async def extract_memory_from_summary(
     request: ExtractMemoryRequest,
-    container_tag: str = Depends(require_permission("read")),
+    current_user: Dict = Depends(require_permission("read")),
 ) -> ExtractMemoryResponse:
     """使用 LLM 从会话摘要中提取值得保存的记忆"""
     from src.llm.client import get_llm_client
+
+    # 去重检索容器：插件落库到项目容器时传 container_tag，保证检索与落库同域
+    # （2026-08-16：曾默认主容器导致项目容器内的近似记忆检索不到，去重失效）
+    container_tag = request.container_tag or current_user["container_tag"]
+    verify_container_ownership(container_tag, current_user["key_id"])
     import json
 
     if request.language == "zh_CN":
@@ -1153,9 +1168,37 @@ Analyze the summary and return JSON format:
             if m.get("content")
         ]
 
+        # 蒸馏结果去重（2026-08-16 膨胀治理）：与容器已有记忆相似度 ≥ CAPTURE_DEDUP_THRESHOLD
+        # 的候选丢弃并返回 dropped 供插件审计；检索异常 fail-open 不阻断蒸馏。
+        # 跨批去重由此天然覆盖（检索范围为容器全量记忆，含历史批次写入）。
+        kept: List[ExtractedMemory] = []
+        dropped: List[Dict[str, str]] = []
+        for m in memories:
+            try:
+                similar = await memory_store._check_similar_memory(
+                    m.content,
+                    container_tag,
+                    threshold=settings.CAPTURE_DEDUP_THRESHOLD,
+                )
+            except Exception:
+                similar = None  # fail-open：检索异常时保留候选，不阻断蒸馏
+            if similar:
+                dropped.append(
+                    {
+                        "content": m.content,
+                        "reason": (
+                            f"与已有记忆相似 {similar['similarity']:.3f}: "
+                            f"{similar['content'][:50]}"
+                        ),
+                    }
+                )
+            else:
+                kept.append(m)
+
         return ExtractMemoryResponse(
-            memories=memories,
-            has_worthwhile=len(memories) > 0
+            memories=kept,
+            has_worthwhile=len(kept) > 0,
+            dropped=dropped,
         )
 
     except Exception as e:

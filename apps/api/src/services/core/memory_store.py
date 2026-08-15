@@ -296,29 +296,48 @@ class MemoryStore:
                     embedding_str, memory_id
                 )
                 try:
+                    # 捕获来源（metadata._capture=true）走低阈值去重（2026-08-16 膨胀治理）：
+                    # 命中即物理丢弃新行（实体/关系尚未提取，无关联数据）；
+                    # 显式写入维持原 0.95 merge 语义不变。
+                    meta = memory.metadata or {}
+                    is_capture = bool(meta.get("_capture"))
+                    threshold = (
+                        settings.CAPTURE_DEDUP_THRESHOLD
+                        if is_capture
+                        else settings.MEMORY_MERGE_THRESHOLD
+                    )
                     similar = await self._check_similar_memory(
                         memory.content, memory.container_tag,
-                        embedding=embedding, exclude_id=memory_id,
+                        threshold=threshold, embedding=embedding, exclude_id=memory_id,
                     )
                     if similar:
-                        _logger.info(f"Merging memory {memory_id} into {similar['id']}")
-                        await self.merge_similar_memory(similar["id"], memory.content)
-                        # 合并后立即清理 processing 状态，避免残留脏状态导致 dashboard 误报"处理中"
-                        try:
-                            merged = await self.get_by_id(
-                                memory_id, include_forgotten=True
+                        if is_capture:
+                            _logger.info(
+                                f"Capture memory {memory_id} dropped (dup of {similar['id']} "
+                                f"sim={similar['similarity']:.3f})"
                             )
-                            if merged:
-                                meta = merged.metadata.copy()
-                                meta.pop("_status", None)
-                                for k in list(meta):
-                                    if k.startswith("_pending_"):
-                                        meta.pop(k, None)
-                                await self.update_metadata(memory_id, meta)
-                        except Exception as e:
-                            _logger.warning(
-                                f"Memory {memory_id}: merge status cleanup failed: {e}"
+                            await db.execute(
+                                "DELETE FROM memories WHERE id = $1", memory_id
                             )
+                        else:
+                            _logger.info(f"Merging memory {memory_id} into {similar['id']}")
+                            await self.merge_similar_memory(similar["id"], memory.content)
+                            # 合并后立即清理 processing 状态，避免残留脏状态导致 dashboard 误报"处理中"
+                            try:
+                                merged = await self.get_by_id(
+                                    memory_id, include_forgotten=True
+                                )
+                                if merged:
+                                    meta = merged.metadata.copy()
+                                    meta.pop("_status", None)
+                                    for k in list(meta):
+                                        if k.startswith("_pending_"):
+                                            meta.pop(k, None)
+                                    await self.update_metadata(memory_id, meta)
+                            except Exception as e:
+                                _logger.warning(
+                                    f"Memory {memory_id}: merge status cleanup failed: {e}"
+                                )
                         return
                 except Exception as e:
                     _logger.warning(f"Similar memory check failed for {memory_id}: {e}")

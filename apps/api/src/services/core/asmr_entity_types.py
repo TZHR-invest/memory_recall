@@ -249,8 +249,10 @@ DIMENSION_ENTITY_MAP: Dict[ASMRDimension, Set[str]] = {
 }
 
 # Chinese Static Indicators (永久特征)
+# 注意：裸"是"曾导致任何含"是"的陈述句（如"服务地址是X"）被判为静态特征，
+# 造成大量非 preference 记忆被误标 is_static（2026-08-16 膨胀治理）。
+# 只保留明确的特征词；"职业是/工作是"等复合词仍可命中。
 CHINESE_STATIC_INDICATORS = [
-    "是",
     "叫",
     "姓",
     "职业是",

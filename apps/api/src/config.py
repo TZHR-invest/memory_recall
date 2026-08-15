@@ -81,7 +81,13 @@ class Settings(BaseSettings):
     BATCH_DETECTION_MAX_CANDIDATES: int = 5  # 批量检测最大候选数
 
     # 记忆合并配置
-    MEMORY_MERGE_THRESHOLD: float = 0.95  # 记忆合并相似度阈值
+    MEMORY_MERGE_THRESHOLD: float = 0.95  # 记忆合并相似度阈值（显式写入）
+    # 自动捕获来源（metadata._capture=true）去重阈值（2026-08-16 膨胀治理）：
+    # 捕获蒸馏条目与容器已有记忆相似度 ≥ 此值时丢弃，拦截同日主题碎片化冗余。
+    # 实测依据：同一主题的不同表述（如同一地址两条变体）embedding 相似度约 0.81，
+    # 阈值 0.85 拦不住该形态，故取 0.80；捕获路径误丢代价低（对话在 session 事件流，
+    # dropped 可审计），宁丢勿存
+    CAPTURE_DEDUP_THRESHOLD: float = 0.80
 
     # Recall Trace 配置
     TRACE_ENABLED: bool = True  # 是否记录召回 Trace

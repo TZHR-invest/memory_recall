@@ -45,3 +45,12 @@ class TestDetectIsStatic:
 
     def test_no_indicator_defaults_dynamic(self):
         assert detect_is_static("我吃素") is False
+
+    def test_bare_shi_not_static_indicator(self):
+        # 2026-08-16：裸"是"曾是指标，任何含"是"的陈述句（如"服务地址是X"）都被误判静态
+        assert detect_is_static("该服务地址是 http://100.83.225.105:3080") is False
+
+    def test_compound_shi_indicators_keep_working(self):
+        # 复合词不受影响
+        assert detect_is_static("我的职业是软件工程师") is True
+        assert detect_is_static("他的工作是运维") is True

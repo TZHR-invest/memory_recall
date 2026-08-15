@@ -99,7 +99,8 @@ headless 冒烟需 headless profile（首次 `dsh --profile headless "1"` 自动
 | `language` | `auto` | `auto` / `zh_CN` / `en_US` |
 | `smartRecallKeywords` | 内置中英文关键词表 | 关键词触发 |
 | `captureMode` | `extract` | `extract` / `raw` |
-| `captureMinLength` / `captureMaxChars` | 40 / 4000 | 捕获门槛与截断 |
+| `captureMinLength` / `captureMaxChars` | 100 / 4000 | 捕获门槛与截断（2026-08-16 门槛 40→100 抑制短轮碎片） |
+| `captureMinIntervalMs` | 600000 | 捕获节流：两次蒸馏最小间隔（ms，0=关闭）；窗口内摘要累计到下轮，信息不丢（2026-08-16） |
 | `requestTimeoutMs` / `writeTimeoutMs` | 30000 / 90000 | 读/写超时（写入含 LLM 提取，实测 25s+） |
 | `injectTimeoutMs` | 3000 | 自动召回注入预算：超过则跳过本轮注入（模型请求关键路径不被拖慢） |
 | `debug` | `false` | 打印注入明细日志 |

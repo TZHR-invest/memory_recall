@@ -386,3 +386,98 @@ test("memory_update 版本化修正：旧版过期 + updates 版本链（连真�
   const goneOld = await forget.execute({ memoryId: oldId }, exec);
   assert.equal(goneOld.success, true, JSON.stringify(goneOld));
 });
+
+test("自动捕获：节流窗口内不重复落库（连真实后端，清理验证）", { skip: !HAS_BACKEND }, async () => {
+  const ctx = makeCtx();
+  // raw 模式原文落库可确定性断言；节流窗口 60s，两次 turn 间隔 << 窗口
+  apply(ctx, makeConfig({ captureMode: "raw", captureMinIntervalMs: 60000 }));
+  const containerDir = `capture-throttle-${Date.now()}`;
+  const session = { header: { cwd: `/home/user/projects/${containerDir}` } };
+  const markerA = `throttle-a-${Date.now()}`;
+  const markerB = `throttle-b-${Date.now()}`;
+  const longReply = (m) => m.repeat(8); // 超过 captureMinLength(100)
+
+  const emitTurn = (turn, marker) => {
+    ctx.emitSessionEvent(session, { type: "turn/start", data: { turn } });
+    ctx.emitSessionEvent(session, {
+      type: "user/message",
+      data: { source: { kind: "user" }, content: [{ type: "text", text: `${marker} 用户输入` }] },
+    });
+    ctx.emitSessionEvent(session, {
+      type: "assistant/message",
+      data: { message: { content: [{ type: "text", text: longReply(marker) }] } },
+    });
+    ctx.emitSessionEvent(session, { type: "turn/end", data: { turn, reason: "success" } });
+  };
+
+  emitTurn(1, markerA);
+  await new Promise((r) => setTimeout(r, 1500)); // 让第一轮捕获落库
+  emitTurn(2, markerB); // 距上次蒸馏 < 60s → 应被节流，不进库
+  await new Promise((r) => setTimeout(r, 3000));
+
+  const search = ctx.toolsMap.get("memory_search");
+  const exec = { agent: makeFakeAgent(`/home/user/projects/${containerDir}`), signal: new AbortController().signal };
+  const foundA = await search.execute({ query: markerA, limit: 10 }, exec);
+  assert.equal(foundA.success, true, JSON.stringify(foundA));
+  assert.ok(foundA.results.some((r) => r.content.includes(markerA)), "第一轮捕获应落库");
+  const foundB = await search.execute({ query: markerB, limit: 10 }, exec);
+  assert.equal(foundB.success, true, JSON.stringify(foundB));
+  assert.equal(foundB.results.filter((r) => r.content.includes(markerB)).length, 0, "节流窗口内第二轮不应落库");
+
+  // 清理
+  const forget = ctx.toolsMap.get("memory_forget");
+  for (const hit of foundA.results.filter((r) => r.content.includes(markerA))) {
+    await forget.execute({ memoryId: hit.id }, exec);
+  }
+});
+
+test("自动捕获：节流窗口结束后摘要累计蒸馏（连真实后端，清理验证）", { skip: !HAS_BACKEND }, async () => {
+  const ctx = makeCtx();
+  apply(ctx, makeConfig({ captureMode: "raw", captureMinIntervalMs: 2000 }));
+  const containerDir = `capture-accum-${Date.now()}`;
+  const session = { header: { cwd: `/home/user/projects/${containerDir}` } };
+  const markerA = `accum-a-${Date.now()}`;
+  const markerB = `accum-b-${Date.now()}`;
+  const longReply = (m) => m.repeat(8);
+
+  const emitTurn = (turn, marker) => {
+    ctx.emitSessionEvent(session, { type: "turn/start", data: { turn } });
+    ctx.emitSessionEvent(session, {
+      type: "user/message",
+      data: { source: { kind: "user" }, content: [{ type: "text", text: `${marker} 用户输入` }] },
+    });
+    ctx.emitSessionEvent(session, {
+      type: "assistant/message",
+      data: { message: { content: [{ type: "text", text: longReply(marker) }] } },
+    });
+    ctx.emitSessionEvent(session, { type: "turn/end", data: { turn, reason: "success" } });
+  };
+
+  // turn1：正常蒸馏，建立 lastCaptureAt
+  emitTurn(1, `accum-init-${Date.now()}`);
+  await new Promise((r) => setTimeout(r, 500));
+  // turn2：节流窗口内 → 进 pendingSummary
+  emitTurn(2, markerA);
+  await new Promise((r) => setTimeout(r, 2500)); // 越过 2s 窗口
+  // turn3：窗口已过 → 合并 pending(turn2) + turn3 一起蒸馏落库
+  emitTurn(3, markerB);
+  await new Promise((r) => setTimeout(r, 3000));
+
+  const search = ctx.toolsMap.get("memory_search");
+  const exec = { agent: makeFakeAgent(`/home/user/projects/${containerDir}`), signal: new AbortController().signal };
+  let merged = null;
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const found = await search.execute({ query: markerA, limit: 10 }, exec);
+    merged = found.results.find((r) => r.content.includes(markerA) && r.content.includes(markerB));
+    if (merged) break;
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  assert.ok(merged, "窗口结束后应把节流期间累计的摘要与本轮合并蒸馏落库（同时含 markerA 与 markerB）");
+
+  // 清理
+  const forget = ctx.toolsMap.get("memory_forget");
+  const foundAll = await search.execute({ query: "accum-", limit: 20 }, exec);
+  for (const hit of foundAll.results.filter((r) => /accum-/.test(r.content))) {
+    await forget.execute({ memoryId: hit.id }, exec);
+  }
+});
