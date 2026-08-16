@@ -38,19 +38,17 @@
 | `owner_id` | TEXT | NOT NULL | 归属主体 id：personal = key_id；team = team_id | 存储·不可变 |
 | `source_ref` | JSONB | NULL | 出处 `{session_id, plugin, file, …}`（结果痕迹 Evidence 化的回溯） | 存储·不可变 |
 | `embedding` | vector | NULL | 检索向量（维度随 embedding 模型） | 处理元数据·可变 |
-| `embedding_state` | TEXT | NOT NULL | `pending / done / failed`（向量化步骤） | 处理元数据·可变 |
-| `reconciliation_state` | TEXT | NOT NULL | `pending / done / failed`（对账步骤，done 时置 `reconciled_at`） | 处理元数据·可变 |
-| `reconciled_at` | TIMESTAMPTZ | NULL | 对账完成时刻 | 处理元数据·可变 |
-| `last_error` | JSONB | NULL | `{stage, message, attempts, last_attempt_at}`——**回答"失败在哪一步"** | 处理元数据·可变 |
+| `processing_state` | TEXT | NOT NULL | `pending / processing / done / failed`（粗状态，4 个稳定值） | 处理元数据·可变 |
+| `current_step` | TEXT | NULL | 下一个待执行的步骤名（**开放枚举**，如 `embedding`/`reconcile`/…；done 时为 NULL） | 处理元数据·可变 |
+| `last_error` | JSONB | NULL | `{step, message, attempts, last_attempt_at}`——**`step` 回答"失败在哪一步"** | 处理元数据·可变 |
 | `created_at` | TIMESTAMPTZ | NOT NULL | **入库时间**（管道元数据、运维用：数据重放 / 审计 / 对账顺序） | 存储·不可变 |
 
 **关键区分（A2）**：语义字段（`observed_at/source_kind/content/scope/owner_type/owner_id/source_ref/created_at`）永不改；
-处理元数据（`embedding/embedding_state/reconciliation_state/reconciled_at/last_error`）随异步管道推进。
+处理元数据（`embedding/processing_state/current_step/last_error`）随异步管道推进。
 
-**异步管道（A2）**：写接口 ms 级落库（两步 state = pending）→ 向量化（`embedding_state` done）→ 对账（`reconciliation_state` done）；
-两步各自独立标记失败，用 `embedding_state`/`reconciliation_state` + `last_error.stage` 定位"失败在哪一步"，后端自行重试。
+**异步管道（A2，通用状态机）**：写接口 ms 级落库（`processing_state = pending`，`current_step = embedding`）→ 每步完成推进 `current_step` → 全部完成 `processing_state = done`、`current_step = NULL`；任一步失败 `processing_state = failed` + `last_error.step` 定位，后端按 `current_step`/`last_error` 自行重试。**步骤名是数据不是列**：将来加步骤（如 `entity_anchor`/`dedup`）只加步骤名，不改 schema。
 
-**索引**：PK(id) · (owner_type, owner_id) · (owner_type, scope) · (source_kind) · (observed_at DESC) · (embedding_state, reconciliation_state) · embedding vector 索引。
+**索引**：PK(id) · (owner_type, owner_id) · (owner_type, scope) · (source_kind) · (observed_at DESC) · (processing_state) · embedding vector 索引。
 
 ## 3. claim 表（待定，随 v1 数据模型讨论）
 
@@ -72,7 +70,7 @@
 |------|-----|------|
 | `source_kind` | `agent_add` / `outcome_trace` / `document` / `user_correction` | 采集四档 + 用户纠正特权 |
 | `owner_type` | `personal` / `team` | P0 只 personal |
-| `embedding_state` / `reconciliation_state` | `pending` / `done` / `failed` | A2 异步管道，两步独立 |
+| `processing_state` | `pending` / `processing` / `done` / `failed` | A2 异步管道粗状态（稳定） |
 | `edge_type` | `supersedes` / `contradicts` / `refines` / `generalizes`（+`retract` 预留 B1） | 随 v1 讨论 |
 | `claim_kind` | 待定 | 随 v1 讨论（画像偏好层筛选依据） |
 
@@ -80,7 +78,7 @@
 
 **本轮已定（2026-08-15 review）**：
 - owner 拆为 `owner_type + owner_id`（多态，不建统一 identity/ownership 表）。
-- 处理状态拆为 `embedding_state + reconciliation_state + last_error`（回答"失败在哪一步"）。
+- 处理状态 = 通用状态机 `processing_state + current_step + last_error{step}`（步骤名是数据非列，可扩到 5+ 步）。
 - Entity / 主题移出核心（P2 附属，另建文档）。
 
 **随 v1 Claim 数据模型讨论再定**：
