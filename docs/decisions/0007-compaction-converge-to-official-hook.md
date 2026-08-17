@@ -2,6 +2,7 @@
 
 > 状态: Accepted
 > 日期: 2026-08-12
+> 系统: v5
 > 关联: ADR-0008、[2026-08-12-opencode-compaction-hook.md](../notes/2026-08-12-opencode-compaction-hook.md)
 
 ## 背景

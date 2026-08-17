@@ -2,6 +2,7 @@
 
 > 状态: Accepted
 > 日期: 2026-08-12
+> 系统: v5
 > 关联: [PROJECT_PLAN.md](../PROJECT_PLAN.md#0-当前阶段与工程约束)、ADR-0004、ADR-0005
 
 ## 背景

@@ -2,6 +2,7 @@
 
 > 状态: Accepted
 > 日期: 2026-08-12
+> 系统: v5
 > 关联: [ISSUES.md MR-010](../ISSUES.md), [PROJECT_PLAN.md](../PROJECT_PLAN.md)
 
 ## 背景

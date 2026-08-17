@@ -1,6 +1,7 @@
 # ADR-0014: 置信度拆两轴（内容∥复用），由证据推导
 
-> 状态: Accepted
+> 状态: Superseded
+> Superseded by: 0019
 > 日期: 2026-08-14
 > 系统: crystal
 > 关联: [目标模型 v1](../designs/target-model/v1.md) · [memory-confidence](../notes/2026-08-14-memory-confidence.md) ·

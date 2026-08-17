@@ -54,10 +54,12 @@
 | [0011](decisions/0011-north-star-value-formula.md) | 北极星 = 价值公式 | 未开始 | 语义层已定（目标模型 v1）；实施依赖目标模型落地 |
 | [0012](decisions/0012-evidence-claim-separation.md) | 证据/结论分离，Evidence 不可再生地基 | 未开始 | 语义层已定；对账机制待开发 |
 | [0013](decisions/0013-derived-current-state-no-is-latest.md) | 当前状态派生，废除 is_latest | 未开始 | 语义层已定；status 派生 vs 落库留实体属性文档 |
-| [0014](decisions/0014-confidence-two-axes-evidence-derived.md) | 置信度两轴，由证据推导 | 未开始 | 语义层已定；衰减/冷启动待 S2 细化 |
+| [0014](decisions/0014-confidence-two-axes-evidence-derived.md) | 置信度两轴，由证据推导 | **Superseded by 0019（不再跟踪）** | — |
 | [0015](decisions/0015-scope-owner-promotion.md) | scope/owner 归属 + 提权 | 未开始 | 语义层已定；审计/审批面挂 MR-011 |
 | [0016](decisions/0016-evidence-capture-scope.md) | Evidence 采集范围四档 P0–P3 | 未开始 | P1 复用标注挂 S-pre 阶段 1；P2 文档蒸馏冻结 MR-019 |
 | [0017](decisions/0017-entity-topic-p2-optional.md) | Entity/主题 P2 可选附属 | 未开始 | 关系表设计留实体属性文档 |
+| [0018](decisions/0018-system-naming-v5-crystal.md) | 系统命名：旧 v5 / 新 crystal（crystal = 目标模型） | 已实现 | 命名规则 + ADR/README/设计文档打标已落地；schema `crystal.*` 归迁移路径 |
+| [0019](decisions/0019-confidence-single-axis-reuse-stats.md) | 置信度单轴（content）+ 复用/outcome 离散统计 | 未开始 | 语义层已定（v1 #8）；claim 表字段落地随 crystal 开发 |
 
 
 ## 下一步

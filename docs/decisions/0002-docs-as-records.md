@@ -2,6 +2,7 @@
 
 > 状态: Accepted
 > 日期: 2026-08-12
+> 系统: v5
 > 关联: [DOCUMENTATION_GUIDE.md](../DOCUMENTATION_GUIDE.md), AGENTS.md
 
 ## 背景
