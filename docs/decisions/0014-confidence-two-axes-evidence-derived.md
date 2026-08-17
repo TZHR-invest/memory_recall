@@ -2,6 +2,7 @@
 
 > 状态: Accepted
 > 日期: 2026-08-14
+> 系统: crystal
 > 关联: [目标模型 v1](../designs/target-model/v1.md) · [memory-confidence](../notes/2026-08-14-memory-confidence.md) ·
 > [复用反馈回收 Q2 调研](../notes/research/2026-08-14-reuse-feedback-signals/99-final-conclusions.md)
 

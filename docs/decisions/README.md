@@ -1,6 +1,6 @@
 # 决策记录（ADR）
 
-> 状态: ACTIVE · 最后更新: 2026-08-13
+> 状态: ACTIVE · 最后更新: 2026-08-16
 
 本项目使用 ADR（Architecture Decision Records）记录所有方向性决策。
 规则见 [docs/DOCUMENTATION_GUIDE.md](../DOCUMENTATION_GUIDE.md#2-决策记录adr)。
@@ -57,24 +57,25 @@ ADR 只记录**已定**的决策，没有 Proposed / Rejected 状态：
 
 ## 索引
 
-| 编号 | 标题 | 状态 | 日期 |
-|------|------|------|------|
-| [0001](0001-product-positioning.md) | 产品定位收敛为 AI Agent 记忆系统 | Accepted | 2026-08-12 |
-| [0002](0002-docs-as-records.md) | 文档沉淀与生命周期规范（Docs-as-Records） | Accepted | 2026-08-12 |
-| [0003](0003-inject-api-convergence.md) | 注入接口收敛为 /context-inject 单一路径 | Accepted | 2026-08-12 |
-| [0004](0004-context-inject-graceful-degradation.md) | /context-inject 子模块优雅降级 | Accepted | 2026-08-12 |
-| [0005](0005-inject-failure-notice-policy.md) | 注入失败提示策略（log + toast，每会话最多 3 次） | Accepted | 2026-08-12 |
-| [0006](0006-session-summary-not-stored-as-memory.md) | 会话摘要不写入记忆库 | Accepted | 2026-08-12 |
-| [0007](0007-compaction-converge-to-official-hook.md) | 压缩机制收敛到官方 hook（废弃预压缩） | Accepted | 2026-08-12 |
-| [0008](0008-remove-summary-capture-and-scene-recovery.md) | 删除摘要捕获与现场恢复 | Accepted | 2026-08-12 |
-| [0009](0009-memory-maintenance-loop.md) | 记忆维护闭环：注入可见性 + 规则约束，不做自动写库 | Accepted | 2026-08-13 |
-| [0010](0010-remove-document-rag.md) | 文档 RAG 移出核心：文档不再是并行召回语料 | Accepted | 2026-08-13 |
-| [0011](0011-north-star-value-formula.md) | 北极星 = 价值公式（错误信息按负价值计；状态有效性降级为因子） | Accepted | 2026-08-14 |
-| [0012](0012-evidence-claim-separation.md) | 证据/结论分离：Evidence 是不可再生地基，Claim 全部派生可重算 | Accepted | 2026-08-14 |
-| [0013](0013-derived-current-state-no-is-latest.md) | 当前状态派生，废除 is_latest 手工标志位（推理在边） | Accepted | 2026-08-14 |
-| [0014](0014-confidence-two-axes-evidence-derived.md) | 置信度拆两轴（内容∥复用），由证据推导 | Accepted | 2026-08-14 |
-| [0015](0015-scope-owner-promotion.md) | scope 与 owner 归属 + 提权机制（scope 提权审计 / owner 提权审批） | Accepted | 2026-08-14 |
-| [0016](0016-evidence-capture-scope.md) | Evidence 采集范围分四档 P0–P3（整个上下文理解不做） | Accepted | 2026-08-14 |
-| [0017](0017-entity-topic-p2-optional.md) | Entity/主题降级为 P2 可选附属，不进核心 | Accepted | 2026-08-14 |
+| 编号 | 标题 | 状态 | 系统 | 日期 |
+|------|------|------|------|------|
+| [0001](0001-product-positioning.md) | 产品定位收敛为 AI Agent 记忆系统 | Accepted | v5 | 2026-08-12 |
+| [0002](0002-docs-as-records.md) | 文档沉淀与生命周期规范（Docs-as-Records） | Accepted | v5 | 2026-08-12 |
+| [0003](0003-inject-api-convergence.md) | 注入接口收敛为 /context-inject 单一路径 | Accepted | v5 | 2026-08-12 |
+| [0004](0004-context-inject-graceful-degradation.md) | /context-inject 子模块优雅降级 | Accepted | v5 | 2026-08-12 |
+| [0005](0005-inject-failure-notice-policy.md) | 注入失败提示策略（log + toast，每会话最多 3 次） | Accepted | v5 | 2026-08-12 |
+| [0006](0006-session-summary-not-stored-as-memory.md) | 会话摘要不写入记忆库 | Accepted | v5 | 2026-08-12 |
+| [0007](0007-compaction-converge-to-official-hook.md) | 压缩机制收敛到官方 hook（废弃预压缩） | Accepted | v5 | 2026-08-12 |
+| [0008](0008-remove-summary-capture-and-scene-recovery.md) | 删除摘要捕获与现场恢复 | Accepted | v5 | 2026-08-12 |
+| [0009](0009-memory-maintenance-loop.md) | 记忆维护闭环：注入可见性 + 规则约束，不做自动写库 | Accepted | v5 | 2026-08-13 |
+| [0010](0010-remove-document-rag.md) | 文档 RAG 移出核心：文档不再是并行召回语料 | Accepted | v5 | 2026-08-13 |
+| [0011](0011-north-star-value-formula.md) | 北极星 = 价值公式（错误信息按负价值计；状态有效性降级为因子） | Accepted | crystal | 2026-08-14 |
+| [0012](0012-evidence-claim-separation.md) | 证据/结论分离：Evidence 是不可再生地基，Claim 全部派生可重算 | Accepted | crystal | 2026-08-14 |
+| [0013](0013-derived-current-state-no-is-latest.md) | 当前状态派生，废除 is_latest 手工标志位（推理在边） | Accepted | crystal | 2026-08-14 |
+| [0014](0014-confidence-two-axes-evidence-derived.md) | 置信度拆两轴（内容∥复用），由证据推导 | Accepted | crystal | 2026-08-14 |
+| [0015](0015-scope-owner-promotion.md) | scope 与 owner 归属 + 提权机制（scope 提权审计 / owner 提权审批） | Accepted | crystal | 2026-08-14 |
+| [0016](0016-evidence-capture-scope.md) | Evidence 采集范围分四档 P0–P3（整个上下文理解不做） | Accepted | crystal | 2026-08-14 |
+| [0017](0017-entity-topic-p2-optional.md) | Entity/主题降级为 P2 可选附属，不进核心 | Accepted | crystal | 2026-08-14 |
+| [0018](0018-system-naming-v5-crystal.md) | 系统命名与归属标记（旧 v5，新 crystal） | Accepted | crystal | 2026-08-16 |
 
-*状态: ACTIVE · 最后更新: 2026-08-14*
+*状态: ACTIVE · 最后更新: 2026-08-16*

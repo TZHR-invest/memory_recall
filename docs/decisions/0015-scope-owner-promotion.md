@@ -2,6 +2,7 @@
 
 > 状态: Accepted
 > 日期: 2026-08-14
+> 系统: crystal
 > 关联: [目标模型 v1](../designs/target-model/v1.md) · [personal-vs-shared-boundary](../notes/2026-08-14-personal-vs-shared-boundary.md) · MR-011
 
 ## 背景

@@ -1,6 +1,7 @@
 # 实体属性文档（草稿 v1）
 
 > 状态: 草稿（evidence / evidence_processing / lineage_edge 已定稿；claim 基本定稿，claim_kind 待定）
+> 系统: crystal
 > 版本: v1 · 最后更新: 2026-08-15
 > 关联: [目标模型 v1](v1.md)（语义层，唯一裁判）· 待落文档 #3
 > 范围: 本 doc 只定「新表长什么样」——字段 / 类型 / 约束 / 索引 / 枚举 / 派生字段。

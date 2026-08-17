@@ -2,6 +2,7 @@
 
 > 状态: Accepted
 > 日期: 2026-08-14
+> 系统: crystal
 > 关联: [目标模型 v1](../designs/target-model/v1.md) · [状态有效性 thread](../notes/2026-08-14-agent-memory-state-validity-thread.md) · MR-011
 
 ## 背景
