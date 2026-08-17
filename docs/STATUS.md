@@ -62,9 +62,8 @@
 
 ## 下一步
 
-1. 实体属性文档草稿已出（Evidence 表已定稿；Claim/Lineage 表待 v1 数据模型讨论）。
-2. 推进 v1 数据模型（Claim）讨论：statement 粒度 / claim_kind 分类 / 适用条件折入句子的边界 / 纠正语义。
-3. 再写迁移路径 / workbench，逐步销 B/C 档 10 个拍板问题。
+1. 实体属性文档已出草稿（evidence / evidence_processing / lineage_edge 定稿；claim 基本定稿，claim_kind 待定）。
+2. 再写迁移路径 / workbench，逐步销 B/C 档 10 个拍板问题（含 claim_kind、迁移框架、命名 MR-010）。
 
 ## 等待项 / 阻塞
 
