@@ -40,6 +40,8 @@
 - **孤儿旧版本（`is_latest=FALSE, root_memory_id=NULL`）不迁移**——它们是历史，v5 里仍可回溯，且本来就是"取代语义"的产物。
 - 迁移后**对账重新生成 claim**（不把旧记忆直接当 claim），遵守"结论必须引用证据"。
 
+**迁移触发（已拍板）**：**一次性全量迁移，由开发者自行触发**（提供幂等迁移脚本/接口），**系统不自动迁移**。理由：迁移是一次性操作，且迁移后对账可能产生大量 claim 需人工审一遍，不自动跑。
+
 **不迁移的对象**：
 - `documents/chunks/chunk_entities` → 不迁移（ADR-0010：文档系统随 crystal 重构自然废弃）。
 - `memory_profiles` → 不迁移（crystal 画像 = Claim 读视图，从 claim 重算）。
@@ -56,9 +58,9 @@
 - **Stage E（DROP 旧表）单独一个 commit**，留回退窗口（DROP 前备份/可重放）。
 - 插件切换（Stage D）四端独立：opencode / codex / hermes / deepseek-tui / dsh 各自拉代码重启，后端访问日志核对不再调旧路由。
 
-## 7. 待拍板（迁移路径自身未决点）
+## 7. 迁移路径未决点（2026-08-16 已拍板）
 
-1. **旧数据迁移粒度**：一次性全量迁移 vs 按容器/优先级渐进迁移 vs 不迁移（crystal 从零开始，旧数据只读保留）。倾向**按容器渐进 + 只迁移 active**（避免一次性重理解 1931 条的贵与质量不稳）。
-2. **`container_tag` 拆 owner/scope**：旧 `container_tag = {keyId}` 或 `{keyId}_project-<dir>`（keyId 与项目拼一列）。迁移时如何拆成 `owner_type/owner_id/scope`？项目容器（`_project-` 后缀）→ scope=项目、owner=keyId；用户容器 → scope=NULL、owner=keyId。
-3. **鉴权映射**：`/api/v2` 沿用 `X-API-Key`，但 crystal 的 `owner_id` 是 keyId（personal）还是未来 team_id（P1）？P0 阶段 owner_type=personal、owner_id=keyId，鉴权层直接填。
-4. **Stage E 判定标准**：crystal 稳定运行多久 + 插件全切后，才 DROP 旧表？建议"crystal 连续 N 天无 P0/P1 + 四端插件全切 + 用户确认无回滚需求"。
+1. **迁移粒度**：**一次性全量迁移，由开发者自行触发**（提供幂等迁移脚本/接口），系统不自动迁移。
+2. **`container_tag` 拆 owner/scope**：项目容器（`{keyId}_project-<dir>`）→ `scope=<dir>`、`owner_type=personal`、`owner_id=<keyId>`；用户容器（`{keyId}`）→ `scope=NULL`、`owner_type=personal`、`owner_id=<keyId>`。
+3. **鉴权映射**：`/api/v2` 沿用 `X-API-Key`；P0 阶段 `owner_type=personal`、`owner_id=keyId` 由鉴权层直接填（P1 团队再扩展 `team`）。
+4. **Stage E 退役标准**：crystal 连续 N 天无 P0/P1 + 四端插件全切 + 用户确认无回滚需求，才 DROP 旧表。
