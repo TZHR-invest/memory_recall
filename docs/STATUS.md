@@ -64,8 +64,8 @@
 
 ## 下一步
 
-1. 实体属性文档已出草稿（evidence / evidence_processing / lineage_edge 定稿；claim 基本定稿，claim_kind 待定）。
-2. 再写迁移路径 / workbench，逐步销 B/C 档 10 个拍板问题（含 claim_kind、迁移框架、命名 MR-010）。
+1. 实体属性文档 + 渐进迁移路径已出草稿（含 Stage A–E 阶段划分、旧数据迁移策略、不引入迁移框架）。
+2. 再写 workbench（MR-011），并拍板迁移路径 4 个未决点（迁移粒度 / container_tag 拆分 / 鉴权映射 / 退役标准）+ 剩余 B/C 档问题（claim_kind、命名 MR-010）。
 
 ## 等待项 / 阻塞
 
