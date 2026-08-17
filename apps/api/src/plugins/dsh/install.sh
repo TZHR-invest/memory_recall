@@ -219,14 +219,35 @@ PATCHEOF
 fi
 
 # ── 定位 dsh 安装根 ───────────────────────────────────────────────────────
+# 优先从正在运行的 dsh web 进程推导（其 cwd 即安装根，覆盖 npm 全局安装
+# ~/.npm-global/... 的场景），其次 npm root -g，最后回退 ~/.npm/_npx 缓存。
 ROOT=""
-for d in $(ls -dt "$HOME"/.npm/_npx/*/ 2>/dev/null); do
-  d=${d%/}
-  [ -d "$d/node_modules/@deepseek-ai" ] || continue
-  ROOT="$d"
-  break
+for PID in $(pgrep -f "dsh web" 2>/dev/null); do
+  [ "$PID" = "$$" ] && continue
+  CWD=$(readlink "/proc/$PID/cwd" 2>/dev/null || true)
+  [ -n "$CWD" ] && [ -d "$CWD/node_modules/@deepseek-ai/dsh-client-connection" ] && ROOT="$CWD" && break
 done
+if [ -z "$ROOT" ]; then
+  G=$(npm root -g 2>/dev/null || true)
+  [ -n "$G" ] && [ -d "$G/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-client-connection" ] && ROOT="$G/@deepseek-ai/dsh"
+fi
+if [ -z "$ROOT" ]; then
+  for d in $(ls -dt "$HOME"/.npm/_npx/*/ 2>/dev/null); do
+    d=${d%/}
+    [ -d "$d/node_modules/@deepseek-ai/dsh-client-connection" ] || continue
+    ROOT="$d"
+    break
+  done
+fi
 
+# 解析 dsh 可执行文件：npm 全局安装（~/.npm-global/bin/dsh）优先，
+# 其次 ROOT/node_modules/.bin/dsh（npx 缓存布局），最后 PATH 上的 dsh。
+DSH_BIN=""
+if command -v dsh >/dev/null 2>&1; then
+  DSH_BIN="$(command -v dsh)"
+elif [ -n "$ROOT" ] && [ -x "$ROOT/node_modules/.bin/dsh" ]; then
+  DSH_BIN="$ROOT/node_modules/.bin/dsh"
+fi
 # ── headless 试启动冒烟（隔离环境验证插件组合，防"启动即崩"）──────────────
 # 组合有问题（如 client-modules 契约错误）时 headless 在 boot 阶段即崩溃退出，
 # 命中插件关键字则判定为插件问题并中止正式重启；未命中（LLM/网络类）只警告。
@@ -279,8 +300,8 @@ PATCHEOF
 
 # ── 4/4 冒烟 + 重启（可选）──────────────────────────────────────────────
 if [ "$MODE" = "smoke" ] || [ "$MODE" = "restart" ]; then
-  if [ -n "$ROOT" ] && [ -x "$ROOT/node_modules/.bin/dsh" ]; then
-    SMOKE_TEST "$ROOT/node_modules/.bin/dsh"
+  if [ -n "$DSH_BIN" ] && [ -x "$DSH_BIN" ]; then
+    SMOKE_TEST "$DSH_BIN"
     SMOKE_RC=$?
     # smoke 模式：0=通过，1=插件问题，2=非插件问题（LLM/网络等），供 CI/人工判断
     [ "$MODE" = "smoke" ] && exit "$SMOKE_RC"
@@ -296,15 +317,17 @@ fi
 
 if [ "$MODE" = "restart" ]; then
   echo "== 4/4 重启 dsh web =="
+  # 覆盖 npm 全局安装（node ~/.npm-global/bin/dsh web）与 npx 缓存两种启动形态
+  pkill -TERM -f "dsh web" 2>/dev/null
   pkill -TERM -f 'node_modules/.bin/dsh web' 2>/dev/null
   pkill -TERM -f 'npm exec @deepseek-ai/dsh web' 2>/dev/null
   pkill -TERM -f 'sh -c dsh web' 2>/dev/null
   # 实际 cmdline 是 node .../@deepseek-ai/dsh/lib/bin.js web（2026-08-15 实测：旧模式匹配不到，重启失败 EADDRINUSE）
   pkill -TERM -f '@deepseek-ai/dsh/lib/bin.js web' 2>/dev/null
   sleep 3
-  if [ -n "$ROOT" ] && [ -x "$ROOT/node_modules/.bin/dsh" ]; then
-    cd "$ROOT" || exit 1
-    setsid nohup ./node_modules/.bin/dsh web >> /tmp/dsh-web.log 2>&1 < /dev/null &
+  if [ -n "$DSH_BIN" ] && [ -x "$DSH_BIN" ]; then
+    cd "$(dirname "$DSH_BIN")" || exit 1
+    setsid nohup "$DSH_BIN" web >> /tmp/dsh-web.log 2>&1 < /dev/null &
     echo "  新进程 PID=$!"
     sleep 8
     curl -s -o /dev/null -w "  127.0.0.1:3080 页面 -> %{http_code}\n" http://127.0.0.1:3080/ || echo "  [警告] 页面未就绪，请稍后手动刷新"

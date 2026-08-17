@@ -1,6 +1,6 @@
 # Memory Recall 已知问题清单（索引）
 
-> 状态: ACTIVE · 版本: v1.5 · 最后更新: 2026-08-15
+> 状态: ACTIVE · 版本: v1.6 · 最后更新: 2026-08-18
 >
 > 本文件是问题清单**索引**（进知识库，Agent 一眼看到当前有哪些坑）；
 > 每个问题的详情在 `docs/issues/MR-xxx-短slug.md`。
@@ -55,6 +55,7 @@
 | MR-021 | codex 插件项目容器探测启动竞态（VSCode 扩展模式偶发 403，容器回退 codex-default 被冻结） | 见 [MR-021 详情](issues/MR-021-codex-mcp-container-race.md)（2026-08-14 修复，config.py 惰性重探测） |
 | MR-022 | memory-recall-dsh 缺 dsh.client.platform + exports["./client"]，dsh web 启动即崩溃（3080 无监听） | 见 [MR-022 详情](issues/MR-022-dsh-client-platform-missing.md)（2026-08-14 修复，package.json 补元数据 + install.sh --restart） |
 | MR-023 | memory-recall-dsh 浏览器端未注册（HARNESS: loaded without registering ... via __ModuleLoader__.load） | 见 [MR-023 详情](issues/MR-023-dsh-client-registration.md)（2026-08-14 修复，生成式 classic-script bundle：client-lib.js + build-bundle.mjs） |
+| MR-025 | dsh web 局域网 403：补丁打在错误副本（npm 全局安装 vs npx 缓存，运行副本缺三层补丁） | 见 [MR-025 详情](issues/MR-025-dsh-lan-patch-root-mismatch.md)（2026-08-18 修复，install.sh ROOT 定位/DSH_BIN 解析/pkill 宽匹配） |
 
 ## 优先行动建议
 
@@ -63,4 +64,4 @@
 3. **同时做产品面最小闭环**（MR-011）：让用户看到并纠正系统记住了什么，这是信任与留存的基础。
 4. **清理工程债**（MR-013 迁移框架 / MR-015 死代码 / MR-017 cap 配置化 / MR-018 画像去重 / MR-020 版本历史读取）。
 
-*状态: ACTIVE · 版本: v1.5 · 最后更新: 2026-08-15*
+*状态: ACTIVE · 版本: v1.6 · 最后更新: 2026-08-18*
