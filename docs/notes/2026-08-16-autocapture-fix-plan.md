@@ -289,3 +289,20 @@ dynamic 注入（时效即价值）。
 - 异步路径规则可拦绝大部分混入（热点研究/项目配置/临时经验都是 learned-pattern 等）
 - npm 2FA 类"技术类型但跨项目"极少数误判 false → 仍可向量召回，不丢知识
 - 零额外 LLM 成本、一处改动、低风险，符合避免过度设计
+
+## 12. 画像写入侧升级：规则 → LLM 判断（2026-08-18）
+
+修正：此前实施为规则（type 判断），与既定 LLM 方案不一致，用户指出后升级为 LLM 判断。
+
+实现：
+- llm_entity_extraction.py：实体提取 prompt（中英）加 profile_worthy 字段 + 判断标准
+  （跨项目通用→true；项目特定配置/经验/一次性→false）
+- extract_with_relations 返回 dict / extract 返回 ExtractedFact 加 profile_worthy（默认 True fail-open）
+- memory_store.py：同步（create）+ 异步（process_memory_async）写 profile_worthy 时
+  优先级 = 显式标记 > LLM 判断 > 规则 fallback（preference/无 type→true）
+- 测试：5 用例（learned-pattern→false / preference→true / 显式不覆盖 / LLM true 覆盖规则 /
+  LLM false 覆盖规则）
+
+实测：项目配置类判 false ✅；跨项目经验（npm 2FA 类）判 false（fail-safe 方向，可接受，
+宁可不进画像也不误混入；仍可向量召回）。与存量专门分类 prompt 的判断略有差异（实体提取
+prompt 更保守），如需精确匹配可后续微调 prompt 正反例。

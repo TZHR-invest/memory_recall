@@ -108,6 +108,7 @@ class ExtractedFact:
     entities: Dict[str, List[str]]
     is_static: bool
     confidence: float
+    profile_worthy: bool = True
     asmr_dimension: Optional[str] = None
     entity_context: Optional[str] = None
 
@@ -512,6 +513,7 @@ class LLMEntityExtractor:
                     content=text,
                     entities=entities,
                     is_static=final_is_static,
+                    profile_worthy=result.get("profile_worthy", True),
                     confidence=result.get("confidence", 0.5),
                     asmr_dimension=asmr_dimension,
                     entity_context=entity_context,
@@ -658,6 +660,7 @@ class LLMEntityExtractor:
                     "entities": entities,
                     "relations": relations,
                     "is_static": result.get("is_static", False),
+                    "profile_worthy": result.get("profile_worthy", True),
                     "confidence": result.get("confidence", 0.5),
                 }
 
@@ -705,13 +708,19 @@ class LLMEntityExtractor:
   "relations": [
     {{"from": "实体1", "to": "实体2", "type": "关系类型", "confidence": 0.9}}
   ],
-  "is_static": true
+  "is_static": true,
+  "profile_worthy": true
 }}
 
 【is_static 判断】
 - true: 永久特征/长期事实 (偏好、职业、身份、习惯)
 - false: 临时活动/一次性事件 (今天的操作、某次研究、某次对话)
 - 判断内容是否属于该用户长期稳定的特质
+
+【profile_worthy 判断】（仅当 is_static=true 时有意义）
+- true: 用户跨项目通用的偏好/习惯/行为规则（如"始终用中文回复"、跨项目防崩纪律）
+- false: 项目特定的配置/经验/一次性事件（如"某插件 baseURL 配置"、"某项目 bug 修复"）
+- 判断：这条记忆是否值得在**每个项目、每个会话**都注入？还是仅在相关任务时召回？
 
 【实体类型】
 - person: 人物
@@ -788,13 +797,19 @@ Return JSON format:
   "relations": [
     {{"from": "entity1", "to": "entity2", "type": "relation_type", "confidence": 0.9}}
   ],
-  "is_static": true
+  "is_static": true,
+  "profile_worthy": true
 }}
 
 is_static rules:
 - true: permanent trait / long-term fact (preference, occupation, identity, habit)
 - false: temporary activity / one-time event (today's operation, a one-off research)
 - Judge whether the content is a stable long-term characteristic of this user
+
+profile_worthy rules (meaningful only when is_static=true):
+- true: user-wide preference/habit/behavior rule across projects (e.g. "always reply in Chinese", cross-project discipline)
+- false: project-specific config/experience/one-time event (e.g. "plugin baseURL config", "project bug fix")
+- Judge: should this memory be injected in EVERY project/session, or only recalled when relevant?
 
 【Entity Types】
 - person: Person name

@@ -71,16 +71,17 @@ class TestProfileWorthyWrite:
             container_tag="test_pw",
             content="某项目的临时配置经验",
             is_static=True,
-            metadata={"type": "learned-pattern", "_pending_extract_entities": True},
+            metadata={"type": "learned-pattern", "_pending_extract_entities": True, "_pending_use_llm_extraction": True},
         )
         # 用真实 process_memory_async + mock 提取
         with ExitStack() as st:
             st.enter_context(patch.object(store, "get_by_id", new_callable=AsyncMock, side_effect=[mem, mem, None]))
             extractor = AsyncMock()
             extractor.extract_with_relations.return_value = {
-                "entities": [], "relations": [], "is_static": True, "confidence": 0.5
-            }
-            st.enter_context(patch.object(store, "_get_llm_extractor", new_callable=AsyncMock, return_value=extractor))
+                "entities": [], "relations": [], "is_static": True,
+                "confidence": 0.5
+            }  # 无 profile_worthy → 走规则 fallback
+            st.enter_context(patch.object(store, "_get_llm_extractor", return_value=extractor))
             st.enter_context(patch.object(store, "_store_entity_graph", new_callable=AsyncMock))
             st.enter_context(patch("src.services.core.memory_store.relation_service", new_callable=AsyncMock))
             mock_upd = st.enter_context(patch.object(store, "update_metadata", new_callable=AsyncMock))
@@ -103,15 +104,16 @@ class TestProfileWorthyWrite:
             container_tag="test_pw",
             content="用户喜欢用中文回复",
             is_static=True,
-            metadata={"type": "preference", "_pending_extract_entities": True},
+            metadata={"type": "preference", "_pending_extract_entities": True, "_pending_extract_relations": True, "_pending_use_llm_extraction": True},
         )
         with ExitStack() as st:
             st.enter_context(patch.object(store, "get_by_id", new_callable=AsyncMock, side_effect=[mem, mem, None]))
             extractor = AsyncMock()
             extractor.extract_with_relations.return_value = {
-                "entities": [], "relations": [], "is_static": True, "confidence": 0.5
-            }
-            st.enter_context(patch.object(store, "_get_llm_extractor", new_callable=AsyncMock, return_value=extractor))
+                "entities": [], "relations": [], "is_static": True,
+                "confidence": 0.5
+            }  # 无 profile_worthy → 走规则 fallback
+            st.enter_context(patch.object(store, "_get_llm_extractor", return_value=extractor))
             st.enter_context(patch.object(store, "_store_entity_graph", new_callable=AsyncMock))
             st.enter_context(patch("src.services.core.memory_store.relation_service", new_callable=AsyncMock))
             mock_upd = st.enter_context(patch.object(store, "update_metadata", new_callable=AsyncMock))
@@ -133,15 +135,16 @@ class TestProfileWorthyWrite:
             content="存量已标记内容",
             is_static=True,
             metadata={"type": "learned-pattern", "profile_worthy": True,
-                      "_pending_extract_entities": True},  # 显式 true（如存量 npm 2FA）
+                      "_pending_extract_entities": True, "_pending_use_llm_extraction": True},  # 显式 true（如存量 npm 2FA）
         )
         with ExitStack() as st:
             st.enter_context(patch.object(store, "get_by_id", new_callable=AsyncMock, side_effect=[mem, mem, None]))
             extractor = AsyncMock()
             extractor.extract_with_relations.return_value = {
-                "entities": [], "relations": [], "is_static": True, "confidence": 0.5
-            }
-            st.enter_context(patch.object(store, "_get_llm_extractor", new_callable=AsyncMock, return_value=extractor))
+                "entities": [], "relations": [], "is_static": True,
+                "confidence": 0.5
+            }  # 无 profile_worthy → 走规则 fallback
+            st.enter_context(patch.object(store, "_get_llm_extractor", return_value=extractor))
             st.enter_context(patch.object(store, "_store_entity_graph", new_callable=AsyncMock))
             st.enter_context(patch("src.services.core.memory_store.relation_service", new_callable=AsyncMock))
             mock_upd = st.enter_context(patch.object(store, "update_metadata", new_callable=AsyncMock))
@@ -152,3 +155,62 @@ class TestProfileWorthyWrite:
         assert len(calls) >= 1
         meta = calls[-1].args[1]
         assert meta.get("profile_worthy") is True, "显式标记不应被覆盖"
+
+    def test_llm_judgment_overrides_rule(self):
+        """LLM 判断优先于规则：error-solution 类型但 LLM 判 profile_worthy=true → 进画像"""
+        import asyncio
+        store = MemoryStore()
+        mem = Memory(
+            id="mem_pw4",
+            container_tag="test_pw",
+            content="npm 发布 2FA 账号经验（跨项目通用）",
+            is_static=True,
+            metadata={"type": "error-solution", "_pending_extract_entities": True, "_pending_extract_relations": True, "_pending_use_llm_extraction": True},
+        )
+        with ExitStack() as st:
+            st.enter_context(patch.object(store, "get_by_id", new_callable=AsyncMock, side_effect=[mem, mem, None]))
+            extractor = AsyncMock()
+            # LLM 判断 profile_worthy=true（error-solution 但跨项目通用）
+            extractor.extract_with_relations.return_value = {
+                "entities": [], "relations": [], "is_static": True,
+                "profile_worthy": True, "confidence": 0.5
+            }
+            st.enter_context(patch.object(store, "_get_llm_extractor", return_value=extractor))
+            st.enter_context(patch.object(store, "_store_entity_graph", new_callable=AsyncMock))
+            st.enter_context(patch("src.services.core.memory_store.relation_service", new_callable=AsyncMock))
+            mock_upd = st.enter_context(patch.object(store, "update_metadata", new_callable=AsyncMock))
+            st.enter_context(patch("src.services.core.profile_service.profile_service", new_callable=AsyncMock))
+            asyncio.get_event_loop().run_until_complete(store.process_memory_async("mem_pw4"))
+
+        calls = mock_upd.call_args_list
+        meta = calls[-1].args[1]
+        assert meta.get("profile_worthy") is True, "LLM 判断应优先于类型规则"
+
+    def test_llm_false_overrides_preference_rule(self):
+        """LLM 判 false 覆盖 preference 规则：preference 类型但 LLM 判 false → 不进画像"""
+        import asyncio
+        store = MemoryStore()
+        mem = Memory(
+            id="mem_pw5",
+            container_tag="test_pw",
+            content="某次性偏好记录",
+            is_static=True,
+            metadata={"type": "preference", "_pending_extract_entities": True, "_pending_extract_relations": True, "_pending_use_llm_extraction": True},
+        )
+        with ExitStack() as st:
+            st.enter_context(patch.object(store, "get_by_id", new_callable=AsyncMock, side_effect=[mem, mem, None]))
+            extractor = AsyncMock()
+            extractor.extract_with_relations.return_value = {
+                "entities": [], "relations": [], "is_static": True,
+                "profile_worthy": False, "confidence": 0.5
+            }
+            st.enter_context(patch.object(store, "_get_llm_extractor", return_value=extractor))
+            st.enter_context(patch.object(store, "_store_entity_graph", new_callable=AsyncMock))
+            st.enter_context(patch("src.services.core.memory_store.relation_service", new_callable=AsyncMock))
+            mock_upd = st.enter_context(patch.object(store, "update_metadata", new_callable=AsyncMock))
+            st.enter_context(patch("src.services.core.profile_service.profile_service", new_callable=AsyncMock))
+            asyncio.get_event_loop().run_until_complete(store.process_memory_async("mem_pw5"))
+
+        calls = mock_upd.call_args_list
+        meta = calls[-1].args[1]
+        assert meta.get("profile_worthy") is False, "LLM 判断应覆盖类型规则"

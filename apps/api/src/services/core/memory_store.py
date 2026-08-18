@@ -156,6 +156,7 @@ class MemoryStore:
                 final_metadata = {}
 
         # 异步模式：跳过 LLM 实体提取和自动关系创建，后续在 process_memory_async 中完成
+        extraction_profile_worthy = None
         if not async_process:
             if extract_entities:
                 if use_llm_extraction:
@@ -169,6 +170,7 @@ class MemoryStore:
                             entities_to_store = extraction.get("entities", [])
                             relations_to_store = extraction.get("relations", [])
                             extraction_is_static = extraction.get("is_static")
+                            extraction_profile_worthy = extraction.get("profile_worthy")
 
                             if entities_to_store:
                                 entities_dict = {}
@@ -187,6 +189,7 @@ class MemoryStore:
                             if llm_fact.entities:
                                 final_metadata["entities"] = llm_fact.entities
                             is_static = llm_fact.is_static
+                            extraction_profile_worthy = llm_fact.profile_worthy
                     except Exception:
                         entities = entity_extractor.extract_to_metadata(content)
                         if entities:
@@ -209,11 +212,14 @@ class MemoryStore:
         final_metadata["relations"] = {"updates": [], "extends": [], "derives": []}
 
         # 画像净化（2026-08-18）：static 记忆补 profile_worthy 标记（同步路径）。
-        # 与 process_memory_async 的规则一致：preference/无 type 进画像，其他类型不进。
+        # 优先级：显式标记 > LLM 判断 > 规则 fallback（preference/无 type 进画像）。
         if is_static and "profile_worthy" not in final_metadata:
-            final_metadata["profile_worthy"] = (
-                final_metadata.get("type") in (None, "preference")
-            )
+            if isinstance(extraction_profile_worthy, bool):
+                final_metadata["profile_worthy"] = extraction_profile_worthy
+            else:
+                final_metadata["profile_worthy"] = (
+                    final_metadata.get("type") in (None, "preference")
+                )
 
         # 异步模式标记 status
         if async_process:
@@ -388,6 +394,7 @@ class MemoryStore:
 
             # Step 1: LLM 实体提取
             llm_is_static = None
+            llm_profile_worthy = None
             if extract_entities:
                 if use_llm_extraction:
                     try:
@@ -400,6 +407,7 @@ class MemoryStore:
                             entities_to_store = extraction.get("entities", [])
                             relations_to_store = extraction.get("relations", [])
                             llm_is_static = extraction.get("is_static")
+                            llm_profile_worthy = extraction.get("profile_worthy")
 
                             if entities_to_store:
                                 entities_dict = {}
@@ -423,6 +431,7 @@ class MemoryStore:
                             if llm_fact.entities:
                                 meta["entities"] = llm_fact.entities
                             llm_is_static = llm_fact.is_static
+                            llm_profile_worthy = llm_fact.profile_worthy
                     except Exception as e:
                         _logger.warning(f"Memory {memory_id}: LLM extraction failed: {e}")
                         # fallback to rule-based extraction
@@ -454,14 +463,13 @@ class MemoryStore:
 
             # 画像净化（2026-08-18）：static 记忆补 profile_worthy 标记，
             # 决定是否进入用户画像注入段（每会话必见）。
-            # 规则：preference 或无 type（显式 static 即用户偏好语义）→ 进画像；
-            # 其他类型（learned-pattern/error-solution 等项目/技术内容）→ 不进画像，
-            # 但仍可向量召回（_get_memories 不分 static/dynamic）。
-            # 存量已显式标记的（profile_worthy in metadata）不覆盖。
-            if is_static:
-                meta["profile_worthy"] = meta.get(
-                    "profile_worthy", meta.get("type") in (None, "preference")
-                )
+            # 优先级：显式标记 > LLM 判断（实体提取时输出）> 规则 fallback
+            # （preference/无 type 进画像，其他类型不进但可向量召回）。
+            if is_static and "profile_worthy" not in meta:
+                if isinstance(llm_profile_worthy, bool):
+                    meta["profile_worthy"] = llm_profile_worthy
+                else:
+                    meta["profile_worthy"] = meta.get("type") in (None, "preference")
 
             # Step 2: 自动关系创建
             if auto_relations:
