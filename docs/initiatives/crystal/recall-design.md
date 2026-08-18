@@ -1,7 +1,7 @@
 # 召回技术设计 v1（状态查询读路径）（草稿）
 
 > 状态: 草稿 · 系统: crystal · 版本: v1 · 最后更新: 2026-08-18
-> 关联: [目标模型 v1](v1.md)（§两链路召回 / §置信度与价值信号）· [实体属性文档](entity-attributes.md)（索引）·
+> 关联: [目标模型](foundation.md)（§两链路召回 / §置信度与价值信号）· [实体属性文档](entity-attributes.md)（索引）·
 > [里程碑](milestone.md)（M2 前置产物 §4.2）· [API 契约](api-contract.md)（§4.2 search/explain）·
 > [PRD](prd.md)（US-S1/S2 / A4/A5）· MR-017（注入 cap 教训）
 > 定位: 本文是 **状态查询（召回）的实现设计**——三级管道（预过滤→粗排→精排）、精排公式、

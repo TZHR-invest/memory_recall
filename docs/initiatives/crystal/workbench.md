@@ -1,7 +1,7 @@
 # Workbench 设计 v1（个人工作台：裁决面 + 洞察面）（草稿）
 
 > 状态: 草稿 · 系统: crystal · 版本: v1 · 最后更新: 2026-08-18
-> 关联: [crystal PRD](prd.md)（US-W1~W5 / A6~A8）· [目标模型 v1](v1.md)（S3 裁决）·
+> 关联: [crystal PRD](prd.md)（US-W1~W5 / A6~A8）· [目标模型](foundation.md)（S3 裁决）·
 > [里程碑](milestone.md)（M2 前置产物）· [API 契约](api-contract.md)（§2.4 路由）·
 > [workbench-vs-debug-roles](../../notes/2026-08-14-workbench-vs-debug-roles.md) · MR-011
 > 定位: 本文是 MR-011 的 **产品 + 权限设计**（裁决面 + 洞察面双轨）；API 契约细节见 api-contract §2.4，

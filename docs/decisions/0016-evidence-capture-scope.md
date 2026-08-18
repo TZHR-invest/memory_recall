@@ -3,7 +3,7 @@
 > 状态: Accepted
 > 日期: 2026-08-14
 > 系统: crystal
-> 关联: [目标模型 v1](../initiatives/crystal/v1.md) · [插件信号面盘点](../notes/research/2026-08-14-reuse-feedback-signals/10-plugin-signal-surface.md) ·
+> 关联: [目标模型](../initiatives/crystal/foundation.md) · [插件信号面盘点](../notes/research/2026-08-14-reuse-feedback-signals/10-plugin-signal-surface.md) ·
 > MR-019 · ADR-0010 · ADR-0012
 
 ## 背景

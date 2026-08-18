@@ -1,7 +1,7 @@
 # 2026-08-16: LLM 自报信心的可靠性——外部调研（无预设）
 
 > 类型: 外部调研 · 状态: **已完成（round-01 五平台 + round-02 四平台 + 收敛轮回项目内核对）** · 日期: 2026-08-16
-> 归属: [目标模型 v1](../../../initiatives/crystal/v1.md) 待拍板 B5（[milestone](../../../initiatives/crystal/milestone.md) §6 决策门 B5）→ **B5 已收敛定案**
+> 归属: [目标模型](../../../initiatives/crystal/foundation.md) 待拍板 B5（[milestone](../../../initiatives/crystal/milestone.md) §6 决策门 B5）→ **B5 已收敛定案**
 > 上游: [memory-confidence](../../2026-08-14-memory-confidence.md)（LLM 自报不可当概率，已定）
 > 执行: **人工复制粘贴**（用户操作平台，不用 codex 浏览器）——按 RESEARCH_GUIDE 的 Human-in-the-Loop 流程
 

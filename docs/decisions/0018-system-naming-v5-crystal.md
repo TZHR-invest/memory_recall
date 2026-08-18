@@ -3,7 +3,7 @@
 > 状态: Accepted
 > 系统: crystal
 > 日期: 2026-08-16
-> 关联: [目标模型 v1](../initiatives/crystal/v1.md) · MR-010（命名漂移）
+> 关联: [目标模型](../initiatives/crystal/foundation.md) · MR-010（命名漂移）
 
 ## 背景
 

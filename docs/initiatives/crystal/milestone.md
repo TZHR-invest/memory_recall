@@ -1,7 +1,7 @@
 # Crystal 专项里程碑（北极星 · 目标模型迭代 roadmap）
 
 > 状态: 草稿 · 系统: crystal · 版本: v1 · 最后更新: 2026-08-16
-> 关联: [目标模型 v1](v1.md)（语义裁判）· [crystal PRD](prd.md)（用户故事/能力验收）· [渐进迁移路径](migration-path.md)（Stage A–E 工程阶段）·
+> 关联: [目标模型](foundation.md)（语义裁判）· [crystal PRD](prd.md)（用户故事/能力验收）· [渐进迁移路径](migration-path.md)（Stage A–E 工程阶段）·
 > [实体属性文档](entity-attributes.md)（schema 落库）· MR-006 / MR-011 · ISSUES B/C 档
 >
 > 本文是 crystal 专项的 **capability 视角 roadmap**：覆盖"做什么、交付什么能力、节奏怎么走、明确不做/推后什么"。

@@ -1,7 +1,7 @@
 # Crystal 专项文档包（initiatives/crystal/）
 
 > 状态: ACTIVE · 系统: crystal · 最后更新: 2026-08-18
-> 关联: [目标模型 v1](v1.md)（语义裁判）· [ADR-0018](../../decisions/0018-system-naming-v5-crystal.md)（系统命名）· [PROJECT_PLAN](../../PROJECT_PLAN.md)（阶段四）
+> 关联: [目标模型](foundation.md)（语义裁判）· [ADR-0018](../../decisions/0018-system-naming-v5-crystal.md)（系统命名）· [PROJECT_PLAN](../../PROJECT_PLAN.md)（阶段四）
 
 ## 本目录是什么
 
@@ -21,7 +21,7 @@ crystal = 本次迭代的系统代号（ADR-0018）：**北极星（价值公式
 北极星是**价值公式**（复用机会 × 有效性 × 影响 − 维护/遗忘成本，错误信息按负价值计）；
 Evidence = agent 生命周期输入（含 agent 自行蒸馏 = 观察），Claim = 系统理解 + 碰撞后的结论，二者多对多；
 Claim 只存简单断言、推理放谱系边；演变只做推导记录、不做审计回溯。
-（语义正文唯一裁判：[v1.md](v1.md)。）
+（语义正文唯一裁判：[foundation.md](foundation.md)。）
 
 ## 当前配套版本（包级一致性）
 
@@ -30,7 +30,7 @@ Claim 只存简单断言、推理放谱系边；演变只做推导记录、不�
 
 | 里程碑 | 配套文档（当前版本） | 说明 |
 |--------|----------------------|------|
-| **M1 建表 + API 骨架** | [v1](v1.md)（草稿） · [entity-attributes](entity-attributes.md)（定稿） · [api-contract](api-contract.md) v1 | entity-attributes 已定稿，M1 可照此建表 |
+| **M1 建表 + API 骨架** | [foundation](foundation.md)（草稿） · [entity-attributes](entity-attributes.md)（定稿） · [api-contract](api-contract.md) v1 | entity-attributes 已定稿，M1 可照此建表 |
 | **M2 两链路 + 工作台** | [workbench](workbench.md) v1 · [reconciliation-design](reconciliation-design.md) v1 · [recall-design](recall-design.md) v1 · [test-strategy](test-strategy.md) v1 | 前置文档已全部落稿（2026-08-18） |
 | **M3–M5 迁移收尾** | [migration-path](migration-path.md) · M3 迁移脚本设计 / M4 插件切换契约 / M5 退役检查单（**待落**） | 迁移路径已定 Stage A–E |
 
@@ -38,7 +38,7 @@ Claim 只存简单断言、推理放谱系边；演变只做推导记录、不�
 
 | 文件 | 层 | 角色 | 版本化 |
 |------|----|------|--------|
-| [v1.md](v1.md) | **语义** | 目标模型本体：北极星 + 对象模型 + 两链路 + 已拍板 35 项；**唯一裁判** | 独立版本（当前 v1 草稿） |
+| [foundation.md](foundation.md) | **语义** | 目标模型本体：北极星 + 对象模型 + 两链路 + 已拍板 35 项；**唯一裁判** | 独立版本（当前 v1 草稿） |
 | [entity-attributes.md](entity-attributes.md) | 落库 | crystal schema（evidence/claim/lineage_edge/claim_evidence/claim_usage/claim_activity 表字段/索引/枚举）**3 待定项已定案（2026-08-18）** | 独立草稿，**已定稿**（M1 可照此建表） |
 | [api-contract.md](api-contract.md) | 工程 | **crystal API 契约 v1**（/api/v2 路由表、鉴权映射、错误规范、幂等） | 独立草稿（M1 前置，已落） |
 | [workbench.md](workbench.md) | 工程 | **workbench (MR-011) 设计 v1**（裁决面+洞察面双轨 API/权限） | 独立草稿（M2 前置，已落） |

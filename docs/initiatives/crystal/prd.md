@@ -1,7 +1,7 @@
 # Crystal 专项产品需求（PRD v1 · 草稿）
 
 > 状态: 草稿 · 系统: crystal · 版本: v1 · 最后更新: 2026-08-16
-> 关联: [目标模型 v1](v1.md)（语义裁判）· [里程碑](milestone.md)（能力范围/节奏/流程）·
+> 关联: [目标模型](foundation.md)（语义裁判）· [里程碑](milestone.md)（能力范围/节奏/流程）·
 > [迁移路径](migration-path.md)（工程阶段）· MR-006 / MR-011
 > 定位: 本文是 crystal 专项的**需求层**文档——用户故事、角色、能力验收（用户可感知的"完成"）。
 > 与语义层（v1）、工程层（migration-path/milestone）互补；本文不写实现方案（归各 design v1）。
@@ -45,7 +45,7 @@
   对账**直接 supersede** 现有 Claim，不走 LLM 推理——保证"用户说了算"。
 - **US-R4**（冗余累积要收敛）：同一事实反复出现时系统应合并/强化（reinforce），
   而不是无限堆积近似重复（hermes 累积冗余的教训：semantic_dedup 0.85 只去近似重复）。
-  强化计数走 **content 计分规则**（[v1 §置信度与价值信号](v1.md#置信度与价值信号单轴--离散统计)：独立性闸门 + 证据强度分档 + 派生折扣 + 负向通道）；
+  强化计数走 **content 计分规则**（[v1 §置信度与价值信号](foundation.md#置信度与价值信号单轴--离散统计)：独立性闸门 + 证据强度分档 + 派生折扣 + 负向通道）；
   **被使用（report_effect）不算 reinforcement，只喂复用/outcome**。
 
 ### 支柱三：状态查询（召回）
@@ -121,7 +121,7 @@
 
 ## 5. 待定 / 依赖
 
-- ~~B5 content 初值~~ → **2026-08-16 已定案**（外部调研五平台收敛 + 用户评审修正）：冷启动初值 = source×claim_type 网格弱先验（不含 LLM 自报），**root_observation_id 缓置**（P0 add + P1 report_effect 不产生复述，防线=对账规则 + 幂等键），extraction_type 保留，**reinforce 计分规则**（独立证据 × 强度 × 派生折扣 − 负向）已落 [v1 §置信度与价值信号](v1.md#置信度与价值信号单轴--离散统计)；语义细节见 [调研结论](../../notes/research/2026-08-16-llm-confidence-initial-value/99-final-conclusions.md)，初值档位表 + extraction_type 字段进 M1，计分强度权重表 / 派生折扣分型细化归 M2 对账技术设计。
+- ~~B5 content 初值~~ → **2026-08-16 已定案**（外部调研五平台收敛 + 用户评审修正）：冷启动初值 = source×claim_type 网格弱先验（不含 LLM 自报），**root_observation_id 缓置**（P0 add + P1 report_effect 不产生复述，防线=对账规则 + 幂等键），extraction_type 保留，**reinforce 计分规则**（独立证据 × 强度 × 派生折扣 − 负向）已落 [v1 §置信度与价值信号](foundation.md#置信度与价值信号单轴--离散统计)；语义细节见 [调研结论](../../notes/research/2026-08-16-llm-confidence-initial-value/99-final-conclusions.md)，初值档位表 + extraction_type 字段进 M1，计分强度权重表 / 派生折扣分型细化归 M2 对账技术设计。
 - **workbench 设计 v1（MR-011）**：待落文档，M2 前置（裁决面 + 洞察面 API/权限契约）。
 - **crystal 测试策略**：随 M2 前置产物一起定。
 - **验收标准细化**：本表 A1–A11 在各 design v1 展开为可勾选清单（DOCUMENTATION_GUIDE §5）。

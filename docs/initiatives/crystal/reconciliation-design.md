@@ -1,7 +1,7 @@
 # 对账技术设计 v1（Evidence → Claim 写路径）（草稿）
 
 > 状态: 草稿 · 系统: crystal · 版本: v1 · 最后更新: 2026-08-18
-> 关联: [目标模型 v1](v1.md)（§两链路 / §置信度与价值信号）· [实体属性文档](entity-attributes.md)（表结构）·
+> 关联: [目标模型](foundation.md)（§两链路 / §置信度与价值信号）· [实体属性文档](entity-attributes.md)（表结构）·
 > [里程碑](milestone.md)（M2 前置产物 §4.1）· [API 契约](api-contract.md)（§2.2）· [PRD](prd.md)（US-R1~R4 / A1~A3）
 > 定位: 本文是 **对账（写路径）的实现设计**——worker 形态、事务边界、retry、reinforce 计分
 > （强度权重表 / 派生折扣分型 / 幂等键）、supersede/correct 流程。

@@ -3,7 +3,7 @@
 > 状态: Accepted
 > 日期: 2026-08-14
 > 系统: crystal
-> 关联: [目标模型 v1](../initiatives/crystal/v1.md) · [ENTITY_DESIGN](../ENTITY_DESIGN.md) · AGENTS.md「两种取代语义」说明
+> 关联: [目标模型](../initiatives/crystal/foundation.md) · [ENTITY_DESIGN](../ENTITY_DESIGN.md) · AGENTS.md「两种取代语义」说明
 
 ## 背景
 
@@ -39,5 +39,5 @@
 - 跟进：claim→claim 推理的漂移/错误率观测（先做再观察的触发条件）。
 - 跟进（2026-08-18）："推理/理由放边上"中的**触发证据因果**不再驻留 Lineage Edge 表
   （`triggered_by_evidence` 字段移除），改由独立审计日志 `claim_activity` 承载——边只保留
-  `reason`（叙述），因果追溯走日志。见 [v1 #35](../initiatives/crystal/v1.md) 与
+  `reason`（叙述），因果追溯走日志。见 [v1 #35](../initiatives/crystal/foundation.md) 与
   [entity-attributes §5.1](../initiatives/crystal/entity-attributes.md)。

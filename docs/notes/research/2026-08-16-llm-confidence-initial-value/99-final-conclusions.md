@@ -1,7 +1,7 @@
 # 99 · 最终统一理解与实施映射（B5 定案）
 
 > 归属: [README](README.md) · 日期: 2026-08-16
-> 输入: round-01 五平台 + round-02 四平台 + 回项目内核对（[v1](../../../initiatives/crystal/v1.md) / [milestone](../../../initiatives/crystal/milestone.md) / [entity-attributes](../../../initiatives/crystal/entity-attributes.md) / [memory-confidence](../../2026-08-14-memory-confidence.md)）
+> 输入: round-01 五平台 + round-02 四平台 + 回项目内核对（[foundation](../../../initiatives/crystal/foundation.md) / [milestone](../../../initiatives/crystal/milestone.md) / [entity-attributes](../../../initiatives/crystal/entity-attributes.md) / [memory-confidence](../../2026-08-14-memory-confidence.md)）
 > 状态: **收敛完成**——B5（LLM 自报信心的初值规则）定案
 
 ## 最终结论（一句话）
@@ -53,7 +53,7 @@ LLM 自报信心完全弃用（冷启动），仅保留为 V2 校准的潜在 fe
 
 | 落点 | 改动 | 阶段 |
 |------|------|------|
-| [v1](../../../initiatives/crystal/v1.md) | **reinforce 计分规则**（独立证据 × 强度 × 派生折扣 − 负向，被使用不喂分）已落 §置信度与价值信号 + #34 | 已回写 |
+| [foundation](../../../initiatives/crystal/foundation.md) | **reinforce 计分规则**（独立证据 × 强度 × 派生折扣 − 负向，被使用不喂分）已落 §置信度与价值信号 + #34 | 已回写 |
 | [entity-attributes](../../../initiatives/crystal/entity-attributes.md) | evidence 保留 `extraction_type`；root_observation_id 缓置（见实施校正）；初值语义 = source×claim_type 网格 Beta 先验（待落具体取值表 + 强度权重表，M1/M2） | M1/M2 |
 | [milestone](../../../initiatives/crystal/milestone.md) | B5 决策门 → 已收敛；M2 §4.1 已加 reinforce 计分实现指引（细化为对账技术设计 v1） | 已回写 |
 | [prd](../../../initiatives/crystal/prd.md) | US-R4 已加计分规则引用；§5 B5 项已更新 | 已回写 |
