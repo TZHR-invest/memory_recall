@@ -34,6 +34,7 @@
 | 记忆维护检查点（ADR-0009，Q2 三决策收尾） | 已完成（2026-08-14：SQL 关键词预检覆盖全库 14 个主题词，命中仅 3 条无关 LensDiary；memory_recall 项目容器 6 条记忆逐一核对，无涉及「S-pre/置信度拆两轴/复用反馈回收」的旧结论 → 无需版本化更新） | 本次会话 |
 | 目标模型（北极星）设计 | 草稿 v1，已拍板 21 项（A 档 5 项 2026-08-15 拍板）；**已抽 ADR 0011–0017**（价值公式 / 证据结论分离 / 当前状态派生 / 置信度两轴 / scope-owner 提权 / 采集四档 / Entity-主题 P2）；待拍板：3 份待落文档（迁移路径 / workbench / 实体属性文档）+ 10 个拍板问题（B/C 两档）。**2026-08-16：迁移路径草稿 + 4 未决点拍板（一次性全量/container_tag 拆分/鉴权映射/退役标准，commit 3d97c4d）；B/C 档逐项拍板（B1/B3/B4/B6、C1 命名/C2 MR-017/C3 Entity）；B5 初值经外部调研定案（source×claim_type 分组先验；root_observation_id 经用户评审缓置，防线=对账规则+幂等键）；新增 [crystal 专项里程碑](initiatives/crystal/milestone.md)（裁决面+洞察面双轨工作台/价值引擎不做推后/Stage A–E 节奏 + §3.5 研发流程文档门槛）+ [crystal PRD](initiatives/crystal/prd.md)（用户故事 + 能力验收 A1–A11）** | [foundation](initiatives/crystal/foundation.md) · [milestone](initiatives/crystal/milestone.md) · [PRD](initiatives/crystal/prd.md) · [专项入口](initiatives/crystal/README.md) |
 | **crystal 开发前准备（2026-08-18）** | **M1/M2 前置文档全部落稿 + schema 草稿落地**：entity-attributes 3 待定项定案（claim_kind 4 值对齐 v5 白名单 / claim_evidence 关系表 / claim_usage 独立表）+ **B5 初值档位表**（source×claim_kind 网格 Beta 值 + extraction_type 门控 ×0.7）；**crystal API 契约 v1**（/api/v2 路由表 + 鉴权映射 scope 归属校验 + 错误规范 + 幂等）；**workbench 设计 v1**（裁决面四动作 + scope 提权审计 + 洞察面统计/复盘 + A11 权限隔离）；**对账技术设计 v1**（worker/事务/retry + reinforce 强度权重表 + 派生折扣分型 0.7/0.5/1.0 + 幂等键）；**召回技术设计 v1**（三级管道/精排公式/截断可见/trace 契约）；**crystal 测试策略**（三层分级 + A1–A11 矩阵 + 每 M 出口）；**schema.sql crystal 段 + init_db.py 更新**（crystal.* 六表，临时库建表+insert 冒烟通过，已清理）；剩 M3 迁移脚本设计 / M4 插件切换契约 / M5 退役检查单（迁移收尾阶段前置） | [crystal 文档包](initiatives/crystal/README.md) |
+| **crystal M1 开发（Stage A，2026-08-18）** | **已完成**：①正式库落地 `crystal.*` 七表（evidence 含 `idempotency_key` 列 + 部分索引，2026-08-18 拍板补入 entity-attributes §2）——**独立幂等脚本 [init_crystal_db.py](../apps/api/init_crystal_db.py)**（绕开 `init_db.py` 在已建库上因 v5 非幂等 ALTER 报错的阻塞，只跑 crystal 段 + 增量迁移段，绝不触碰 v5）；②`verify_scope_ownership` helper（api-contract §1.2 实现拍板：拒绝 keyId 形态前缀 scope，防跨 key 串数据）+ 统一响应信封/错误规范（api-contract §3，`{code,message,data}`）；③`/api/v2` 路由 21 条：证据层 4 端点真实写入（POST evidence 202+pending+幂等命中 accepted=false、GET detail/list/claims、游标分页），对账/召回/工作台/debug/迁移 17 端点 501 桩（鉴权已生效，admin 校验已挂）；④`tests/test_crystal/` 单元 22 + 集成 16 全绿（集成=临时库重建+全量 schema+ASGI 客户端，schema 与 design 逐字段断言）；v5 回归 402 过（6 个基线坏测试与 M1 无关，见 MR-026）；⑤真实库 E2E 验证后测试数据已清理（0 残留） | [init_crystal_db.py](../apps/api/init_crystal_db.py) · [crystal 包](../apps/api/src/api/crystal/) · [测试](../apps/api/tests/test_crystal/) · [MR-026](issues/MR-026-v5-baseline-broken-tests.md) |
 | 蒸馏 prompt 重构（/extract-memory） | 已完成（2026-08-15，commit 3311a40）：三类记忆加判定特征+正反例+影响、硬性排除（对话流水账/系统描述/无验证泛论/重复）、reason 引用标准、最多 5 条、max_tokens 1500；服务端类型白名单归一（learn-pattern 错拼入库修复）；测试 78 全绿 + E2E 混合摘要 3 条分类全对/纯寒暄 0 条。**基线：8-15 全天 518 条（learned-pattern 400 / constraint 63 / preference 34 / error-solution 10，learned-pattern 77%）——早前记录的 42 条仅为重构后首窗口，观测对比请用全天口径** | [CHANGELOG](../apps/api/CHANGELOG.md) |
 | 自动捕获膨胀修复 + 画像净化（08-15~18） | **已全部完成（2026-08-18）**：捕获节流/去重/static 修复生效（容量 498→~120、capture 冗余 ~0）；**画像净化**：画像=每会话必见核心特征，存量 43 条 static 按 LLM 分类打 profile_worthy（9 true/34 false），_build_profile 过滤退出画像缓存，实测注入 43→9 条/11239→2687 字符（-76%）；漫剧制作等场景偏好按需召回；工具加 scope 提示防复发；测试全绿+已推送（a51ed3e） | [实施计划](notes/2026-08-16-autocapture-fix-plan.md) · [画像净化](notes/2026-08-18-profile-purification-plan.md) |
 | 自动捕获膨胀修复（08-15 写入 518 条） | **A+B 已实施完成（2026-08-16）**：插件侧（slice 5/门槛 100/节流 10min/累计/_capture）+ 后端（/extract-memory 去重 dropped+container_tag 对齐+0.80 阈值，异步 _capture DELETE 兜底）；**额外根因修复**：CHINESE_STATIC_INDICATORS 裸"是"指标致 216 条非 preference 被误标 static（LLM is_static 覆盖写入参数），已移除；测试 dsh 26/26 + 后端相关 67 全绿 + 真实链路验证（0.813 碎片被 dropped）；后端已重启生效；**dsh 插件文件已装（2026-08-16 10:30：install.sh apply 契约预检 PASS，插件测试 14/14 + 后端新测试 19/19 全绿）**；**待用户终端执行 bash install.sh --restart（cd apps/api/src/plugins/dsh）使 web 生效**；之后观测 3~5 天再定阶段 C/D | [分析](notes/2026-08-16-autocapture-bloat-analysis.md) · [实施计划](notes/2026-08-16-autocapture-fix-plan.md) |
@@ -64,7 +65,7 @@
 | [0012](decisions/0012-evidence-claim-separation.md) | 证据/结论分离，Evidence 不可再生地基 | 未开始 | 语义层已定；对账机制设计已落（[reconciliation-design.md](initiatives/crystal/reconciliation-design.md)） |
 | [0013](decisions/0013-derived-current-state-no-is-latest.md) | 当前状态派生，废除 is_latest | 未开始 | 语义层已定；status 物化派生缓存已落 schema（[entity-attributes](initiatives/crystal/entity-attributes.md)） |
 | [0014](decisions/0014-confidence-two-axes-evidence-derived.md) | 置信度两轴，由证据推导 | **Superseded by 0019（不再跟踪）** | — |
-| [0015](decisions/0015-scope-owner-promotion.md) | scope/owner 归属 + 提权 | 未开始 | 语义层已定；workbench 审计/审批面设计已落（[workbench.md](initiatives/crystal/workbench.md)） |
+| [0015](decisions/0015-scope-owner-promotion.md) | scope/owner 归属 + 提权 | 部分实现 | owner 归属已落地（M1：`verify_scope_ownership` + 鉴权层解析 owner，[security.py](../apps/api/src/api/crystal/security.py)）；提权（promote-scope 审计/审批）随 M2 workbench |
 | [0016](decisions/0016-evidence-capture-scope.md) | Evidence 采集范围四档 P0–P3 | 未开始 | 语义层已定；source_kind 枚举已落 schema（P0 add 先行） |
 | [0017](decisions/0017-entity-topic-p2-optional.md) | Entity/主题 P2 可选附属 | 未开始 | 关系表设计留实体属性文档（已确认不进核心 schema） |
 | [0018](decisions/0018-system-naming-v5-crystal.md) | 系统命名：旧 v5 / 新 crystal（crystal = 目标模型） | 已实现 | 命名规则 + ADR/README/设计文档打标已落地；schema `crystal.*` 段已落（2026-08-18） |
@@ -80,12 +81,13 @@
 3. ~~B5 初值~~ → **已定案 + 档位表已落**（entity-attributes §7.4，2026-08-18）。
 4. ~~实体属性文档收尾（claim_kind / evidence_refs / claim_usage）~~ → **已定案**（2026-08-18）。
 5. ~~对账 / 召回 / 测试策略~~ → **已全部落稿**（[reconciliation-design.md](initiatives/crystal/reconciliation-design.md) / [recall-design.md](initiatives/crystal/recall-design.md) / [test-strategy.md](initiatives/crystal/test-strategy.md)，2026-08-18）。
-6. **进入 M1 开发**（文档门槛已满足）：按 api-contract + entity-attributes 建 `crystal.*`（schema.sql 已有草稿，临时库验证通过）+ `/api/v2` 路由骨架 + 鉴权映射（`verify_scope_ownership`）。
-7. M2 开发前再落：迁移脚本设计 v1（M3 前置）→ 插件切换契约（M4 前置）→ 退役检查单（M5 前置）。
-8. 需求层已有 [crystal PRD](initiatives/crystal/prd.md)（用户故事 + 能力验收 A1–A11），各 design v1 已把对应验收细化。
+6. ~~M1 开发（Stage A）~~ → **已完成（2026-08-18）**：`crystal.*` 七表落地（[init_crystal_db.py](../apps/api/init_crystal_db.py)）+ `/api/v2` 21 路由（证据层真实写入 + 其余 501 桩）+ `verify_scope_ownership` + 统一信封；crystal 测试 38 全绿、v5 回归 402 过。
+7. **进入 M2 开发（Stage B，两链路落地）**：写路径（evidence→对账→claim：碰撞判定/claim_kind/statement 提炼 + reinforce 计分 + 幂等重放）→ 读路径（预过滤→向量粗排→精排：相关×content + explain 截断可见）→ 工作台（confirm/correct/forget + overview/reviews）。按 [reconciliation-design.md](initiatives/crystal/reconciliation-design.md) / [recall-design.md](initiatives/crystal/recall-design.md) / [workbench.md](initiatives/crystal/workbench.md) / [test-strategy.md](initiatives/crystal/test-strategy.md) 实现。
+8. M2 开发前再落：迁移脚本设计 v1（M3 前置）→ 插件切换契约（M4 前置）→ 退役检查单（M5 前置）。
+9. 需求层已有 [crystal PRD](initiatives/crystal/prd.md)（用户故事 + 能力验收 A1–A11），各 design v1 已把对应验收细化。
 
 ## 等待项 / 阻塞
 
-- 无阻塞项。遗留：MR-024（测试连接管理重构，两个测试文件不能同跑）未排期，详见 [TESTING.md](TESTING.md)。
+- 无阻塞项。遗留：MR-024（测试连接管理重构，两个测试文件不能同跑）未排期；MR-026（v5 基线坏测试 6 个，Python 3.14 event loop + extract-memory 签名漂移，全量回归需 `--deselect`）未排期，详见 [TESTING.md](TESTING.md) 与 [MR-026](issues/MR-026-v5-baseline-broken-tests.md)。
 
-*状态: ACTIVE · 最后更新: 2026-08-16*
+*状态: ACTIVE · 最后更新: 2026-08-18*

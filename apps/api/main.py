@@ -17,6 +17,11 @@ from src.background.scheduler import scheduler, setup_background_tasks
 from src.routes import health
 
 from src.api import memories, graph, auth_endpoints, embed, context_inject, debug, stats
+from src.api.crystal import router as crystal_router
+from src.api.crystal.errors import (
+    CrystalAPIError,
+    crystal_error_handler,
+)
 
 
 class UnicodeJSONResponse(JSONResponse):
@@ -126,6 +131,13 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
                 "type": error.get("type", ""),
             }
         )
+    if request.url.path.startswith("/api/v2"):
+        # crystal：统一信封（api-contract §3.1 422）
+        return UnicodeJSONResponse(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            content=crystal_error_payload(422, "请求参数验证失败", errors),
+        )
+    # v5：保持原样（v5 零影响）
     return UnicodeJSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content={
@@ -136,8 +148,37 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     )
 
 
+def crystal_error_payload(code: int, message: str, detail=None) -> dict:
+    """crystal 统一错误体（api-contract §3.2）"""
+    body = {"code": code, "message": message}
+    if detail is not None:
+        body["detail"] = detail
+    return body
+
+
+# ==================== crystal /api/v2 异常处理（api-contract §3） ====================
+# 注册顺序即匹配优先级：CrystalAPIError（crystal 专用子类）→ 最优先；
+# 其余 handler 内按路径分流：/api/v2 → crystal 统一信封，其余 → v5 原样（v5 零影响）。
+# 注意：v5 的 HTTPException 未注册统一信封（沿用 FastAPI 默认 JSONResponse），
+# crystal 用 CrystalAPIError 子类 + 专用 handler，互不干扰。
+app.add_exception_handler(CrystalAPIError, crystal_error_handler)
+
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
+    if request.url.path.startswith("/api/v2"):
+        # crystal：统一信封（api-contract §3.1 500）
+        print(f"❌ crystal 未处理异常: {exc}")
+        print(traceback.format_exc())
+        return UnicodeJSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content=crystal_error_payload(
+                500,
+                "服务器内部错误",
+                str(exc) if settings.APP_DEBUG else "Internal server error",
+            ),
+        )
+    # v5：保持原样
     print(f"❌ 未处理的异常: {exc}")
     print(traceback.format_exc())
     return UnicodeJSONResponse(
@@ -160,6 +201,7 @@ app.include_router(embed.router)
 app.include_router(context_inject.router)
 app.include_router(debug.router)
 app.include_router(stats.router)
+app.include_router(crystal_router, tags=["crystal /api/v2"])
 
 
 # ==================== 根路径 ====================

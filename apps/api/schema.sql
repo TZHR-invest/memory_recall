@@ -422,6 +422,7 @@ CREATE TABLE IF NOT EXISTS crystal.evidence (
     owner_id TEXT NOT NULL,
     source_ref JSONB,
     extraction_type TEXT CHECK (extraction_type IN ('verbatim', 'paraphrase', 'inference')),
+    idempotency_key TEXT,
     embedding vector(1024),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -430,6 +431,7 @@ CREATE INDEX IF NOT EXISTS idx_crystal_evidence_owner ON crystal.evidence(owner_
 CREATE INDEX IF NOT EXISTS idx_crystal_evidence_scope ON crystal.evidence(owner_type, scope);
 CREATE INDEX IF NOT EXISTS idx_crystal_evidence_source_kind ON crystal.evidence(source_kind);
 CREATE INDEX IF NOT EXISTS idx_crystal_evidence_observed ON crystal.evidence(observed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_crystal_evidence_idempotency ON crystal.evidence(idempotency_key) WHERE idempotency_key IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_crystal_evidence_embedding ON crystal.evidence USING hnsw (embedding vector_cosine_ops);
 
 COMMENT ON TABLE crystal.evidence IS 'crystal: 不可再生原始观察（append-only，语义字段不可变）';

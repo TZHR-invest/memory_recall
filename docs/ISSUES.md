@@ -32,6 +32,7 @@
 | MR-019 | 文档 → 记忆蒸馏是否值得做（ADR-0010 遗留） | P2 | [详情](issues/MR-019-document-to-memory-distillation.md) |
 | MR-020 | /history 端点对显式版本链返回空（版本历史双路径不一致） | P2 | [详情](issues/MR-020-version-history-gap.md) |
 | MR-024 | 测试文件全局 db 连接跨 asyncio loop 冲突（两文件不能同跑） | P2 | [详情](issues/MR-024-test-loop-conflict.md) |
+| MR-026 | v5 基线坏测试 6 个（Python 3.14 event loop 冲突 + extract-memory 签名漂移），全量回归需 --deselect | P2 | [详情](issues/MR-026-v5-baseline-broken-tests.md) |
 
 ## 已关闭（决策导致不再适用）
 

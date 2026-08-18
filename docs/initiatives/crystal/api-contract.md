@@ -44,6 +44,15 @@
 - 好处：与 v5 container_tag 规则同构（`{keyId}_project-<dir>`），旧插件迁移时只改路径、不改语义；
   scope 字段本身不带 key_id，跨 key 的 scope 碰撞天然隔离（校验时已加前缀）。
 
+> **2026-08-18 M1 实现拍板（防越权补充）**：§1.2 原"拼前缀校验"若直接实现会形同虚设——
+> 拼上 key_id 后"以 key_id_ 开头"恒真，无法拒绝 `scope="<他人keyId>_xxx"` 的伪装。
+> 落地语义改为**拒绝制**：
+> 1. `scope == NULL` → 允许，落库 NULL（全局）；
+> 2. `scope` **不以 keyId 形态开头**（uuid + "_"，含自己的 key_id + "_"）→ 允许，落库 scope 原值；
+> 3. 以**任意** uuid+"_" 形态开头（含 `{自己的key_id}_`）→ **403**（防 v5 container_tag 语义塞回 scope / 跨 key 串数据）。
+> 真正的隔离靠 `(owner_id, scope)` 双键：查询恒带 `owner_id=鉴权层解析值`。
+> 客户端若把 `{keyId}_project-x` 整体传进 scope 会被 403 拒绝，须改传 `project-x`（迁移时插件只改路径）。
+
 ### 1.3 admin vs 个人 key
 
 | 角色 | 可访问 | 说明 |

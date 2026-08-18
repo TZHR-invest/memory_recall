@@ -45,6 +45,7 @@
 | `owner_id` | TEXT | NOT NULL | 归属主体：personal = key_id；team = team_id | 存储·不可变 |
 | `source_ref` | JSONB | NULL | 出处 `{session_id, plugin, file, …}` | 存储·不可变 |
 | `extraction_type` | TEXT | NULL | 提炼方式 `verbatim / paraphrase / inference`（B5 定案 2026-08-16）：服务初值"提炼过程"维度——inference 类降档，防模型推断虚高（Grok r2） | 存储·不可变 |
+| `idempotency_key` | TEXT | NULL, UNIQUE | **幂等键**（2026-08-18 M1 拍板）：`sha256(session_id|message_id|content)` 前 32 位（reconciliation-design §4.4）；NULL = 客户端未提供（无幂等保证，重试可能重复入库） | 存储·不可变 |
 | `embedding` | vector | NULL | 检索向量（维度随 embedding 模型） | 派生·可空 |
 | `created_at` | TIMESTAMPTZ | NOT NULL | **入库时间**（运维：数据重放/审计/对账顺序） | 存储·不可变 |
 

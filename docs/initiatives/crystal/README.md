@@ -30,7 +30,7 @@ Claim 只存简单断言、推理放谱系边；演变只做推导记录、不�
 
 | 里程碑 | 配套文档（当前版本） | 说明 |
 |--------|----------------------|------|
-| **M1 建表 + API 骨架** | [foundation](foundation.md)（草稿） · [entity-attributes](entity-attributes.md)（定稿） · [api-contract](api-contract.md) v1 | entity-attributes 已定稿，M1 可照此建表 |
+| **M1 建表 + API 骨架** | [foundation](foundation.md)（草稿） · [entity-attributes](entity-attributes.md)（定稿） · [api-contract](api-contract.md) v1 | **已实现（2026-08-18）**：`crystal.*` 七表 + `/api/v2` 21 路由（证据层真实写入 + 其余桩） |
 | **M2 两链路 + 工作台** | [workbench](workbench.md) v1 · [reconciliation-design](reconciliation-design.md) v1 · [recall-design](recall-design.md) v1 · [test-strategy](test-strategy.md) v1 | 前置文档已全部落稿（2026-08-18） |
 | **M3–M5 迁移收尾** | [migration-path](migration-path.md) · M3 迁移脚本设计 / M4 插件切换契约 / M5 退役检查单（**待落**） | 迁移路径已定 Stage A–E |
 
@@ -48,6 +48,7 @@ Claim 只存简单断言、推理放谱系边；演变只做推导记录、不�
 | [migration-path.md](migration-path.md) | 工程 | 渐进迁移 Stage A–E：命名空间隔离、迁移策略、退役标准 | 独立草稿 |
 | [milestone.md](milestone.md) | 规划 | 能力范围 / 节奏 / 研发流程门槛（§3.5） | 独立草稿 |
 | [prd.md](prd.md) | 需求 | 用户故事（US-*）+ 能力验收（A1–A11）+ In/Out 范围 | 独立草稿 |
+| [init_crystal_db.py](../../../apps/api/init_crystal_db.py) | 代码 | **crystal schema 幂等建表脚本**（M1 交付）：只跑 schema.sql crystal 段 + 增量迁移段，绝不触碰 v5；绕开 `init_db.py` 在已建库上因 v5 非幂等 ALTER 报错的阻塞 | 随代码版本化 |
 
 ## 使用规则
 
@@ -55,7 +56,7 @@ Claim 只存简单断言、推理放谱系边；演变只做推导记录、不�
    专项不设 LATEST 指针（避免给整个专项强造单一版本线）。包级配套版本见上表。
 2. **每 M 的前置产物是文档门槛**：见 [milestone.md §3.5](milestone.md)。缺文档不动代码（DOCUMENTATION_GUIDE §5 流程）。
 3. **待落文档进度（2026-08-18）**：M1 前置（API 契约）+ M2 前置（workbench / 对账 / 召回 / 测试策略）
-   **已全部落稿**；剩 M3 迁移脚本设计、M4 插件切换契约、M5 退役检查单（迁移收尾阶段前置）。
+   **已全部落稿**；**M1 开发已完成**（建表 + API 骨架，见 [STATUS](../../STATUS.md)）；剩 M3 迁移脚本设计、M4 插件切换契约、M5 退役检查单（迁移收尾阶段前置）。
 4. 新增本主题文档时更新本文文件地图与「当前配套版本」表。
 5. 专项生命周期：立项 → 推进（本目录）→ 交付 → 整目录归档 `docs/archive/initiatives/`。
 
