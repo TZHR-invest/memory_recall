@@ -1,6 +1,6 @@
 # Memory Recall 任务状态（实时工作台）
 
-> 状态: ACTIVE · 最后更新: 2026-08-16
+> 状态: ACTIVE · 最后更新: 2026-08-18
 >
 > 规则：本文件只放"当前活跃工作 + 下一步 + 等待项"；历史一律进 `docs/notes/`；
 > 每次任务收尾必须更新；无活跃工作则写"空闲"。
@@ -32,6 +32,7 @@
 | 记忆维护检查点（ADR-0009，Q2 三决策收尾） | 已完成（2026-08-14：SQL 关键词预检覆盖全库 14 个主题词，命中仅 3 条无关 LensDiary；memory_recall 项目容器 6 条记忆逐一核对，无涉及「S-pre/置信度拆两轴/复用反馈回收」的旧结论 → 无需版本化更新） | 本次会话 |
 | 目标模型（北极星）设计 | 草稿 v1，已拍板 21 项（A 档 5 项 2026-08-15 拍板）；**已抽 ADR 0011–0017**（价值公式 / 证据结论分离 / 当前状态派生 / 置信度两轴 / scope-owner 提权 / 采集四档 / Entity-主题 P2）；待拍板：3 份待落文档（迁移路径 / workbench / 实体属性文档）+ 10 个拍板问题（B/C 两档） | [v1](designs/target-model/v1.md) · [LATEST](designs/target-model/LATEST.md) |
 | 蒸馏 prompt 重构（/extract-memory） | 已完成（2026-08-15，commit 3311a40）：三类记忆加判定特征+正反例+影响、硬性排除（对话流水账/系统描述/无验证泛论/重复）、reason 引用标准、最多 5 条、max_tokens 1500；服务端类型白名单归一（learn-pattern 错拼入库修复）；测试 78 全绿 + E2E 混合摘要 3 条分类全对/纯寒暄 0 条。**基线：8-15 全天 518 条（learned-pattern 400 / constraint 63 / preference 34 / error-solution 10，learned-pattern 77%）——早前记录的 42 条仅为重构后首窗口，观测对比请用全天口径** | [CHANGELOG](../apps/api/CHANGELOG.md) |
+| 自动捕获膨胀修复 + 画像净化（08-15~18） | **已全部完成（2026-08-18）**：捕获节流/去重/static 修复生效（容量 498→~120、capture 冗余 ~0）；**画像净化**：画像=每会话必见核心特征，存量 43 条 static 按 LLM 分类打 profile_worthy（9 true/34 false），_build_profile 过滤退出画像缓存，实测注入 43→9 条/11239→2687 字符（-76%）；漫剧制作等场景偏好按需召回；工具加 scope 提示防复发；测试全绿+已推送（a51ed3e） | [实施计划](notes/2026-08-16-autocapture-fix-plan.md) · [画像净化](notes/2026-08-18-profile-purification-plan.md) |
 | 自动捕获膨胀修复（08-15 写入 518 条） | **A+B 已实施完成（2026-08-16）**：插件侧（slice 5/门槛 100/节流 10min/累计/_capture）+ 后端（/extract-memory 去重 dropped+container_tag 对齐+0.80 阈值，异步 _capture DELETE 兜底）；**额外根因修复**：CHINESE_STATIC_INDICATORS 裸"是"指标致 216 条非 preference 被误标 static（LLM is_static 覆盖写入参数），已移除；测试 dsh 26/26 + 后端相关 67 全绿 + 真实链路验证（0.813 碎片被 dropped）；后端已重启生效；**dsh 插件文件已装（2026-08-16 10:30：install.sh apply 契约预检 PASS，插件测试 14/14 + 后端新测试 19/19 全绿）**；**待用户终端执行 bash install.sh --restart（cd apps/api/src/plugins/dsh）使 web 生效**；之后观测 3~5 天再定阶段 C/D | [分析](notes/2026-08-16-autocapture-bloat-analysis.md) · [实施计划](notes/2026-08-16-autocapture-fix-plan.md) |
 | 注入去重机制验证 + smart 策略误诊回滚 | 已完成（2026-08-15）：真实会话日志分析确认去重三层协作正常（画像仅首轮 1/11、记忆跨轮重复 0/57）；曾误诊 `agent.session.events` 不存在（实为 tab 缩进 getter 漏匹配）提交错误修复 10edc9a，经源码+日志验证后 revert（4597033）。**教训：改插件前核实宿主 API，现象先区分设计行为 vs bug** | [dsh 插件](../apps/api/src/plugins/dsh/README.md) |
 
