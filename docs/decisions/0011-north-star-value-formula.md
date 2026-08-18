@@ -3,7 +3,7 @@
 > 状态: Accepted
 > 日期: 2026-08-14
 > 系统: crystal
-> 关联: [目标模型 v1](../designs/crystal/v1.md) · [命题晋升总纲](../notes/2026-08-14-proposition-promotion.md) ·
+> 关联: [目标模型 v1](../initiatives/crystal/v1.md) · [命题晋升总纲](../notes/2026-08-14-proposition-promotion.md) ·
 > [价值判据 v2 调研](../notes/research/2026-08-14-memory-value-criteria-v2/99-final-conclusions.md) ·
 > [复用反馈回收 Q2 调研](../notes/research/2026-08-14-reuse-feedback-signals/99-final-conclusions.md)
 

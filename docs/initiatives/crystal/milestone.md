@@ -61,8 +61,8 @@
 | M | 前置产物（开工前必须落定） | 开发内容 | 出口验证（结果回填） |
 |---|---------------------------|---------|---------------------|
 | M0 | ADR-0018 打标（已完成） | 命名/规范落地 | 已完成 |
-| M1 | `entity-attributes.md` 定稿（claim 3 待定项 + claim_usage 落点）+ **crystal API 契约 v1**（/api/v2 路由表、鉴权映射、错误规范） | `crystal.*` 建表 + `/api/v2` 骨架 | 空表可写、v5 零影响；schema 与 design 一致 |
-| M2 | **workbench (MR-011) 设计 v1**（裁决面+洞察面 API/权限契约）+ **对账技术设计 v1**（worker/事务/retry）+ **召回技术设计 v1**（精排公式/索引/截断 + trace 契约）+ **crystal 测试策略** | 证据采集 + 对账 + 状态查询 + 裁决/洞察工作台 | 设计内验收标准逐条回填；测试矩阵绿 |
+| M1 | ~~`entity-attributes.md` 定稿（claim 3 待定项 + claim_usage 落点）~~ **已定稿（2026-08-18）** + ~~**crystal API 契约 v1**~~ **已落稿（[api-contract.md](api-contract.md)，2026-08-18）** | `crystal.*` 建表（schema.sql 已有草稿，临时库验证通过）+ `/api/v2` 骨架 | 空表可写、v5 零影响；schema 与 design 一致 |
+| M2 | ~~**workbench (MR-011) 设计 v1**~~ **已落稿（[workbench.md](workbench.md)）** + ~~**对账技术设计 v1**~~ **已落稿（[reconciliation-design.md](reconciliation-design.md)）** + ~~**召回技术设计 v1**~~ **已落稿（[recall-design.md](recall-design.md)）** + ~~**crystal 测试策略**~~ **已落稿（[test-strategy.md](test-strategy.md)）** | 证据采集 + 对账 + 状态查询 + 裁决/洞察工作台 | 设计内验收标准逐条回填；测试矩阵绿 |
 | M3 | **迁移脚本设计 v1**（接口/幂等/断点续传/回放） | 迁移脚本 + 对账重生成 claim | 幂等重放通过；抽样核对 claim 关联 |
 | M4 | **插件切换契约**（四端各自接入/回退方案） | 四端切 `/api/v2` | 访问日志无旧路由；回退演练过 |
 | M5 | **退役检查单**（备份/可重放/监控确认） | DROP 旧表（单独 commit） | 退役标准满足；可回退 |

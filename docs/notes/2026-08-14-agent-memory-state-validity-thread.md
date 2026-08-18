@@ -61,7 +61,10 @@ erDiagram
 
 1. **Evidence（证据，不可变，append-only）**——系统"地面真相"。一次原始观察：某次会话的一句话、一段代码事实、一个文档片段、一个外部事实。字段：`observed_at`、`source_kind`（session/document/observation）、`content`、`entities[]`、embedding。**永不改写、永不静默删除**；证据不存在"过期"，只有"某结论基于它、后来被新证据推翻"。
 2. **Claim（主张/结论，可版本化）**——系统"认知状态"。一个断言："项目用 Postgres""用户偏好 X""决策 Z 生效中"。字段：`statement`、`entities[]`、`valid_from`、`valid_until`（可空=至今成立）、`status`（active/superseded/retracted/disputed）、`confidence`、`evidence_refs[]`、embedding。**Claim 是对若干 Evidence 的"结论"**——现有系统完全没有这一层。
-3. **Lineage Edge（谱系边）**——即 thread 说的"修正轨迹"：`claim A --[supersedes|contradicts|refines|generalizes, reason, triggered_by_evidence]--> claim B`。`is_latest` 不再是手工标志位，而是**派生视图**："没有出边的 claim 即当前最新"。N:1 / 1:1 取代语义的纠结在此自动消失（谱系是 DAG，"最新"是一次查询）。
+3. **Lineage Edge（谱系边）**——即 thread 说的"修正轨迹"：`claim A --[supersedes|contradicts|refines|generalizes, reason]--> claim B`。`is_latest` 不再是手工标志位，而是**派生视图**："没有出边的 claim 即当前最新"。N:1 / 1:1 取代语义的纠结在此自动消失（谱系是 DAG，"最新"是一次查询）。
+   > 2026-08-18 演进注：本条及下方不变量 2 中的 `triggered_by_evidence`（触发证据）已从 Lineage Edge **移除**，
+   > 改由独立审计日志 `claim_activity` 承载（v1 #35 / entity-attributes §5.1）——边只保留叙述性 `reason`，
+   > 因果追溯走日志；重建 = 按时间重跑对账（接受 LLM 不确定性）。
 4. **Entity（实体锚点/粒度）**——person/project/topic/decision；Evidence 与 Claim 都挂到实体上，实现"跨会话同一件事"的绑定，是"关于 X 现状如何、怎么变过来的"的入口。
 
 **5 条正确性不变量（每个设计决策的判据）：**

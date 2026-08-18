@@ -59,6 +59,7 @@ async def init_database():
         print("  - memory_entities (记忆-实体关联)")
         print("  - chunk_entities (分块-实体关联)")
         print("  - recall_traces (召回链路 Trace)")
+        print("  - crystal.* (目标模型迭代，Stage A/M1: evidence/evidence_processing/claim/lineage_edge/claim_evidence/claim_usage)")
         print()
 
     except Exception as e:

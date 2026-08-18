@@ -88,13 +88,13 @@
 ### 阶段四：crystal 专项（目标模型迭代替换 v5）
 
 > 2026-08-16：crystal 是本次目标模型（北极星，Evidence/Claim 两层）迭代专项，以命名空间隔离（`crystal.*` + `/api/v2`）
-> 渐进接管 v5，不破坏现有运行。完整里程碑（能力范围/节奏/不做清单）见 [designs/crystal/milestone.md](designs/crystal/milestone.md)。
+> 渐进接管 v5，不破坏现有运行。完整里程碑（能力范围/节奏/不做清单）见 [initiatives/crystal/milestone.md](initiatives/crystal/milestone.md)。
 
 | 目标 | 入口 | 完成定义 |
 |------|------|---------|
-| 证据采集 + 对账 + 状态查询召回 + 裁决/洞察工作台 | [milestone M2](designs/crystal/milestone.md) | 两链路可用 + 人可裁决/洞察 |
-| 旧数据迁移 | [迁移路径 Stage C](designs/crystal/migration-path.md) | 一次性全量迁移，开发者触发，幂等可回放 |
-| 插件切 /api/v2 + v5 退役 | [迁移路径 Stage D/E](designs/crystal/migration-path.md) | 四端插件全切，满足退役标准后 DROP 旧表 |
+| 证据采集 + 对账 + 状态查询召回 + 裁决/洞察工作台 | [milestone M2](initiatives/crystal/milestone.md) | 两链路可用 + 人可裁决/洞察 |
+| 旧数据迁移 | [迁移路径 Stage C](initiatives/crystal/migration-path.md) | 一次性全量迁移，开发者触发，幂等可回放 |
+| 插件切 /api/v2 + v5 退役 | [迁移路径 Stage D/E](initiatives/crystal/migration-path.md) | 四端插件全切，满足退役标准后 DROP 旧表 |
 
 ## 5. 明确不做（除非重新立项）
 

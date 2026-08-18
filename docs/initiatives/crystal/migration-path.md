@@ -1,7 +1,7 @@
 # 渐进迁移路径（crystal 专项 · 草稿）
 
 > 状态: 草稿 · 系统: crystal · 版本: v1 · 最后更新: 2026-08-16
-> 关联: [目标模型 v1](v1.md) · [实体属性文档](entity-attributes.md) · [ADR-0018 命名](../decisions/0018-system-naming-v5-crystal.md) · ADR-0010（文档 RAG）
+> 关联: [目标模型 v1](v1.md) · [实体属性文档](entity-attributes.md) · [ADR-0018 命名](../../decisions/0018-system-naming-v5-crystal.md) · ADR-0010（文档 RAG）
 
 ## 0. 目标与原则
 

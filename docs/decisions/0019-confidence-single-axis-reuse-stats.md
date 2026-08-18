@@ -4,7 +4,7 @@
 > Supersedes: 0014
 > 系统: crystal
 > 日期: 2026-08-16
-> 关联: [目标模型 v1](../designs/crystal/v1.md)（已拍板 #8）· [memory-confidence](../notes/2026-08-14-memory-confidence.md)
+> 关联: [目标模型 v1](../initiatives/crystal/v1.md)（已拍板 #8）· [memory-confidence](../notes/2026-08-14-memory-confidence.md)
 
 ## 背景
 
@@ -32,4 +32,4 @@ ADR-0014 定「置信度拆两轴（内容∥复用）」。二轮收敛时批�
 
 - ADR-0014 Superseded（正文保留）。
 - Claim 表不再有 `reuse_confidence` 字段；复用/outcome 统计落点（`claim_usage` 表 vs claim 表计数字段）留「实体属性文档」待定项。
-- 生命周期四阶段（写入/召回/消费/维护）与 P0/P1 节奏见 [目标模型 v1](../designs/crystal/v1.md) §置信度与价值信号。
+- 生命周期四阶段（写入/召回/消费/维护）与 P0/P1 节奏见 [目标模型 v1](../initiatives/crystal/v1.md) §置信度与价值信号。

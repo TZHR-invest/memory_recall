@@ -31,7 +31,8 @@ docs/
 ├── DEPLOYMENT.md           # 部署与运维（当前生效）
 ├── decisions/              # 决策记录 ADR（追加制，不可修改已接受决策）
 ├── notes/                  # 过程记录：讨论/调研/方向探讨（按日期命名）
-├── designs/                # 产品/功能设计（版本化，当前生效唯一）
+├── designs/                # 产品/功能设计（单个 feature，版本化，当前生效唯一）
+├── initiatives/            # 专项文档：跨里程碑的长期工作（一个专项一个子目录，整包归档）
 └── archive/                # 过时/被取代文档的最终归宿（不进入知识库）
 ```
 
@@ -39,7 +40,8 @@ docs/
 |----------|--------|---------|
 | 讨论、调研、方向探讨、头脑风暴 | `docs/notes/` | 永久保留，只追加 |
 | 架构/产品/技术决策 | `docs/decisions/` | 追加制，被取代时写新 ADR |
-| 产品/功能设计（方案、权衡、版本） | `docs/designs/` | 版本化，当前生效唯一 |
+| 产品/功能设计（单个 feature：方案、权衡、版本） | `docs/designs/` | 版本化，当前生效唯一 |
+| 专项（跨里程碑、多文档组成的长期工作） | `docs/initiatives/` | 包内文档独立版本化 + 包级配套版本；整包归档 |
 | 已知问题、改进建议 | `docs/ISSUES.md` | 追加，修复后标记已解决 |
 | 当前为真的知识（规划/领域模型/部署） | `docs/` 根目录 | 版本化，过时移 archive |
 | 实时任务状态（现在该做什么） | `docs/STATUS.md` | 每次收尾更新，历史进 notes |
@@ -121,6 +123,17 @@ ADR 只表达决策生命周期（Accepted / Superseded），**不表达实施�
 - 领域级设计（如实体模型）直接放 `docs/` 根（当前生效），变更时更新版本号并记录变更原因；
 - 模板见 [docs/designs/README.md](designs/README.md)。
 
+### 4.1 专项（initiatives）不走 designs
+
+**`designs/` 只放单个 feature 的设计**。跨多个里程碑、由多份文档组成的一段长期工作
+（如"crystal：目标模型迭代替换 v5"）放 **`docs/initiatives/`**，一个专项一个子目录：
+
+- 目录内 `README.md` 必建：文件地图 + 「当前配套版本」表 + 进展（见
+  [initiatives/README.md](initiatives/README.md)）；
+- 包内文档（语义 / 落库 / 工程 / 需求 / 规划）**各自独立版本化**，**不设 LATEST 指针**
+  （专项是文档集合，不是单个文档的版本线）；
+- 专项交付后**整目录归档** `docs/archive/initiatives/<slug>/`。
+
 ## 5. 一个 Feature 的完整文档流
 
 做任何一个功能（或大改动），文档按阶段沉淀，不遗漏：
@@ -130,6 +143,7 @@ ADR 只表达决策生命周期（Accepted / Superseded），**不表达实施�
 | 想法/讨论/调研 | 过程记录（背景/要点/结论/下一步/未决） | `docs/notes/YYYY-MM-DD-*.md` |
 | 方向取舍：做不做、选哪个方案 | 决策记录 ADR | `docs/decisions/NNNN-*.md` |
 | 方案设计：怎么做（含验收标准） | 设计文档 v1（草稿→生效） | `docs/designs/<feature>/v1.md` |
+| 专项（跨里程碑长期工作） | 专项文档包（独立版本化 + 配套版本表） | `docs/initiatives/<slug>/` |
 | 实现 | 代码 + 测试；设计文档标注"已实现" | `apps/` + `apps/api/tests/` |
 | 测试与验收 | 验收标准在设计文档内；测试用例在测试代码；验收结果回填设计文档 | `docs/designs/<feature>/` |
 | 过程中发现的问题 | issue 条目 | `docs/issues/MR-xxx.md` |
@@ -191,6 +205,7 @@ ADR 只表达决策生命周期（Accepted / Superseded），**不表达实施�
 4. 新讨论/调研/方向 → 写 `docs/notes/`；
 5. 方向性取舍已明确 → 写 `docs/decisions/`（Accepted；讨论过程在 notes）；
 6. 新设计或设计变更 → `docs/designs/`（版本化）或更新根目录生效设计；
+   专项（跨里程碑长期工作）→ `docs/initiatives/<slug>/`；
 7. 发现新问题 → 写 `docs/issues/MR-xxx.md` + 更新 [docs/ISSUES.md](ISSUES.md) 索引。
 
 **任务结束前**：

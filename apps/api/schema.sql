@@ -402,6 +402,156 @@ GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO postgres;
 GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO postgres;
 
 -- ============================================================================
+-- 12. crystal schema（目标模型迭代，Stage A / M1，2026-08-18 草稿）
+-- 命名空间隔离：crystal.* 与 public.*（v5）物理并存；回退 = DROP SCHEMA crystal CASCADE
+-- 表字段依据 docs/initiatives/crystal/entity-attributes.md（v1 已定稿）
+-- 只跑 init_db.py（幂等建表）；绝不跑 setup_database.py（全量清库）
+-- ============================================================================
+CREATE SCHEMA IF NOT EXISTS crystal;
+
+-- ----------------------------------------------------------------------------
+-- 12.1 crystal.evidence（不可再生核心，append-only）
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS crystal.evidence (
+    id TEXT PRIMARY KEY DEFAULT 'ev_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 22),
+    observed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    source_kind TEXT NOT NULL CHECK (source_kind IN ('agent_add', 'outcome_trace', 'document', 'user_correction')),
+    content TEXT NOT NULL,
+    scope TEXT,
+    owner_type TEXT NOT NULL CHECK (owner_type IN ('personal', 'team')),
+    owner_id TEXT NOT NULL,
+    source_ref JSONB,
+    extraction_type TEXT CHECK (extraction_type IN ('verbatim', 'paraphrase', 'inference')),
+    embedding vector(1024),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_crystal_evidence_owner ON crystal.evidence(owner_type, owner_id);
+CREATE INDEX IF NOT EXISTS idx_crystal_evidence_scope ON crystal.evidence(owner_type, scope);
+CREATE INDEX IF NOT EXISTS idx_crystal_evidence_source_kind ON crystal.evidence(source_kind);
+CREATE INDEX IF NOT EXISTS idx_crystal_evidence_observed ON crystal.evidence(observed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_crystal_evidence_embedding ON crystal.evidence USING hnsw (embedding vector_cosine_ops);
+
+COMMENT ON TABLE crystal.evidence IS 'crystal: 不可再生原始观察（append-only，语义字段不可变）';
+COMMENT ON COLUMN crystal.evidence.observed_at IS '事件时间（语义核心，可显式覆盖补录）';
+COMMENT ON COLUMN crystal.evidence.extraction_type IS '提炼方式 verbatim/paraphrase/inference（B5 定案：inference 降档）';
+COMMENT ON COLUMN crystal.evidence.source_ref IS '出处 {session_id, message_id, plugin, file, ...}';
+
+-- ----------------------------------------------------------------------------
+-- 12.2 crystal.evidence_processing（1:1 伴随状态机）
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS crystal.evidence_processing (
+    evidence_id TEXT PRIMARY KEY REFERENCES crystal.evidence(id) ON DELETE CASCADE,
+    processing_state TEXT NOT NULL DEFAULT 'pending' CHECK (processing_state IN ('pending', 'processing', 'done', 'failed')),
+    current_step TEXT,
+    last_error JSONB,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_crystal_evidence_processing_state ON crystal.evidence_processing(processing_state);
+
+COMMENT ON TABLE crystal.evidence_processing IS 'crystal: evidence 处理状态机（步骤名是数据不是列）';
+COMMENT ON COLUMN crystal.evidence_processing.last_error IS '{step, message, attempts, last_attempt_at}';
+
+-- ----------------------------------------------------------------------------
+-- 12.3 crystal.claim（派生层，可版本化；status 为派生物化缓存）
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS crystal.claim (
+    id TEXT PRIMARY KEY DEFAULT 'cl_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 22),
+    statement TEXT NOT NULL,
+    claim_kind TEXT NOT NULL CHECK (claim_kind IN ('fact', 'preference', 'constraint', 'learned-pattern')),
+    content_confidence FLOAT,
+    scope TEXT,
+    owner_type TEXT NOT NULL CHECK (owner_type IN ('personal', 'team')),
+    owner_id TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'superseded', 'disputed', 'retracted')),
+    embedding vector(1024),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_crystal_claim_owner ON crystal.claim(owner_type, owner_id);
+CREATE INDEX IF NOT EXISTS idx_crystal_claim_scope ON crystal.claim(owner_type, scope);
+CREATE INDEX IF NOT EXISTS idx_crystal_claim_kind ON crystal.claim(claim_kind);
+CREATE INDEX IF NOT EXISTS idx_crystal_claim_status ON crystal.claim(status);
+CREATE INDEX IF NOT EXISTS idx_crystal_claim_embedding_active ON crystal.claim USING hnsw (embedding vector_cosine_ops) WHERE status = 'active';
+
+COMMENT ON TABLE crystal.claim IS 'crystal: 派生主张（对账产物，可重算；status 写边事务内同步维护）';
+COMMENT ON COLUMN crystal.claim.content_confidence IS '单轴内容置信度（Beta 期望），NULL=UNKNOWN';
+COMMENT ON COLUMN crystal.claim.status IS '派生物化缓存：active/superseded/disputed/retracted';
+
+-- ----------------------------------------------------------------------------
+-- 12.4 crystal.lineage_edge（谱系边，推理在边；无触发证据字段，审计走 claim_activity）
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS crystal.lineage_edge (
+    id TEXT PRIMARY KEY DEFAULT 'le_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 22),
+    from_claim_id TEXT NOT NULL REFERENCES crystal.claim(id) ON DELETE CASCADE,
+    to_claim_id TEXT REFERENCES crystal.claim(id) ON DELETE CASCADE,
+    edge_type TEXT NOT NULL CHECK (edge_type IN ('supersedes', 'generalizes', 'contradicts', 'retract')),
+    reason TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT chk_lineage_not_self CHECK (from_claim_id <> to_claim_id)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_crystal_lineage_permanent ON crystal.lineage_edge(from_claim_id, to_claim_id, edge_type) WHERE edge_type IN ('supersedes', 'generalizes', 'retract');
+CREATE INDEX IF NOT EXISTS idx_crystal_lineage_from ON crystal.lineage_edge(from_claim_id, edge_type);
+CREATE INDEX IF NOT EXISTS idx_crystal_lineage_to ON crystal.lineage_edge(to_claim_id);
+
+COMMENT ON TABLE crystal.lineage_edge IS 'crystal: claim 演变谱系（supersedes/generalizes 永久；contradicts 临时；retract 单端 to=NULL）';
+
+-- ----------------------------------------------------------------------------
+-- 12.4b crystal.claim_activity（变更审计日志，非核心模型，2026-08-18 新增）
+-- 承接原 lineage_edge.triggered_by_evidence 职责：谁/哪条证据/什么动作导致变更
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS crystal.claim_activity (
+    id TEXT PRIMARY KEY DEFAULT 'ca_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 22),
+    claim_id TEXT NOT NULL REFERENCES crystal.claim(id) ON DELETE CASCADE,
+    action TEXT NOT NULL CHECK (action IN ('superseded_by', 'generalized_to', 'confirmed', 'retracted', 'promoted_scope', 'poison_warning')),
+    actor_type TEXT NOT NULL CHECK (actor_type IN ('system', 'user', 'admin')),
+    actor_id TEXT,
+    triggered_by_evidence_id TEXT REFERENCES crystal.evidence(id),
+    detail JSONB,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_crystal_activity_claim ON crystal.claim_activity(claim_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_crystal_activity_trigger ON crystal.claim_activity(triggered_by_evidence_id);
+CREATE INDEX IF NOT EXISTS idx_crystal_activity_action ON crystal.claim_activity(action);
+
+COMMENT ON TABLE crystal.claim_activity IS 'crystal: 变更审计日志（append-only；记录谁/哪条证据/什么动作导致状态变更）';
+COMMENT ON COLUMN crystal.claim_activity.detail IS '补充：目标 claim_id / reason / 旧值快照等';
+
+-- ----------------------------------------------------------------------------
+-- 12.5 crystal.claim_evidence（Claim↔Evidence 支持关系，派生物化）
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS crystal.claim_evidence (
+    claim_id TEXT NOT NULL REFERENCES crystal.claim(id) ON DELETE CASCADE,
+    evidence_id TEXT NOT NULL REFERENCES crystal.evidence(id) ON DELETE CASCADE,
+    role TEXT NOT NULL DEFAULT 'support' CHECK (role IN ('support')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (claim_id, evidence_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_crystal_claim_evidence_ev ON crystal.claim_evidence(evidence_id);
+
+COMMENT ON TABLE crystal.claim_evidence IS 'crystal: 结论引用证据（1..N，不变量①）；role 预留支持/反证分离';
+
+-- ----------------------------------------------------------------------------
+-- 12.6 crystal.claim_usage（复用/outcome 离散价值信号，P1 遥测激活）
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS crystal.claim_usage (
+    claim_id TEXT PRIMARY KEY REFERENCES crystal.claim(id) ON DELETE CASCADE,
+    reuse_count INTEGER NOT NULL DEFAULT 0,
+    outcome_good INTEGER NOT NULL DEFAULT 0,
+    outcome_bad INTEGER NOT NULL DEFAULT 0,
+    last_used_at TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_crystal_claim_usage_reuse ON crystal.claim_usage(reuse_count DESC);
+
+COMMENT ON TABLE crystal.claim_usage IS 'crystal: 复用频率/outcome 离散统计（一期不写入，P1 遥测激活）';
+
+-- ============================================================================
 -- Complete
 -- ============================================================================
 SELECT 'Schema initialized successfully!' AS status;
