@@ -115,3 +115,36 @@ class TestProfileService:
         result = self.service._is_cache_valid(cached, max_age_minutes=5)
 
         assert result is False
+
+class TestBuildProfileFilter:
+    """画像净化（2026-08-18）：_build_profile 过滤 profile_worthy=false 的 static"""
+
+    @pytest.mark.asyncio
+    async def test_build_profile_filters_non_profile_static(self):
+        """profile_worthy=false 的 static 退出画像缓存，true/无标记保留"""
+        from src.services.core.profile_service import ProfileService
+        from src.services.core.memory_store import Memory
+
+        svc = ProfileService()
+        mems = [
+            Memory(id="m1", content="用户喜欢用中文", container_tag="c1", is_static=True,
+                   metadata={"profile_worthy": True, "type": "preference"}),
+            Memory(id="m2", content="dsh-vision 配置 baseURL", container_tag="c1", is_static=True,
+                   metadata={"profile_worthy": False, "type": "learned-pattern"}),
+            Memory(id="m3", content="漫剧制作偏好", container_tag="c1", is_static=True,
+                   metadata={"type": "preference"}),  # 无标记，默认保留
+        ]
+        import src.services.core.profile_service as ps_mod
+        with patch.object(
+            ps_mod.memory_store, "get_static_memories",
+            new_callable=AsyncMock, return_value=mems,
+        ):
+            with patch.object(
+                ps_mod.memory_store, "get_dynamic_memories",
+                new_callable=AsyncMock, return_value=[],
+            ):
+                profile = await svc._build_profile("c1", max_static=100, max_dynamic=50)
+
+        assert "用户喜欢用中文" in profile["static_memories"], "profile_worthy=true 应保留"
+        assert "dsh-vision 配置 baseURL" not in profile["static_memories"], "profile_worthy=false 应过滤"
+        assert "漫剧制作偏好" in profile["static_memories"], "无标记默认保留（尊重 is_static 语义）"

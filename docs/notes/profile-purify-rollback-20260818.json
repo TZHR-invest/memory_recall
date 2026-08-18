@@ -1,0 +1,221 @@
+{
+ "generated_at": "2026-08-18T03:49:10.864Z",
+ "note": "画像净化回滚清单：profile_worthy 标记前的原始状态。回滚=从 metadata 移除 profile_worthy 键。",
+ "items": [
+  {
+   "id": "mem_c9ea80eccec24bccb616",
+   "profile_worthy": true,
+   "content": "用户关心实际影响而非追求100%测试通过率"
+  },
+  {
+   "id": "mem_3c6f60780a46487ba4ad",
+   "profile_worthy": true,
+   "content": "用户偏好定期代码库审查和清理，保持整洁"
+  },
+  {
+   "id": "mem_8585ba276c734dbdbd85",
+   "profile_worthy": false,
+   "content": "auto_publish_article.py关键bug已修复: FEISHU_CHAT_ID从环境变量读取, --send-qr-to-chat参数格式修正,"
+  },
+  {
+   "id": "mem_2d837fc769af4f76859f",
+   "profile_worthy": true,
+   "content": "行为教训：(1)compaction摘要/旧session上下文中出现的话题≠用户新提的问题，不要当成新任务去处理。如果用户当前消息没提，就不要主动去翻。(2)"
+  },
+  {
+   "id": "mem_4b43a56641b140c5b6e4",
+   "profile_worthy": true,
+   "content": "判断需要重启服务时直接执行重启操作，无需确认。用户明确的偏好：当我说\"需要重启服务吗\"或类似重启指令时，应直接执行重启操作，无需确认。"
+  },
+  {
+   "id": "mem_94660027b6b04a5c9aa8",
+   "profile_worthy": false,
+   "content": "EmQuantAPI 使用规范：不要凭记忆写 API 调用代码。每次使用 EmQuantAPI 的 c.csd/c.css/c.ctr/c.csq 等函数时，必"
+  },
+  {
+   "id": "mem_c9ed2ac856424e60b45f",
+   "profile_worthy": true,
+   "content": "偏好存储规范修复：存偏好/永久特征时必须传 isStatic:true + type:\"preference\"，后端会自动 is_static=True。行为指"
+  },
+  {
+   "id": "mem_dd1f150b6029484fb933",
+   "profile_worthy": false,
+   "content": "开发模式下（--dev），修改 opencode 插件代码后只需 bun run build 构建，然后重启 OpenCode 即可生效，无需重新执行 node"
+  },
+  {
+   "id": "mem_5bf918ba24b34ccb9c83",
+   "profile_worthy": true,
+   "content": "始终用中文回复用户的问题和请求"
+  },
+  {
+   "id": "mem_59b82c1e5e1c4e219ee4",
+   "profile_worthy": false,
+   "content": "GitHub PAT token已保存在 ~/.config/gh/hosts.yml，通过 gh auth login 写入。账号 wbaifan，用于 TZ"
+  },
+  {
+   "id": "mem_abd454bc268149359dbe",
+   "profile_worthy": false,
+   "content": "Volcengine API Key 7e4a4d80-c618-41da-bdb4-cb43bd07ec68 已吊销（2026-06-03），因开源前该 ke"
+  },
+  {
+   "id": "mem_fcc45a668ca142b5bbc6",
+   "profile_worthy": false,
+   "content": "机器主机名已从 wbaifan-openclaw 改为 ai-agent（hostnamectl + /etc/hosts），2026-06-07"
+  },
+  {
+   "id": "mem_60b635caf53e422c8732",
+   "profile_worthy": true,
+   "content": "[补充] 提交风格：中文 + semantic（feat:/fix:/chore:/data:/test:），body 用短横线列举变更要点，带 Ultrawo"
+  },
+  {
+   "id": "mem_5ce4ab876739408684dc",
+   "profile_worthy": false,
+   "content": "OMO (OhMyOpenCode) 4.19.4 配置半迁移缺陷及修复（2026-08-05）：8月4日 OMO 自动迁移把 ~/.omo/omo.jsonc"
+  },
+  {
+   "id": "mem_21cd86a875a140498628",
+   "profile_worthy": false,
+   "content": "Sisyphus 模型（deepseek-v4-flash）无法直接读取用户粘贴/附带的图片（报 \"model does not support image i"
+  },
+  {
+   "id": "mem_28614ead358a41a38eff",
+   "profile_worthy": false,
+   "content": "WSL 环境无 sudo 密码（非交互 sudo 不可用），装工具一律走用户级方案：miniconda（~/miniconda3，清华镜像安装，conda co"
+  },
+  {
+   "id": "mem_e11de09144db4daeac33",
+   "profile_worthy": false,
+   "content": "【用户偏好·漫剧制作 2026-08-08】①解说层必须独立声线（最终选清冷女声）——旁白与角色声音必须可区分；②台词段用 252帧 10.8s 双句（10s "
+  },
+  {
+   "id": "mem_5138c51e28f94c97abfb",
+   "profile_worthy": false,
+   "content": "VS Code Codex 扩展(openai.chatgpt 26.803.x 系列)已知回归 bug 及修复(2026-08-13):webview 面板报"
+  },
+  {
+   "id": "mem_8db1ebf0237e4f60aa59",
+   "profile_worthy": false,
+   "content": "codex app-server 协议要点（2026-08-13 实测确认）：①stdio 必须是 socketpair（python 用 socket.soc"
+  },
+  {
+   "id": "mem_9e3407f9c2a146e09601",
+   "profile_worthy": false,
+   "content": "VS Code Codex 插件修复的最终状态与交接（2026-08-13 全部完成并验证）：模型列表显示 24 个 opencodex 模型可切换，deeps"
+  },
+  {
+   "id": "mem_679207d0d0b4455396ec",
+   "profile_worthy": true,
+   "content": "行为教训（2026-08-14，用户指出后确认）：每次新会话开始时，无论用户第一条消息是否有任务内容（哪怕是纯测试消息如 'test'），都必须先调用 mcp_"
+  },
+  {
+   "id": "mem_c3ad287eb93a4af69f36",
+   "profile_worthy": false,
+   "content": "dsh 插件防崩纪律与基础设施（2026-08-14 MR-022/023 事故固化，跨项目通用）：①package.json 若声明 dsh.client，p"
+  },
+  {
+   "id": "mem_b65f72a0f5124418929d",
+   "profile_worthy": false,
+   "content": "GNU grep 3.11 中 `\\[` 是非法转义（报 Unmatched [），匹配字面 [ 需用字符类 `[[]`；而 sed 4.9 中 `\\[` 合法"
+  },
+  {
+   "id": "mem_58460793224941cf9161",
+   "profile_worthy": false,
+   "content": "sed 替换部分的 `&` 会被展开为整个匹配文本，字面 && 必须写成 `\\&\\&`；这是写 sed -i 打补丁脚本的常见坑（匹配部分无需转义）"
+  },
+  {
+   "id": "mem_a8ddc9196e864bc88990",
+   "profile_worthy": false,
+   "content": "在 JS 模板字符串中内嵌 bash 脚本时，所有 `${` 必须转义为 `\\${`（String.raw 会保留反斜杠导致 bash 收到字面 `\\${`），"
+  },
+  {
+   "id": "mem_d945f4db30304f88911b",
+   "profile_worthy": true,
+   "content": "npm 发布 2FA 账号经验：开启双因素认证的 npm 账号，classic 权限的 token 发布包时报 E403 'Two-factor authent"
+  },
+  {
+   "id": "mem_9443161674d942078752",
+   "profile_worthy": false,
+   "content": "调用 dsh 的 run_code 工具时必须同时传 code 和 description 两个参数（description 必填，缺失会 ToolArgsEr"
+  },
+  {
+   "id": "mem_ecf18b688496448fb782",
+   "profile_worthy": false,
+   "content": "metaso和vision插件的install.sh在接线已存在时不更新配置，直接编辑patch是最干净的配置方式"
+  },
+  {
+   "id": "mem_e32732d6c3b64f568b00",
+   "profile_worthy": false,
+   "content": "apiKey为mk-F8A1CA061A3EC0848687C93DFB6614F9的metaso密钥有效，调用/search接口可返回真实结果，使用该密钥会消"
+  },
+  {
+   "id": "mem_35fc26c3b33144bdaa0f",
+   "profile_worthy": false,
+   "content": "dsh-vision-tool的正确配置为baseURL=https://opencode.ai/zen/go/v1，defaultModel=mimo-v2."
+  },
+  {
+   "id": "mem_46e396e337a147e5bfe8",
+   "profile_worthy": false,
+   "content": "加载mobile-ui等客户端bundle的新代码前必须刷新浏览器页面，服务端插件重启后直接生效"
+  },
+  {
+   "id": "mem_dec70424f9f24f9e98d9",
+   "profile_worthy": false,
+   "content": "memory-recall-dsh插件包含6个记忆工具，支持自动召回和自动捕获，后端地址为`http://192.168.0.206:8000`且认证key已生"
+  },
+  {
+   "id": "mem_d29de40b579b4b8abb2e",
+   "profile_worthy": false,
+   "content": "dsh-vision-tool插件的vision工具已注册，使用opencode-go的`mimo-v2.5`版本；dsh-mobile-ui和dsh-lan-"
+  },
+  {
+   "id": "mem_9ed605930990465a98fe",
+   "profile_worthy": false,
+   "content": "配置WSL2的systemd和dsh-web服务后，必须重启WSL才能使配置生效"
+  },
+  {
+   "id": "mem_8812e12597ae4b2ea7df",
+   "profile_worthy": false,
+   "content": "本机 WSL systemd 不可用的根因与替代方案（2026-08-17 实测）：Windows 10 1909 (18363.1556) + 内置版 wsl"
+  },
+  {
+   "id": "mem_45b057a9a79d43e1a943",
+   "profile_worthy": false,
+   "content": "Win10 1909及内置版WSL不支持systemd，无法通过systemd管理WSL内的服务"
+  },
+  {
+   "id": "mem_2f6d243c28fc49b28af5",
+   "profile_worthy": false,
+   "content": "管理WSL内的dsh-web服务，可使用bash /usr/local/bin/dsh-web.sh 搭配status/start/stop/restart/l"
+  },
+  {
+   "id": "mem_e657f5cbc2794329b80d",
+   "profile_worthy": false,
+   "content": "Windows登录时，HKCU注册表Run项DSH-Web-AutoStart会拉起WSL内的dsh-web服务作为兜底，DSH-LAN-Sync计划任务会自动"
+  },
+  {
+   "id": "mem_ca5e1a18b1f84529a870",
+   "profile_worthy": false,
+   "content": "访问dsh-web局域网入口需携带X-DSH-Token令牌头，否则会返回401错误"
+  },
+  {
+   "id": "mem_3775f13a5b194879ae8a",
+   "profile_worthy": false,
+   "content": "/etc/wsl.conf 中的systemd=true配置当前无害，升级到商店版WSL时可无缝启用systemd托管"
+  },
+  {
+   "id": "mem_a00e77ca0c7e4ac9b9b4",
+   "profile_worthy": false,
+   "content": "[补充] dsh-web 崩溃自愈 watchdog 已上线（2026-08-17）：/usr/local/bin/dsh-web-watchdog.sh（每 "
+  },
+  {
+   "id": "mem_54ba137f13684532a42f",
+   "profile_worthy": false,
+   "content": "[补充] dsh-web watchdog v2 已实现\"服务拉起 + portproxy 同步\"联动（2026-08-17）：watchdog 检测到 308"
+  },
+  {
+   "id": "mem_2d4c4ff951b04d03a062",
+   "profile_worthy": false,
+   "content": "局域网主机拓扑补充（2026-08-18 用户确认）：192.168.1.100=home-pc 的 WSL。完整拓扑：192.168.0.202=trade-"
+  }
+ ]
+}

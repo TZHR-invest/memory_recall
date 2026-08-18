@@ -296,8 +296,19 @@ class ProfileService:
             limit=dynamic_limit,
         )
 
+        # 画像净化（2026-08-18）：profile_worthy=false 的 static 退出画像注入段
+        # （项目配置/一次性事件/场景特定偏好如漫剧制作），仍可被向量召回
+        # （_get_memories 不分 static/dynamic）。
+        # 默认 True：尊重 is_static 语义（显式 static 即永久特征应进画像）；
+        # 排除只依赖显式 profile_worthy=false 标记（存量已按 LLM 分类打标）。
+        profile_static = [
+            m.content
+            for m in static_memories
+            if m.metadata.get("profile_worthy", True)
+        ]
+
         return {
-            "static_memories": [m.content for m in static_memories],
+            "static_memories": profile_static,
             "dynamic_memories": [m.content for m in dynamic_memories],
         }
 

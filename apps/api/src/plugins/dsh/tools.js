@@ -104,9 +104,15 @@ export function registerTools(ctx, { client, config, resolveTags }) {
           asyncProcess: args.asyncProcess !== false,
         }, exec?.signal);
         const asyncNote = memory.status === "processing" ? "（异步处理中，稍后即可搜索到）" : "";
+        // 画像净化提示（2026-08-18）：用户级静态记忆应为用户跨项目通用的偏好/规则；
+        // 项目特定经验（bug 修复/配置）应存 scope=project，避免污染用户画像注入。
+        const profileHint =
+          scope === "user" && isStatic && args.type !== "preference"
+            ? " ⚠️ 注意：这是用户级静态记忆，将进入用户画像（每次会话注入）。请确认它跨项目通用；若是项目特定经验，应改用 scope=project。"
+            : "";
         return {
           success: true,
-          message: `已保存记忆（${memory.id}，容器 ${memory.container_tag}）${asyncNote}`,
+          message: `已保存记忆（${memory.id}，容器 ${memory.container_tag}）${asyncNote}${profileHint}`,
           id: memory.id,
           container_tag: memory.container_tag,
           status: memory.status ?? "done",
