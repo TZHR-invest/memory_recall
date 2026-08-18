@@ -711,6 +711,12 @@ class ContextInjectService:
         project_chunks: List[Dict[str, Any]],
     ) -> List[DedupItem]:
         items = []
+        # 画像条目无 embedding，无法参与语义去重（semantic_dedup_service 只比较
+        # 带 embedding 的条目，无 embedding 者无条件保留）。这里先登记画像内容，
+        # 后续记忆条目若与画像内容逐字相同则直接跳过——画像优先级最高，保留画像版本，
+        # 避免同一条记忆以 profile + userMemory/projectMemory 双身份重复注入
+        # （trace 269dd48a：final[8] profile 与 final[25] userMemory 同内容并存）。
+        seen_contents: set = set()
 
         for fact in profile.get("static", []):
             items.append(
@@ -720,6 +726,7 @@ class ContextInjectService:
                     priority=SOURCE_PRIORITY["profile"],
                 )
             )
+            seen_contents.add(fact.strip())
 
         for fact in profile.get("dynamic", []):
             items.append(
@@ -729,11 +736,15 @@ class ContextInjectService:
                     priority=SOURCE_PRIORITY["profile"],
                 )
             )
+            seen_contents.add(fact.strip())
 
         for m in project_memories:
+            content = m.get("content", "")
+            if content.strip() in seen_contents:
+                continue
             items.append(
                 DedupItem(
-                    content=m.get("content", ""),
+                    content=content,
                     source="projectMemory",
                     # 边缘命中（low_confidence）降 1 级：让 cap 优先保留高分记忆，减少 0.40-0.45 噪音注入
                     # entity_graph 增量（未被其他渠道召回的新信息）+0.5：在 dedup 排序与最终 cap 中存活
@@ -748,9 +759,12 @@ class ContextInjectService:
             )
 
         for m in user_memories:
+            content = m.get("content", "")
+            if content.strip() in seen_contents:
+                continue
             items.append(
                 DedupItem(
-                    content=m.get("content", ""),
+                    content=content,
                     source="userMemory",
                     # 边缘命中（low_confidence）降 1 级：让 cap 优先保留高分记忆，减少 0.40-0.45 噪音注入
                     # entity_graph 增量（未被其他渠道召回的新信息）+0.5：在 dedup 排序与最终 cap 中存活

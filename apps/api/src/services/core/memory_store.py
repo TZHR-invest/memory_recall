@@ -782,11 +782,19 @@ class MemoryStore:
         if not old_memory:
             return None
 
+        # 显式修订（update）不是自动捕获：剥离 _capture 标记，避免异步处理时
+        # 走 capture 低阈值去重（0.80）把新版本物理删除，导致版本链断裂
+        # （旧版已 is_latest=false、新版本行被 DELETE，updates 关系级联消失）。
+        new_metadata = dict(old_memory.metadata or {})
+        new_metadata.pop("_capture", None)
+        if new_metadata.get("_status") == "processing":
+            new_metadata["_status"] = "completed"
+
         new_memory = await self.create(
             content=new_content,
             container_tag=old_memory.container_tag,
             is_static=old_memory.is_static,
-            metadata=old_memory.metadata,
+            metadata=new_metadata,
             parent_memory_id=memory_id,
             async_process=async_process,
             generate_embedding=not async_process,

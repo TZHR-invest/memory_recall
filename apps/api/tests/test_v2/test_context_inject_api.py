@@ -643,6 +643,53 @@ class TestContextInjectAPI:
         assert items[0].source == "userMemory"
         assert items[0].priority == 1  # userMemory 默认 2，降 1 级
 
+    def test_profile_content_dedup_memory_skipped(self):
+        """画像条目与记忆内容逐字相同时，记忆条目应被跳过（画像保留）。
+        修复：画像无 embedding 不参与语义去重，同一条记忆以
+        profile + userMemory/projectMemory 双身份重复注入（trace 269dd48a）"""
+        from src.services.core.context_inject_service import context_inject_service
+
+        profile = {"static": ["用户关心实际影响而非追求100%测试通过率"], "dynamic": []}
+        user_mem = [
+            {
+                "id": "m_dup",
+                "content": "用户关心实际影响而非追求100%测试通过率",
+                "embedding": [1.0] * 1024,
+            }
+        ]
+        project_mem = [
+            {
+                "id": "m_proj_dup",
+                "content": " 用户关心实际影响而非追求100%测试通过率 ",
+                "embedding": [1.0] * 1024,
+            }
+        ]
+        items = context_inject_service._collect_items_with_tags(
+            profile, user_mem, project_mem, [], []
+        )
+        # 只保留画像版本，重复记忆被跳过
+        assert len(items) == 1
+        assert items[0].source == "profile"
+        assert items[0].id is None
+
+    def test_profile_content_dedup_keeps_different(self):
+        """内容不同的记忆不受画像去重影响"""
+        from src.services.core.context_inject_service import context_inject_service
+
+        profile = {"static": ["用户关心实际影响而非追求100%测试通过率"], "dynamic": []}
+        user_mem = [
+            {
+                "id": "m_diff",
+                "content": "headless冒烟测试通过，插件组合无问题",
+                "embedding": [1.0] * 1024,
+            }
+        ]
+        items = context_inject_service._collect_items_with_tags(
+            profile, user_mem, [], [], []
+        )
+        assert len(items) == 2
+        assert items[1].id == "m_diff"
+
     def test_entity_graph_increment_priority_boost(self):
         """entity_graph 增量记忆 priority 应 +0.5，使其在 dedup 排序与最终 cap 中存活
         （修复：子代理 max_memories=3 时 [:6] 截断丢实体图增量，见 trace 902fc2fe）"""
