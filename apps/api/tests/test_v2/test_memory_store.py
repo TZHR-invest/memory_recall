@@ -1149,6 +1149,68 @@ class TestFindMemoriesByEntities:
                 [entity_id], "user_002"
             )
 
+    @pytest.mark.asyncio
+    async def test_find_memories_by_entities_container_isolation(self):
+        """测试容器隔离"""
+        entity_id = "00000000-0000-0000-0000-000000000001"
+
+        with patch("src.services.core.memory_store.db") as mock_db:
+            mock_db.fetch = AsyncMock(return_value=[])
+
+            results = await self.store.find_memories_by_entities(
+                [entity_id], "user_002"
+            )
+
             assert results == []
             call_args = mock_db.fetch.call_args
             assert "user_002" in str(call_args)
+
+    @pytest.mark.asyncio
+    async def test_create_update_version_strips_capture_flag(self):
+        """显式修订（update）不应继承 _capture 标记，避免异步处理时被 capture 低阈值
+        去重（0.80）物理删除新版本导致版本链断裂（2026-08-18 观测：4 条 update 中
+        2 条新版本被 capture-dedup DELETE，旧版 is_latest=false 成死链）。"""
+        old_memory = Memory(
+            id="mem_old_capture",
+            container_tag="user_001",
+            content="旧内容",
+            is_static=True,
+            is_latest=True,
+            metadata={"_capture": True, "_status": "processing", "type": "learned-pattern"},
+        )
+        new_memory = Memory(
+            id="mem_new_version",
+            container_tag="user_001",
+            content="新内容（修订）",
+            is_static=True,
+            is_latest=True,
+            metadata={"_status": "completed", "type": "learned-pattern"},
+        )
+
+        with patch.object(
+            self.store, "get_by_id", new_callable=AsyncMock, return_value=old_memory
+        ) as mock_get:
+            with patch.object(
+                self.store, "create", new_callable=AsyncMock, return_value=new_memory
+            ) as mock_create:
+                with patch.object(
+                    self.store, "add_relation", new_callable=AsyncMock
+                ) as mock_relation:
+                    with patch(
+                        "src.services.core.memory_store.db"
+                    ) as mock_db:
+                        mock_db.execute = AsyncMock(return_value=None)
+
+                        result = await self.store.create_update_version(
+                            memory_id="mem_old_capture",
+                            new_content="新内容（修订）",
+                        )
+
+                        assert result.id == "mem_new_version"
+                        # create 收到的 metadata 必须剥离 _capture 和 processing 状态
+                        call_kwargs = mock_create.call_args.kwargs
+                        assert "_capture" not in call_kwargs["metadata"]
+                        assert call_kwargs["metadata"]["_status"] == "completed"
+                        assert call_kwargs["metadata"]["type"] == "learned-pattern"
+                        assert mock_relation.called
+

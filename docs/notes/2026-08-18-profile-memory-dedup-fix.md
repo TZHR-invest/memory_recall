@@ -49,6 +49,61 @@ _collect_items_with_tags 增加 seen_contents 集合：
 ## 相关记忆版本化更新（ADR-0009）
 
 - mem_710336f679464d079b14 → mem_e3a2429f946449729f40（问题描述，标记已修复）
-- mem_00a45143d6c44e76b6c7 → mem_8b6d2836e52b4ba3bfb5（方案建议，标记已实施）
-- mem_b62e75dc2dfb44b5bf02 → mem_b1039014894a480b9857（影响评估，标记已修复）
+- mem_00a45143d6c44e76b6c7 → mem_5df30d08a406487db813（方案建议，标记已实施；初次 mem_8b6d2836e52b4ba3bfb5 因 capture bug 被删，同步重做）
+- mem_b62e75dc2dfb44b5bf02 → mem_d9e65381505445ddbe61（影响评估，标记已修复；初次 mem_b1039014894a480b9857 因 capture bug 被删，同步重做）
 - mem_d41eba0f02364441a12d → mem_7a62fac304b342658e2d（缓存约束，补充现状）
+---
+
+## 追加：memory_update 版本链断裂 bug（同日晚些时候发现）
+
+### 现象
+
+4 条 memory_update（asyncProcess=true）中 2 条新版本未落库：
+- mem_8b6d2836e52b4ba3bfb5（已实施...content 精确匹配去重）
+- mem_b1039014894a480b9857（已修复...用户画像与向量召回）
+
+但旧版（mem_00a45143d6c44e76b6c7 / mem_b62e75dc2dfb44b5bf02）已被标 is_latest=false，
+版本链断裂（死链）。
+
+### 根因
+
+1. `create_update_version`（memory_store.py L785-793）复制 old_memory.metadata 创建新版本，
+   **原样继承 `_capture: true` 标记**（这些记忆是自动捕获的 learned-pattern）。
+2. 异步路径：create 后 `process_embedding_async` 生成 embedding → `_check_similar_memory`
+   对 `_capture=true` 的记忆用 **CAPTURE_DEDUP_THRESHOLD=0.80**（显式写入是 0.95）查相似。
+3. 2 条新版本内容与库中已有 active 记忆相似度 ≥ 0.80 → 走 capture 分支
+   **`DELETE FROM memories WHERE id = new_id`**（物理删除，L332-334）。
+4. memory_relations 有 `ON DELETE CASCADE` → updates 关系也级联消失。
+5. 但 create_update_version 已把旧版标 is_latest=false（L797-804）→ 版本链断裂。
+
+成功 2 条的原因：内容改动大，与库中记忆相似度 < 0.80，未触发删除。
+
+### 修复（memory_store.py `create_update_version`）
+
+创建新版本前剥离 `_capture` 标记（显式修订≠自动捕获，不应走 capture 低阈值去重删除）：
+```python
+new_metadata = dict(old_memory.metadata or {})
+new_metadata.pop("_capture", None)
+if new_metadata.get("_status") == "processing":
+    new_metadata["_status"] = "completed"
+```
+
+### 数据修复
+
+用 asyncProcess=false 同步重做 2 条 update：
+- mem_00a45143d6c44e76b6c7 → mem_5df30d08a406487db813（version=2, is_latest=t）
+- mem_b62e75dc2dfb44b5bf02 → mem_d9e65381505445ddbe61（version=2, is_latest=t）
+
+4 条版本链全部恢复完整（旧版 f + 新版 t + updates 关系）。
+
+### 验证
+
+- 新增回归测试 test_create_update_version_strips_capture_flag（test_memory_store.py）
+- 端到端：创建带 _capture 的记忆 → update(async=true) → 新版本存活且无 _capture 标记
+- 41 测试全绿，API 已重启生效
+
+### 测试数据清理
+
+- verify-capture-fix 测试容器 2 记忆 + 2 emb_logs 已物理删除
+- 复现验证的 2 条 query='test' trace（主容器）已删除
+
