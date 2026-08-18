@@ -208,6 +208,13 @@ class MemoryStore:
 
         final_metadata["relations"] = {"updates": [], "extends": [], "derives": []}
 
+        # 画像净化（2026-08-18）：static 记忆补 profile_worthy 标记（同步路径）。
+        # 与 process_memory_async 的规则一致：preference/无 type 进画像，其他类型不进。
+        if is_static and "profile_worthy" not in final_metadata:
+            final_metadata["profile_worthy"] = (
+                final_metadata.get("type") in (None, "preference")
+            )
+
         # 异步模式标记 status
         if async_process:
             final_metadata["_status"] = "processing"
@@ -444,6 +451,17 @@ class MemoryStore:
                         )
                     except Exception as e:
                         _logger.warning(f"Memory {memory_id}: is_static update failed: {e}")
+
+            # 画像净化（2026-08-18）：static 记忆补 profile_worthy 标记，
+            # 决定是否进入用户画像注入段（每会话必见）。
+            # 规则：preference 或无 type（显式 static 即用户偏好语义）→ 进画像；
+            # 其他类型（learned-pattern/error-solution 等项目/技术内容）→ 不进画像，
+            # 但仍可向量召回（_get_memories 不分 static/dynamic）。
+            # 存量已显式标记的（profile_worthy in metadata）不覆盖。
+            if is_static:
+                meta["profile_worthy"] = meta.get(
+                    "profile_worthy", meta.get("type") in (None, "preference")
+                )
 
             # Step 2: 自动关系创建
             if auto_relations:

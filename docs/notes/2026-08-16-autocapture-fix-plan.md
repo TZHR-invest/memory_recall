@@ -273,3 +273,19 @@
 
 不动项：is_static 保持（LLM 覆盖不复活画像，profile_worthy 独立维度）；注入机制（永不截断锁定设计）；
 dynamic 注入（时效即价值）。
+
+## 11. 画像写入侧优化（2026-08-18，已实施）
+
+漏洞：新写入的 static（async 路径）无 profile_worthy 标记，注入层默认 True → 混入画像。
+
+修复：写入侧自动标记（轻量规则方案，非 LLM prompt）：
+- process_memory_async + create 同步路径：is_static 时补 meta["profile_worthy"]，
+  规则 = preference/无 type → true（用户偏好进画像），其他类型 → false（不进画像可召回）
+- 已有显式标记不覆盖（保护存量 9 true / 34 false）
+- 端到端验证：async 写 learned-pattern static → profile_worthy=false，注入 0 命中
+
+选型理由（轻量规则 vs LLM prompt）：
+- 同步路径已有 LLM is_static 覆盖过滤（LLM 判非静态→is_static=false→不进画像）
+- 异步路径规则可拦绝大部分混入（热点研究/项目配置/临时经验都是 learned-pattern 等）
+- npm 2FA 类"技术类型但跨项目"极少数误判 false → 仍可向量召回，不丢知识
+- 零额外 LLM 成本、一处改动、低风险，符合避免过度设计
