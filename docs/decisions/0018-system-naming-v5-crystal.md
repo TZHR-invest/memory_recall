@@ -3,7 +3,7 @@
 > 状态: Accepted
 > 系统: crystal
 > 日期: 2026-08-16
-> 关联: [目标模型 v1](../designs/target-model/v1.md) · MR-010（命名漂移）
+> 关联: [目标模型 v1](../designs/crystal/v1.md) · MR-010（命名漂移）
 
 ## 背景
 
@@ -38,6 +38,6 @@
 ## 后果
 
 - 正向：新旧产物一眼可辨归属，避免 agent 混用两套决策。
-- 需跟进：ADR 0011–0017 与 `designs/target-model/` 文档补 `> 系统: crystal` 标记；ADR 0001–0010 标 `系统: v5`；
+- 需跟进：ADR 0011–0017 与 `designs/crystal/` 文档补 `> 系统: crystal` 标记；ADR 0001–0010 标 `系统: v5`；
   schema 的 `crystal.*` namespace 落库细节归「渐进迁移路径」文档。
 - ADR 0011–0017 是 crystal 的语义层决策（目标模型 v1 已拍板项）；ADR 0001–0010 是 v5 的决策，其中被目标模型取代的（如 ADR-0010 文档 RAG、与 `memories`/`is_latest` 相关的）在迁移路径中标注 Superseded。

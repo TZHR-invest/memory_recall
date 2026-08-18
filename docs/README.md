@@ -60,6 +60,7 @@ docs/
 | [decisions/README.md](decisions/README.md) | ACTIVE | 2026-08-13 | 决策记录（ADR）索引与模板 |
 | [notes/README.md](notes/README.md) | ACTIVE | 2026-08-12 | 过程记录约定与模板（讨论/调研/方向） |
 | [designs/README.md](designs/README.md) | ACTIVE | 2026-08-12 | 设计文档版本化约定与模板 |
+| [designs/crystal/README.md](designs/crystal/README.md) | ACTIVE | 2026-08-16 | crystal 专项文档包入口（语义 v1 / 落库 / 迁移 / 里程碑 / PRD；原 target-model 更名） |
 | [STATUS.md](STATUS.md) | ACTIVE | 2026-08-14 | 实时任务状态：活跃工作/下一步/等待项；ADR 实施跟踪 |
 | [PROJECT_PLAN.md](PROJECT_PLAN.md) | ACTIVE | 2026-08-14 | 项目定位、产品支柱、路线图、不做清单 |
 | [ENTITY_DESIGN.md](ENTITY_DESIGN.md) | ACTIVE | 2026-08-12 | 记忆/文档/实体/图谱领域模型，schema 为准 |

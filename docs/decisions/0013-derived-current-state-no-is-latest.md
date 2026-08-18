@@ -3,7 +3,7 @@
 > 状态: Accepted
 > 日期: 2026-08-14
 > 系统: crystal
-> 关联: [目标模型 v1](../designs/target-model/v1.md) · [ENTITY_DESIGN](../ENTITY_DESIGN.md) · AGENTS.md「两种取代语义」说明
+> 关联: [目标模型 v1](../designs/crystal/v1.md) · [ENTITY_DESIGN](../ENTITY_DESIGN.md) · AGENTS.md「两种取代语义」说明
 
 ## 背景
 

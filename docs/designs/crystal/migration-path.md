@@ -36,7 +36,7 @@
 
 **语义依据**：旧 `memories` 是"证据与结论混在一起"的文本 + 手工标志位。按 crystal 语义（v1 #3），agent 自陈的记忆本就是**观察（Evidence）**不是结论。故迁移映射天然清晰：
 
-- **`active` 记忆（`is_latest=TRUE`）→ 一条 `evidence`**：`source_kind=agent_add`、`content=memory.content`、`scope/owner` 从 `container_tag` 拆出（见待拍板 #2）。
+- **`active` 记忆（`is_latest=TRUE`）→ 一条 `evidence`**：`source_kind=agent_add`、`content=memory.content`、`scope/owner` 从 `container_tag` 拆出（见 §7 已拍板 2）。
 - **孤儿旧版本（`is_latest=FALSE, root_memory_id=NULL`）不迁移**——它们是历史，v5 里仍可回溯，且本来就是"取代语义"的产物。
 - 迁移后**对账重新生成 claim**（不把旧记忆直接当 claim），遵守"结论必须引用证据"。
 

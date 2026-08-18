@@ -2,7 +2,7 @@
 
 > 状态: 草稿（evidence / evidence_processing / lineage_edge 已定稿；claim 基本定稿，claim_kind 待定）
 > 系统: crystal
-> 版本: v1 · 最后更新: 2026-08-15
+> 版本: v1 · 最后更新: 2026-08-16
 > 关联: [目标模型 v1](v1.md)（语义层，唯一裁判）· 待落文档 #3
 > 范围: 本 doc 只定「新表长什么样」——字段 / 类型 / 约束 / 索引 / 枚举 / 派生字段。
 > 写入/召回逻辑、迁移机制、workbench API 不在此列。
@@ -41,10 +41,18 @@
 | `owner_type` | TEXT | NOT NULL, 枚举 | `personal`(P0) / `team`(P1) | 存储·不可变 |
 | `owner_id` | TEXT | NOT NULL | 归属主体：personal = key_id；team = team_id | 存储·不可变 |
 | `source_ref` | JSONB | NULL | 出处 `{session_id, plugin, file, …}` | 存储·不可变 |
+| `extraction_type` | TEXT | NULL | 提炼方式 `verbatim / paraphrase / inference`（B5 定案 2026-08-16）：服务初值"提炼过程"维度——inference 类降档，防模型推断虚高（Grok r2） | 存储·不可变 |
 | `embedding` | vector | NULL | 检索向量（维度随 embedding 模型） | 派生·可空 |
 | `created_at` | TIMESTAMPTZ | NOT NULL | **入库时间**（运维：数据重放/审计/对账顺序） | 存储·不可变 |
 
 **索引**：PK(id) · (owner_type, owner_id) · (owner_type, scope) · (source_kind) · (observed_at DESC) · embedding vector 索引。
+
+> ⚠️ **2026-08-16 修正（用户评审）**：曾考虑加 `root_observation_id`（证据独立性格线根）防"复述 → 置信虚高"，经评审**缓置**——
+> 该字段防的是 P2/P3 自动采集路径（文档蒸馏/全量上下文）的复述，而这两条当前挂起/不做；P0 add（显式自报，
+> 每次即新原始观察）+ P1 report_effect（只动复用统计、不新增 evidence）均不产生复述，不需要 lineage 根。
+> 真正的防线是**对账规则**："reinforce 只认新的原始观察，agent 自陈/复述不构成 reinforce 证据"；
+> 另需**幂等键**（source_ref 会话消息 ID + content 哈希）防 v1 #17 重试导致的重复入库（此为幂等问题，非 lineage）。
+> 将来 P2/P3 采集扩大解冻时再引入 root_observation_id，无迁移债。
 
 ## 3. evidence_processing 表（已定稿，1:1 伴随）
 
@@ -116,4 +124,5 @@
 - `claim_kind` 枚举取值（画像偏好层筛选依据，随 v1 讨论）。
 - `evidence_refs` 数组 vs 关系表 `claim_evidence`（建议关系表）。
 - 复用/outcome 统计的落点（`claim_usage` 表 vs claim 表计数字段——倾向独立表，避免消费回写频繁 update claim 表）。
-- 衰减曲线形态（content 时间衰减 + 复用频率时间窗口，B1）。
+- ~~衰减曲线形态（content 时间衰减 + 复用频率时间窗口，B1）~~ → **2026-08-16 已定：不落库**；只在召回精排按属性现算，初始恒等项，发现相关问题再激活。参见 [milestone.md](milestone.md)。
+- ~~LLM 自报信心初值规则（B5）~~ → **2026-08-16 已定案（外部调研五平台收敛）**：冷启动初值 = source×claim_type 网格弱先验（Beta 参数化，语义档位表 M1 落地时填具体值），不含 LLM 自报；evidence 已加 `extraction_type` 字段（见 §2）；**root_observation_id 缓置**（见 §2 修正注）。参见 [调研最终结论](../../notes/research/2026-08-16-llm-confidence-initial-value/99-final-conclusions.md)。

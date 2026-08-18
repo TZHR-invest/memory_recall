@@ -30,11 +30,12 @@
 | project-/project-root 怪容器处置 | 已完成（2026-08-17，根因+迁移）。**根因**：①`project-`（空后缀）= 旧版 opencode 插件（08-13 a399a1f 修复前）getProjectTag 无 default 回退，会话 cwd=`/` 时 `path.basename("/")=""` 拼出空后缀（WSL 里 /mnt/d 旧副本加载）；②`project-root` = WSL root 用户会话 cwd=`/root` 正常推导但非项目目录。两者 22 条记忆均为真实 dsh/WSL 部署知识。**处置**：记忆 22 条 + 实体 60 个（45 直迁 + 15 同名合并 mention_count 累加）迁移合并到主容器 085288ba...（先例同 08-13 project-codex 迁移 user 范围）；entity_relations 25 行 tag 归一 + 悬空清理；顺带清理全库历史孤儿 memory_entities 183 处；旧容器 memories/entities/documents/profiles/relations 全 0 残留（traces/emb_logs 历史日志保留原 tag）；全库一致性 0 悬空；主容器 174 条（active 135），服务无需重启） | 本次会话 |
 | dsh 插件跨轮注入去重（exclude_memory_ids + per-agent LRU） | 已完成（2026-08-15：后端 /context-inject 支持 exclude_memory_ids（seen_ids 预置，向量/图谱/实体全链路生效）；插件 per-agent LRU 容量 100 跟踪已注入记忆 ID，注入成功后记录、后续召回排除；bundle 重建 + 36 pytest 全绿 + bundle 防漂移过）。**2026-08-15 已拉取远端代码并重启 API（docker compose restart api，健康 + exclude_memory_ids 实测生效）；dsh web 已由用户在终端 `install.sh --restart` 成功重启（新 PID 1420081，bundle 含 exclude_memory_ids，跨轮去重全链路激活）；期间修复 install.sh pkill 模式匹配不到实际 cmdline 的 bug（commit 86ded26）** | [dsh 插件](../apps/api/src/plugins/dsh/README.md) |
 | 记忆维护检查点（ADR-0009，Q2 三决策收尾） | 已完成（2026-08-14：SQL 关键词预检覆盖全库 14 个主题词，命中仅 3 条无关 LensDiary；memory_recall 项目容器 6 条记忆逐一核对，无涉及「S-pre/置信度拆两轴/复用反馈回收」的旧结论 → 无需版本化更新） | 本次会话 |
-| 目标模型（北极星）设计 | 草稿 v1，已拍板 21 项（A 档 5 项 2026-08-15 拍板）；**已抽 ADR 0011–0017**（价值公式 / 证据结论分离 / 当前状态派生 / 置信度两轴 / scope-owner 提权 / 采集四档 / Entity-主题 P2）；待拍板：3 份待落文档（迁移路径 / workbench / 实体属性文档）+ 10 个拍板问题（B/C 两档） | [v1](designs/target-model/v1.md) · [LATEST](designs/target-model/LATEST.md) |
+| 目标模型（北极星）设计 | 草稿 v1，已拍板 21 项（A 档 5 项 2026-08-15 拍板）；**已抽 ADR 0011–0017**（价值公式 / 证据结论分离 / 当前状态派生 / 置信度两轴 / scope-owner 提权 / 采集四档 / Entity-主题 P2）；待拍板：3 份待落文档（迁移路径 / workbench / 实体属性文档）+ 10 个拍板问题（B/C 两档）。**2026-08-16：迁移路径草稿 + 4 未决点拍板（一次性全量/container_tag 拆分/鉴权映射/退役标准，commit 3d97c4d）；B/C 档逐项拍板（B1/B3/B4/B6、C1 命名/C2 MR-017/C3 Entity）；B5 初值经外部调研定案（source×claim_type 分组先验；root_observation_id 经用户评审缓置，防线=对账规则+幂等键）；新增 [crystal 专项里程碑](designs/crystal/milestone.md)（裁决面+洞察面双轨工作台/价值引擎不做推后/Stage A–E 节奏 + §3.5 研发流程文档门槛）+ [crystal PRD](designs/crystal/prd.md)（用户故事 + 能力验收 A1–A11）；剩 workbench(MR-011) 待落 + B2 策略 open** | [v1](designs/crystal/v1.md) · [LATEST](designs/crystal/LATEST.md) · [milestone](designs/crystal/milestone.md) · [PRD](designs/crystal/prd.md) |
 | 蒸馏 prompt 重构（/extract-memory） | 已完成（2026-08-15，commit 3311a40）：三类记忆加判定特征+正反例+影响、硬性排除（对话流水账/系统描述/无验证泛论/重复）、reason 引用标准、最多 5 条、max_tokens 1500；服务端类型白名单归一（learn-pattern 错拼入库修复）；测试 78 全绿 + E2E 混合摘要 3 条分类全对/纯寒暄 0 条。**基线：8-15 全天 518 条（learned-pattern 400 / constraint 63 / preference 34 / error-solution 10，learned-pattern 77%）——早前记录的 42 条仅为重构后首窗口，观测对比请用全天口径** | [CHANGELOG](../apps/api/CHANGELOG.md) |
 | 自动捕获膨胀修复 + 画像净化（08-15~18） | **已全部完成（2026-08-18）**：捕获节流/去重/static 修复生效（容量 498→~120、capture 冗余 ~0）；**画像净化**：画像=每会话必见核心特征，存量 43 条 static 按 LLM 分类打 profile_worthy（9 true/34 false），_build_profile 过滤退出画像缓存，实测注入 43→9 条/11239→2687 字符（-76%）；漫剧制作等场景偏好按需召回；工具加 scope 提示防复发；测试全绿+已推送（a51ed3e） | [实施计划](notes/2026-08-16-autocapture-fix-plan.md) · [画像净化](notes/2026-08-18-profile-purification-plan.md) |
 | 自动捕获膨胀修复（08-15 写入 518 条） | **A+B 已实施完成（2026-08-16）**：插件侧（slice 5/门槛 100/节流 10min/累计/_capture）+ 后端（/extract-memory 去重 dropped+container_tag 对齐+0.80 阈值，异步 _capture DELETE 兜底）；**额外根因修复**：CHINESE_STATIC_INDICATORS 裸"是"指标致 216 条非 preference 被误标 static（LLM is_static 覆盖写入参数），已移除；测试 dsh 26/26 + 后端相关 67 全绿 + 真实链路验证（0.813 碎片被 dropped）；后端已重启生效；**dsh 插件文件已装（2026-08-16 10:30：install.sh apply 契约预检 PASS，插件测试 14/14 + 后端新测试 19/19 全绿）**；**待用户终端执行 bash install.sh --restart（cd apps/api/src/plugins/dsh）使 web 生效**；之后观测 3~5 天再定阶段 C/D | [分析](notes/2026-08-16-autocapture-bloat-analysis.md) · [实施计划](notes/2026-08-16-autocapture-fix-plan.md) |
 | 注入去重机制验证 + smart 策略误诊回滚 | 已完成（2026-08-15）：真实会话日志分析确认去重三层协作正常（画像仅首轮 1/11、记忆跨轮重复 0/57）；曾误诊 `agent.session.events` 不存在（实为 tab 缩进 getter 漏匹配）提交错误修复 10edc9a，经源码+日志验证后 revert（4597033）。**教训：改插件前核实宿主 API，现象先区分设计行为 vs bug** | [dsh 插件](../apps/api/src/plugins/dsh/README.md) |
+| B5 LLM 自报信心初始值外部调研 | **已完成（2026-08-16）：round-01 五平台无预设同题 + round-02 四平台反馈式追问 + 收敛轮回项目内核对；B5 已定案**——冷启动初值 = source×claim_type 网格弱先验（不含 LLM 自报）；**用户评审修正：root_observation_id 缓置**（P0 add + P1 report_effect 不产生复述，防线=对账规则 + 幂等键），extraction_type 保留；已回写 v1 #34/§B5·5 / entity-attributes §2/§7 / milestone / prd | [调研卡](notes/research/2026-08-16-llm-confidence-initial-value/README.md) · [最终结论](notes/research/2026-08-16-llm-confidence-initial-value/99-final-conclusions.md) |
 
 ## ADR 实施跟踪
 
@@ -68,8 +69,14 @@
 
 ## 下一步
 
-1. 实体属性文档 + 渐进迁移路径已出草稿（含 Stage A–E 阶段划分、旧数据迁移策略、不引入迁移框架）。
-2. 再写 workbench（MR-011），并拍板迁移路径 4 个未决点（迁移粒度 / container_tag 拆分 / 鉴权映射 / 退役标准）+ 剩余 B/C 档问题（claim_kind、命名 MR-010）。
+按 [crystal 里程碑](designs/crystal/milestone.md) §3.5 文档门槛推进（每 M 缺文档不动代码）：
+
+1. **写 workbench 裁决界面（MR-011）设计 v1**（M2 前置，最大缺口）：裁决面（确认/纠错/遗忘/审计 scope 提权/审批）+ 洞察面（统计 + 召回行为复盘）双轨，个人 key + API；落 API 契约与权限边界。
+2. **写 crystal API 契约 v1**（M1 前置）：/api/v2 路由表、鉴权映射、错误规范。
+3. ~~写文档时定 B5~~ → **已定案（2026-08-16 外部调研 + 用户评审校正，见 [最终结论](notes/research/2026-08-16-llm-confidence-initial-value/99-final-conclusions.md)）**：M1 schema 落 `extraction_type` 字段 + content 初值语义；`root_observation_id` 缓置（P2/P3 解冻才引入）；对账规则"reinforce 只认新原始观察" + 幂等键在 M2 落地。
+4. 实体属性文档收尾待定项（`claim_kind` / `evidence_refs` 数组 vs 关系表 / `claim_usage` 落点）。
+5. 随后按流程顺序：对账技术设计 v1 → 召回技术设计 v1 → crystal 测试策略 → 迁移脚本设计（M3 前置）→ 插件切换契约（M4 前置）。
+6. 需求层已有 [crystal PRD](designs/crystal/prd.md)（用户故事 + 能力验收 A1–A11），各 design v1 把对应验收细化。
 
 ## 等待项 / 阻塞
 

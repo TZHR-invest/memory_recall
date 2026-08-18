@@ -85,6 +85,17 @@
 | 迁移框架 | MR-013 | schema 变更可迁移，不再依赖手工 re-init |
 | 召回效果反馈 | MR-012 | 注入质量可度量，README 数字与实际一致 |
 
+### 阶段四：crystal 专项（目标模型迭代替换 v5）
+
+> 2026-08-16：crystal 是本次目标模型（北极星，Evidence/Claim 两层）迭代专项，以命名空间隔离（`crystal.*` + `/api/v2`）
+> 渐进接管 v5，不破坏现有运行。完整里程碑（能力范围/节奏/不做清单）见 [designs/crystal/milestone.md](designs/crystal/milestone.md)。
+
+| 目标 | 入口 | 完成定义 |
+|------|------|---------|
+| 证据采集 + 对账 + 状态查询召回 + 裁决/洞察工作台 | [milestone M2](designs/crystal/milestone.md) | 两链路可用 + 人可裁决/洞察 |
+| 旧数据迁移 | [迁移路径 Stage C](designs/crystal/migration-path.md) | 一次性全量迁移，开发者触发，幂等可回放 |
+| 插件切 /api/v2 + v5 退役 | [迁移路径 Stage D/E](designs/crystal/migration-path.md) | 四端插件全切，满足退役标准后 DROP 旧表 |
+
 ## 5. 明确不做（除非重新立项）
 
 - 人类记忆愿景：照片 EXIF、位置记忆、语音 ASR、人脸识别、need_confirm 智能询问；

@@ -51,5 +51,8 @@ docs/designs/<topic-slug>/
   不允许文档与代码长期撒谎；
 - LATEST.md 只做指针与摘要，不复制正文。
 - 一个 Feature 的完整文档流见 [DOCUMENTATION_GUIDE.md §5](../DOCUMENTATION_GUIDE.md#5-一个-feature-的完整文档流)。
+- **专项文档包**：当一个大主题（专项）由多份设计/规划文档组成时，允许一个子目录承载整包文档，
+  目录内 `README.md` 声明文件地图与分层；版本化机制（v1/LATEST）只作用于其中"主设计文档"，
+  其余为独立草稿。示例：[crystal/](crystal/README.md)（crystal 专项文档包）。
 
 *状态: ACTIVE · 最后更新: 2026-08-12*
