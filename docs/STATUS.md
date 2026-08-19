@@ -1,6 +1,6 @@
 # Memory Recall 任务状态（实时工作台）
 
-> 状态: ACTIVE · 最后更新: 2026-08-18
+> 状态: ACTIVE · 最后更新: 2026-08-19
 >
 > 规则：本文件只放"当前活跃工作 + 下一步 + 等待项"；历史一律进 `docs/notes/`；
 > 每次任务收尾必须更新；无活跃工作则写"空闲"。
@@ -9,6 +9,7 @@
 
 | 任务 | 状态 | 入口 |
 |------|------|------|
+| **crystal M2.1 claim 原子化（进行中）** | **迭代启动（2026-08-19）**：背景=现实库 22 条 claim 粒度跨 15 字~2383 字、一条 evidence 只产一条 claim（与 foundation「0..N 拆条」相悖）、reinforce 吸不同主题证据致置信度虚高、裁决只能整条 supersede。方向=对账写路径语义补全（拆条），存量 19 条 active 宽 claim **全部清理重建（等用户确认后执行）**。**当前阶段：外部调研**（多轮不设限，round-01 首问不带预设，想法进背景）——round-01 提示词已就绪，等用户手动执行各平台 | [调研卡](notes/research/2026-08-19-claim-atomicity/README.md) · [round-01 提示词](notes/research/2026-08-19-claim-atomicity/02-round-01-prompts.md) |
 | OpenCode 压缩 hook 外部调研 | 已完成（三轮收敛，结论与 ADR-0003~0008 一致） | [调研目录](notes/research/2026-08-12-opencode-compaction-hook/README.md) |
 | 核心服务 + 插件精简实施 | 已完成（阶段 1~5 全量实施，见 commit） | [实施计划](notes/2026-08-12-core-plugin-refactor-plan.md) |
 | AGENTS.md 精炼重构（拆分到 ARCHITECTURE/TESTING/PLUGINS/RESEARCH_GUIDE） | 已完成（2026-08-13） | [记录](notes/2026-08-13-note.md) |
@@ -41,6 +42,8 @@
 | **crystal M5 前置（Stage E，2026-08-19）** | **退役检查单已落稿，退役条件未满足**：[retirement-checklist.md](initiatives/crystal/retirement-checklist.md) v1（退役标准 4 项 / 备份可重放 / DROP 执行步骤 / 回退方案 / 退役后清理）；当前状态：crystal 上线 1 天 + 插件未切 → **退役标准未达成**，DROP 旧表等条件满足后按检查单执行（建议 crystal 稳定 ≥14 天 + 插件全切 + 用户确认） | [retirement-checklist](initiatives/crystal/retirement-checklist.md) |
 | **crystal 专项整体（M0–M5）** | **核心能力全部实现，收尾文档齐全**：M0 命名 ✅ / M1 建表+API 骨架 ✅ / M2 对账+召回+工作台 ✅ / M3 迁移（已执行全量 27 条）✅ / M4 契约（切换延后）✅ / M5 检查单（条件未满足）✅；crystal 测试 77 全绿、v5 回归 402 过；**待办：插件切换（等 crystal 完整）+ v5 退役（等退役标准）** | [专项入口](initiatives/crystal/README.md) · [STATUS 下一步](#下一步) |
 | **crystal workbench web 页面（2026-08-19）** | **已实现 v1 + 真实库联调通过（`web/crystal/workbench.html`）**：路径拍板 crystal 前缀子目录（非 v6，ADR-0018 一致性）；单文件四 tab——裁决面（claims 列表 + 过滤 + confirm/correct/forget + 详情谱系）、审计面（promotion 记录 + promote-scope）、洞察面（overview 四组统计 + 假说池）、召回复盘（search explain 摊开）；共享基建（API key/base 持久化 + X-API-Key + 统一信封解包）；dashboard/debug 导航互通。**联调（真实库 + rk_live key）**：API 容器重启加载 21 条 v2 路由；confirm 0.8→0.82 ✅ / correct supersede 全链路 ✅ / forget retract ✅ / promote reject 留痕 ✅ / A11 权限隔离（401/403/scope 伪装）✅；联调发现 explain 字段差异（prefilter/candidates）已修页面 + 补 reuse 分展示；现场已恢复（correct 重建 active 手电 claim）。页面 :3000 可达 | [workbench-web-prep](initiatives/crystal/workbench-web-prep.md) · [页面](../web/crystal/workbench.html) |
+| **crystal workbench 后续项 A 档（G1 + G4，2026-08-19）** | **已完成**：①**G1 召回复盘 trace 落库**——`crystal.workbench_review` 表（schema.sql §12.8 + init_crystal_db.py 增量段，已 apply 真实库）+ `/search`、`/context-inject` include_explain=true 时落 trace 并返回 `trace_id`（recall_service.save_recall_trace）+ `GET /workbench/reviews?type=recall`（游标分页 + scope 过滤）与 `GET /workbench/reviews/{trace_id}` 真实化（owner 隔离 404，原 501 桩移除）；②**G4 列表游标分页**——workbench/claims（active 优先 rank 游标）与 reviews 游标分页（api-contract §5；evidence 已有）；③**web 页面加「召回历史」面板**（回看历史 trace 摊开：预过滤/粗排/精排/截断/低置信）；④测试：crystal 85 全绿（+8 新用例）、v5 回归与基线一致（MR-026 18 个既有失败不变）；⑤API 容器已重启生效（21 条 v2 路由含 reviews 真实化） | [workbench-web-prep](initiatives/crystal/workbench-web-prep.md) · [recall-design](initiatives/crystal/recall-design.md) · [workbench](initiatives/crystal/workbench.md) |
+| **dsh 新插件建设计划（2026-08-19）** | **计划文档已落稿**：memory-recall-dsh 从 v5 切 crystal `/api/v2` 的建设计划——现状盘点（8 调用点 + client.js/client-lib.js 双副本）、API 映射表（/memories→/api/v2/evidence、/search→/api/v2/search、/context-inject→/api/v2/context-inject、/extract-memory 移除、/profile→context-inject 画像层、tag→scope 转换）、双版本兼容开关（apiVersion: v5/crystal）、分步任务（1–6）、验证矩阵、回退方案；**切换动作延后**（crystal 稳定观察期未满 + 用户拍板，非技术阻塞） | [计划文档](notes/2026-08-19-dsh-plugin-crystal-migration-plan.md) · [plugin-migration-contract](initiatives/crystal/plugin-migration-contract.md) |
 | 蒸馏 prompt 重构（/extract-memory） | 已完成（2026-08-15，commit 3311a40）：三类记忆加判定特征+正反例+影响、硬性排除（对话流水账/系统描述/无验证泛论/重复）、reason 引用标准、最多 5 条、max_tokens 1500；服务端类型白名单归一（learn-pattern 错拼入库修复）；测试 78 全绿 + E2E 混合摘要 3 条分类全对/纯寒暄 0 条。**基线：8-15 全天 518 条（learned-pattern 400 / constraint 63 / preference 34 / error-solution 10，learned-pattern 77%）——早前记录的 42 条仅为重构后首窗口，观测对比请用全天口径** | [CHANGELOG](../apps/api/CHANGELOG.md) |
 | 自动捕获膨胀修复 + 画像净化（08-15~18） | **已全部完成（2026-08-18）**：捕获节流/去重/static 修复生效（容量 498→~120、capture 冗余 ~0）；**画像净化**：画像=每会话必见核心特征，存量 43 条 static 按 LLM 分类打 profile_worthy（9 true/34 false），_build_profile 过滤退出画像缓存，实测注入 43→9 条/11239→2687 字符（-76%）；漫剧制作等场景偏好按需召回；工具加 scope 提示防复发；测试全绿+已推送（a51ed3e） | [实施计划](notes/2026-08-16-autocapture-fix-plan.md) · [画像净化](notes/2026-08-18-profile-purification-plan.md) |
 | 自动捕获膨胀修复（08-15 写入 518 条） | **A+B 已实施完成（2026-08-16）**：插件侧（slice 5/门槛 100/节流 10min/累计/_capture）+ 后端（/extract-memory 去重 dropped+container_tag 对齐+0.80 阈值，异步 _capture DELETE 兜底）；**额外根因修复**：CHINESE_STATIC_INDICATORS 裸"是"指标致 216 条非 preference 被误标 static（LLM is_static 覆盖写入参数），已移除；测试 dsh 26/26 + 后端相关 67 全绿 + 真实链路验证（0.813 碎片被 dropped）；后端已重启生效；**dsh 插件文件已装（2026-08-16 10:30：install.sh apply 契约预检 PASS，插件测试 14/14 + 后端新测试 19/19 全绿）**；**待用户终端执行 bash install.sh --restart（cd apps/api/src/plugins/dsh）使 web 生效**；之后观测 3~5 天再定阶段 C/D | [分析](notes/2026-08-16-autocapture-bloat-analysis.md) · [实施计划](notes/2026-08-16-autocapture-fix-plan.md) |
@@ -93,7 +96,8 @@
 9. ~~M4 前置文档：插件切换契约~~ → **已落稿（[plugin-migration-contract.md](initiatives/crystal/plugin-migration-contract.md)，2026-08-19）**；**插件切换延后**（用户拍板：避免半切换两套逻辑并存；hybrid/profile/extract-memory 等 v5 特有能力在 crystal 无一一对应）——等 crystal 完整后（M5 退役前）统一切。
 10. ~~M5 前置：退役检查单~~ → **已落稿（[retirement-checklist.md](initiatives/crystal/retirement-checklist.md)，2026-08-19）**；**退役条件未满足**（crystal 上线 1 天 + 插件未切），DROP 旧表等退役标准达成后按检查单执行（建议 crystal 稳定 ≥14 天 + 插件全切 + 用户确认）。
 11. **crystal 专项进入稳定观察期**：核心能力（M1–M3）已交付 + 全量迁移完成；插件切换 / v5 退役为后续阶段（M4/M5），等待退役标准。期间：crystal 写读链路正常使用，观察对账/召回质量（workbench 假说池/低置信视图）。
-12. **workbench web 页面**：v1 已实现 + 真实库联调通过（[workbench-web-prep.md](initiatives/crystal/workbench-web-prep.md) / [workbench.html](../web/crystal/workbench.html)）——裁决面 + 审计面 + 洞察面 + 召回复盘四 tab，confirm/correct/forget/promote 全动作验证 ✅，A11 权限隔离 ✅；浏览器访问 `http://<host>:3000/crystal/workbench.html` 输入个人 key 即可用。后续可选：G1 召回复盘历史（workbench_review 表落库）、提权建议池（G2）、claims 游标分页（G4）。
+11b. **M2.1 claim 原子化（进行中）**：外部调研（round-01 待执行，用户手动）→ 语义定稿（foundation 回写 + ADR-0020）→ 规范 + 设计（claim-atomicity.md + reconciliation-design v2 + milestone M2.1 行）→ 实现拆条 + 存量 19 条 active 宽 claim 全部清理重建（等用户确认）→ 测试/验证收尾。详见 [调研卡](notes/research/2026-08-19-claim-atomicity/README.md)。
+12. **workbench web 页面**：v1 已实现 + 真实库联调通过（[workbench-web-prep.md](initiatives/crystal/workbench-web-prep.md) / [workbench.html](../web/crystal/workbench.html)）——裁决面 + 审计面 + 洞察面 + 召回复盘四 tab，confirm/correct/forget/promote 全动作验证 ✅，A11 权限隔离 ✅；浏览器访问 `http://<host>:3000/crystal/workbench.html` 输入个人 key 即可用。**G1/G4 已补齐（2026-08-19）**：召回复盘历史（workbench_review 落库 + 页面「召回历史」面板）✅ + claims/reviews 游标分页 ✅。后续可选：提权建议池（G2）、owner 审批面（US-W3）。
 12. 需求层已有 [crystal PRD](initiatives/crystal/prd.md)（用户故事 + 能力验收 A1–A11），各 design v1 已把对应验收细化。
 
 ## 等待项 / 阻塞

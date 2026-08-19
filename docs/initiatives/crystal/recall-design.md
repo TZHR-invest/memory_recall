@@ -102,6 +102,8 @@ content_factor = f(content_confidence):
 
 - **落库**：`include_explain=true` 时 trace 落 `workbench_review`（workbench 设计 §5），
   workbench 复盘直接读；debug/traces 是 admin 全量视图（A11 权限隔离）。
+  **✅ 已实现（2026-08-19，G1）**：`/search` 与 `/context-inject` include_explain=true 时落库
+  并返回 `trace_id`；`GET /workbench/reviews?type=recall` / `reviews/{trace_id}` 真实化（owner 隔离）。
 - **性能**：explain 默认 false（`/search`、`/context-inject` 不带则不计算/不落库）；洞察面/工作台置 true。
 
 ## 5. 注入形态（/context-inject，插件消费）

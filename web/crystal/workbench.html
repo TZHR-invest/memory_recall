@@ -264,6 +264,19 @@
             </div>
             <div id="recall-result"><div class="empty">输入 query 后点击「召回」—— 结果将摊开粗排全貌 / 精排分数 / 截断项 / 低置信标注。</div></div>
         </div>
+        <div class="card">
+            <h2>召回历史 <span class="badge">G1 · workbench_review 落库 · 个人可回看</span></h2>
+            <div class="toolbar">
+                <label>scope</label>
+                <input id="h-scope" type="text" placeholder="可选（按项目过滤）" style="width:180px">
+                <button class="btn btn-secondary" onclick="loadRecallHistory()">刷新历史</button>
+                <span id="h-cursor-wrap" style="display:none">
+                    <button class="btn btn-secondary" id="h-prev" onclick="recallHistoryPage(-1)">‹ 上一页</button>
+                    <button class="btn btn-secondary" id="h-next" onclick="recallHistoryPage(1)">下一页 ›</button>
+                </span>
+            </div>
+            <div id="recall-history"><div class="empty">尚未有召回记录。用上方「召回」面板执行一次 include_explain 召回后自动落库。</div></div>
+        </div>
     </div>
 
 </div>
@@ -359,6 +372,7 @@ function switchTab(name) {
     if (name === 'insight') loadInsight();
     if (name === 'audit') loadPromotions();
     if (name === 'adjudicate') loadClaims();
+    if (name === 'recall') loadRecallHistory();
 }
 
 /* ================= 模态 ================= */
@@ -778,6 +792,142 @@ function renderRecall(el, data, q, scope, limit) {
         html += '<div class="muted">后端未返回 explain（可能未开启 include_explain）。</div>';
     }
     el.innerHTML = html;
+
+    // G1：本次召回已落库（trace_id），刷新历史列表
+    if (data.trace_id) loadRecallHistory();
+}
+
+/* ================= 召回历史（G1：workbench_review 落库回看） ================= */
+
+let recallHistoryCursor = null;
+let recallHistoryHasMore = false;
+
+function recallHistoryParams(scope) {
+    const params = new URLSearchParams();
+    params.set('type', 'recall');
+    if (scope) params.set('scope', scope);
+    params.set('limit', '10');
+    return params;
+}
+
+async function loadRecallHistory(dir = 0) {
+    const el = document.getElementById('recall-history');
+    const scope = document.getElementById('h-scope').value.trim() || null;
+    const params = recallHistoryParams(scope);
+    if (dir !== 0) {
+        if (dir < 0) {
+            // 上一页：无历史游标支持（只前向游标），提示
+            toast('游标分页仅支持前向翻页', 'info');
+            return;
+        }
+        if (!recallHistoryCursor) return;
+        params.set('cursor', recallHistoryCursor);
+    }
+    el.innerHTML = '<div class="loading">加载召回历史…</div>';
+    try {
+        const data = await api(`/api/v2/workbench/reviews?${params}`);
+        recallHistoryCursor = data.next_cursor || null;
+        recallHistoryHasMore = !!data.has_more;
+        const wrap = document.getElementById('h-cursor-wrap');
+        wrap.style.display = (recallHistoryCursor || recallHistoryHasMore) ? 'inline-flex' : 'none';
+        const nextBtn = document.getElementById('h-next');
+        if (nextBtn) nextBtn.disabled = !recallHistoryHasMore;
+        renderRecallHistory(el, data.items || []);
+    } catch (e) {
+        el.innerHTML = `<div class="empty">加载失败：${esc(e.message)}</div>`;
+        toast(e.message, 'error');
+    }
+}
+
+function renderRecallHistory(el, items) {
+    if (!items.length) {
+        el.innerHTML = '<div class="empty">没有召回记录。执行一次带 explain 的召回后自动落库。</div>';
+        return;
+    }
+    el.innerHTML = items.map(it => {
+        const t = it.trace || {};
+        const cand = (t.candidates || []).length;
+        const trunc = (t.truncated || []).length;
+        const low = (t.low_confidence || []).length;
+        return `
+        <div class="trace-block">
+            <div class="trace-row">
+                <div class="stmt">
+                    <b>${esc(it.query || '(无 query)')}</b>
+                    <div class="meta" style="margin-top:3px">
+                        <span class="pill status-active">${esc(it.source || 'search')}</span>
+                        <span class="pill scope">${it.scope == null ? '全局' : esc(it.scope)}</span>
+                        <span class="pill">候选 ${cand}</span>
+                        <span class="pill">截断 ${trunc}</span>
+                        <span class="pill">低置信 ${low}</span>
+                        <span class="muted">${esc((it.created_at || '').replace('T', ' ').slice(0, 19))}</span>
+                    </div>
+                </div>
+                <div class="score">
+                    <button class="btn btn-secondary btn-sm" onclick="toggleRecallTrace('${esc(it.trace_id)}', this)">摊开 trace</button>
+                </div>
+            </div>
+            <div class="detail-box" id="trace-${esc(it.trace_id)}" style="display:none"></div>
+        </div>`;
+    }).join('');
+}
+
+async function toggleRecallTrace(traceId, btn) {
+    const box = document.getElementById(`trace-${traceId}`);
+    if (box.style.display !== 'none') { box.style.display = 'none'; btn.textContent = '摊开 trace'; return; }
+    box.style.display = 'block';
+    box.innerHTML = '<div class="loading">加载 trace…</div>';
+    try {
+        const d = await api(`/api/v2/workbench/reviews/${encodeURIComponent(traceId)}`);
+        const t = d.trace || {};
+        let html = '';
+        if (t.prefilter) {
+            html += `<div class="trace-block"><h4>① 预过滤</h4><div class="kv">
+                <span class="item">owner <b>${esc((t.prefilter.owner_id || '').slice(0, 8))}…</b></span>
+                <span class="item">scope 命中 <b>${esc(t.prefilter.scope_matched ?? 0)}</b></span>
+                <span class="item">active-only <b>${t.prefilter.active_only ? '是' : '否'}</b></span>
+            </div></div>`;
+        }
+        if (t.candidates && t.candidates.length) {
+            html += `<div class="trace-block"><h4>② 粗排候选（${t.candidates.length}）</h4>` +
+                t.candidates.map(c => `<div class="trace-row">
+                    <div class="rank">#${c.rank ?? '-'}</div>
+                    <div class="stmt muted">${esc((c.claim_id || '').slice(0, 12))}…</div>
+                    <div class="score">rel ${c.relevance?.toFixed?.(3) ?? c.relevance ?? '-'}</div>
+                </div>`).join('') + '</div>';
+        }
+        if (t.ranked && t.ranked.length) {
+            html += `<div class="trace-block"><h4>③ 精排分数</h4>` +
+                t.ranked.map(r => `<div class="trace-row">
+                    <div class="rank">#${r.rank ?? '-'}</div>
+                    <div class="stmt muted">${esc((r.claim_id || '').slice(0, 12))}…</div>
+                    <div class="score">rel ${r.relevance?.toFixed?.(3) ?? '-'} · content ${r.content?.toFixed?.(3) ?? '-'} · final ${r.final?.toFixed?.(3) ?? '-'}</div>
+                </div>`).join('') + '</div>';
+        }
+        if (t.truncated && t.truncated.length) {
+            html += `<div class="trace-block"><h4>④ 截断项（cap 砍掉，可见不丢弃）</h4>` +
+                t.truncated.map(x => `<div class="trace-row">
+                    <div class="rank">#${x.rank ?? '-'}</div>
+                    <div class="stmt muted">${esc((x.claim_id || '').slice(0, 12))}…</div>
+                    <div class="score">final ${x.final?.toFixed?.(3) ?? '-'}</div>
+                    <span class="trunc-reason">${esc(x.reason || 'cap')}</span>
+                </div>`).join('') + '</div>';
+        } else if (t.candidates) {
+            html += `<div class="trace-block"><h4>④ 截断项</h4><div class="muted">无（全部候选进入精排结果）</div></div>`;
+        }
+        if (t.low_confidence && t.low_confidence.length) {
+            html += `<div class="trace-block"><h4>⑤ 低置信标注</h4>` +
+                t.low_confidence.map(l => `<div class="trace-row">
+                    <div class="stmt muted">${esc((l.claim_id || '').slice(0, 12))}…</div>
+                    <div class="score">conf ${l.content_confidence?.toFixed?.(3) ?? 'UNKNOWN'}</div>
+                </div>`).join('') + '</div>';
+        }
+        if (!html) html = '<div class="muted">trace 为空。</div>';
+        box.innerHTML = html;
+        btn.textContent = '收起';
+    } catch (e) {
+        box.innerHTML = `<div class="empty">加载失败：${esc(e.message)}</div>`;
+    }
 }
 
 /* ================= 初始化 ================= */

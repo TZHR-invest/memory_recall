@@ -1,6 +1,6 @@
 # Workbench Web 开发准备 v1（个人工作台前端）
 
-> 状态: 草稿（**页面 v1 已实现，2026-08-19**）· 系统: crystal · 版本: v1 · 最后更新: 2026-08-19
+> 状态: 草稿（**页面 v1 已实现，2026-08-19**）· 系统: crystal · 版本: v2 · 最后更新: 2026-08-19
 > 关联: [crystal PRD](prd.md)（US-W1~W5 / A6~A8）· [workbench 设计 v1](workbench.md)（产品+权限）
 > · [API 契约](api-contract.md)（§2.4 路由 / §4 骨架）· [web 现状](../../../web/)（dashboard.html / debug.html）
 > 定位: 本文是 workbench **web 页面开发启动前的准备文档**——范围边界、页面规格、与后端契约的差距清单、
@@ -112,10 +112,10 @@ web/crystal/workbench.html（crystal 工作台，个人 key 登录）
 
 | # | 差距 | 现状 | 对 web 的影响 | 建议 |
 |---|------|------|--------------|------|
-| G1 | **`workbench_review` 表未落地** | schema.sql 只有 `claim_activity`/`migration_state`；`GET /reviews` type=recall 返回空、`reviews/{trace_id}` 501 桩 | 召回复盘**历史**无法回看；只能现场 search 摊开 explain | **一期 web 不做历史复盘**，用 search 实验面板替代；表 + 落库归后续（见 §6 后续项） |
+| G1 | **`workbench_review` 表未落地** | ~~schema.sql 只有 `claim_activity`/`migration_state`；`GET /reviews` type=recall 返回空、`reviews/{trace_id}` 501 桩~~ | ~~召回复盘**历史**无法回看；只能现场 search 摊开 explain~~ | **✅ 已实现（2026-08-19）**：`crystal.workbench_review` 表（schema.sql §12.8 + init_crystal_db.py 增量段）；`POST /api/v2/search` 与 `/api/v2/context-inject` 在 include_explain=true 时落 trace 并返回 `trace_id`；`GET /workbench/reviews?type=recall`（游标分页 + scope 过滤）与 `GET /workbench/reviews/{trace_id}` 真实化（owner 隔离 404）——页面已加「召回历史」面板回看历史 trace |
 | G2 | `GET /workbench/reviews?type=promotion` 返回的是**已发生的审计记录**（claim_activity），非"待审计建议池" | 实现返回 action=promoted_scope 的 activity 列表 | 审计面展示的是"历史决策"而非"待办建议" | web 一期按"历史审计记录"展示（标签区分 adopt/reject）；**建议池的产生逻辑（系统主动出建议）未实现**，归后续 |
 | G3 | 裁决端点错误码统一为 `{code,message,data}` 信封 | 已实现（ok_response / CrystalAPIError） | 页面 fetch 需解信封取 `data` | 前端封装统一 `unwrap()` 函数 |
-| G4 | `GET /api/v2/workbench/claims` 无游标分页（limit 上限 200） | 实现为 LIMIT 直取 | 大 owner 数据量时列表截断 | 一期够用（个人数据量小）；后续按 api-contract §5 游标化 |
+| G4 | `GET /api/v2/workbench/claims` 无游标分页（limit 上限 200） | 实现为 LIMIT 直取 | 大 owner 数据量时列表截断 | **✅ 已实现（2026-08-19）**：claims / reviews 列表游标分页（api-contract §5；claims 带 active 优先 rank 游标）；evidence 已有游标分页（M1） |
 | G5 | claim 详情 `GET /api/v2/claims/{id}` 已含证据/谱系/usage | 已实现（recall_service.get_claim_detail） | 详情展开数据齐备 | 无缺口 |
 | G6 | confirm 无 body；correct 需 `new_statement`+可选 `reason`/`source_ref`；forget 需 `reason`；promote-scope 需 `action` | 已实现（workbench.py CorrectRequest 等） | 前端表单字段明确 | 无缺口 |
 
@@ -185,9 +185,9 @@ search explain。**缺口只影响「召回复盘历史」与「提权建议池�
 
 ## 7. 后续项（不在本开发范围，记录备查）
 
-1. **G1 补全**：`workbench_review` 表（schema.sql crystal 段）+ 召回 trace 落库 + `reviews?type=recall` / `reviews/{trace_id}` 真实化——workbench 设计 §5 已定义表结构，落库点在 recall_service 或 search 端点。
+1. **~~G1 补全~~ ✅ 已实现（2026-08-19）**：`workbench_review` 表 + 召回 trace 落库 + `reviews?type=recall` / `reviews/{trace_id}` 真实化——页面已加「召回历史」面板（回看 trace 摊开）。
 2. **提权建议池（G2）**：系统主动出建议（workbench §3.2 候选池判据：召回命中高 + 无 scope 冲突 + 已 confirm），一期只有用户手动 promote-scope。
-3. **列表游标分页（G4）**：按 api-contract §5 游标化 claims 列表。
+3. **~~列表游标分页（G4）~~ ✅ 已实现（2026-08-19）**：claims / reviews 列表按 api-contract §5 游标化（evidence 已有）。
 4. **owner 审批面（US-W3）**：团队 owner P1 后再做。
 
 ## 8. 验收映射（对应 PRD / workbench 设计）

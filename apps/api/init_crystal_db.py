@@ -60,11 +60,29 @@ async def init_crystal_schema():
     # 2026-08-18: evidence 加 idempotency_key（M1 幂等落库依据，entity-attributes §2）。
     # 注：schema.sql 已含 idempotency_key 列 + 索引（新库全量建）；本段仅服务"既有库增量"，
     #     幂等 IF NOT EXISTS 双跑安全。
+    # 2026-08-19: crystal.workbench_review 表（G1 召回复盘 trace 落库，workbench 设计 §5）——
+    #     schema.sql 已含（新库全量建）；本段服务既有库增量，IF NOT EXISTS 双跑安全。
     crystal_migrations = [
         (
             "ALTER TABLE crystal.evidence ADD COLUMN IF NOT EXISTS idempotency_key TEXT;"
             "CREATE INDEX IF NOT EXISTS idx_crystal_evidence_idempotency"
             " ON crystal.evidence(idempotency_key) WHERE idempotency_key IS NOT NULL;"
+        ),
+        (
+            "CREATE TABLE IF NOT EXISTS crystal.workbench_review ("
+            " id TEXT PRIMARY KEY DEFAULT 'wr_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 22),"
+            " owner_type TEXT NOT NULL CHECK (owner_type IN ('personal', 'team')),"
+            " owner_id TEXT NOT NULL,"
+            " scope TEXT,"
+            " query TEXT,"
+            " source TEXT NOT NULL DEFAULT 'search' CHECK (source IN ('search', 'context_inject')),"
+            " trace_json JSONB NOT NULL,"
+            " created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()"
+            ");"
+            "CREATE INDEX IF NOT EXISTS idx_crystal_workbench_review_owner"
+            " ON crystal.workbench_review(owner_type, owner_id, created_at DESC);"
+            "CREATE INDEX IF NOT EXISTS idx_crystal_workbench_review_owner_scope"
+            " ON crystal.workbench_review(owner_type, owner_id, scope);"
         ),
     ]
 
@@ -89,6 +107,7 @@ async def init_crystal_schema():
         print("  - claim_activity (变更审计日志)")
         print("  - claim_evidence (Claim↔Evidence 支持关系)")
         print("  - claim_usage (复用/outcome 离散价值信号)")
+        print("  - workbench_review (召回复盘 trace 落库)")
         print()
         print("回退：DROP SCHEMA crystal CASCADE")
 

@@ -183,6 +183,16 @@ class TestSchemaMatchesDesign:
             "created_at": "timestamp with time zone",
             "updated_at": "timestamp with time zone",
         },
+        "workbench_review": {
+            "id": "text",
+            "owner_type": "text",
+            "owner_id": "text",
+            "scope": "text",
+            "query": "text",
+            "source": "text",
+            "trace_json": "jsonb",
+            "created_at": "timestamp with time zone",
+        },
     }
 
     @pytest.mark.anyio
@@ -877,6 +887,276 @@ class TestWorkbench:
             json={},
         )
         assert resp.status_code == 404  # 他人数据不可见 → 404（不泄露存在性）
+
+
+# ==================== G1：召回复盘 trace 落库 + reviews 真实化 ====================
+
+
+class TestRecallReviewTrace:
+    """G1（2026-08-19）：workbench_review 表 + search include_explain 落库 +
+    reviews?type=recall / reviews/{trace_id} 端点真实化（workbench 设计 §5 / recall-design §4）"""
+
+    @pytest.mark.anyio
+    async def test_search_with_explain_saves_trace(self, client, test_db, test_key):
+        """POST /api/v2/search include_explain=true → trace 落 workbench_review + 返回 trace_id"""
+        from src.database import db
+
+        # 造一条 active claim（无 embedding 也能走通管道，explain 结构完整）
+        await db.execute(
+            """INSERT INTO crystal.claim
+               (statement, claim_kind, content_confidence, scope, owner_type, owner_id, status, created_at)
+               VALUES ('G1 测试断言：使用 PostgreSQL', 'fact', 0.7, 'project-g1', 'personal', $1, 'active', NOW())""",
+            test_key["key_id"],
+        )
+
+        resp = await client.post(
+            "/api/v2/search",
+            headers={"X-API-Key": test_key["api_key"]},
+            json={"query": "数据库", "scope": "project-g1", "limit": 5, "include_explain": True},
+        )
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert "explain" in data
+        trace_id = data.get("trace_id")
+        assert trace_id is not None
+        assert trace_id.startswith("wr_")
+
+        # 落库验证：owner 隔离 + trace_json 与 explain 一致
+        import json as _json
+
+        row = await db.fetchrow(
+            """SELECT owner_id, scope, query, source, trace_json
+               FROM crystal.workbench_review WHERE id=$1""",
+            trace_id,
+        )
+        assert row["owner_id"] == test_key["key_id"]
+        assert row["scope"] == "project-g1"
+        assert row["query"] == "数据库"
+        assert row["source"] == "search"
+        trace_json = row["trace_json"]
+        if isinstance(trace_json, str):
+            trace_json = _json.loads(trace_json)
+        assert trace_json["prefilter"]["scope_matched"] >= 1
+        assert trace_json["candidates"] == data["explain"]["candidates"]
+
+    @pytest.mark.anyio
+    async def test_search_without_explain_no_trace(self, client, test_db, test_key):
+        """include_explain=false（默认）不落 trace（性能：recall-design §4 默认不计算/不落库）"""
+        resp = await client.post(
+            "/api/v2/search",
+            headers={"X-API-Key": test_key["api_key"]},
+            json={"query": "任意查询", "limit": 5},
+        )
+        assert resp.status_code == 200
+        assert "explain" not in resp.json()["data"]
+        assert "trace_id" not in resp.json()["data"]
+
+    @pytest.mark.anyio
+    async def test_context_inject_explain_saves_trace(self, client, test_db, test_key):
+        """context-inject include_explain=true → trace 落库（source=context_inject）"""
+        from src.database import db
+
+        await db.execute(
+            """INSERT INTO crystal.claim
+               (statement, claim_kind, content_confidence, scope, owner_type, owner_id, status, created_at)
+               VALUES ('注入 trace 测试断言', 'fact', 0.6, 'project-g1', 'personal', $1, 'active', NOW())""",
+            test_key["key_id"],
+        )
+
+        resp = await client.post(
+            "/api/v2/context-inject",
+            headers={"X-API-Key": test_key["api_key"]},
+            json={"query": "测试", "scope": "project-g1", "include_explain": True},
+        )
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert "explain" in data
+        trace_id = data.get("trace_id")
+        assert trace_id is not None
+        source = await db.fetchval(
+            "SELECT source FROM crystal.workbench_review WHERE id=$1", trace_id
+        )
+        assert source == "context_inject"
+
+    @pytest.mark.anyio
+    async def test_reviews_recall_list_and_detail(self, client, test_db, test_key):
+        """reviews?type=recall 列表 + reviews/{trace_id} 详情（A5/A8）"""
+        from src.database import db
+
+        # 直接落两条 trace（模拟已产生的召回行为；scope 隔离本测试数据）
+        t1 = await db.fetchval(
+            """INSERT INTO crystal.workbench_review
+               (owner_type, owner_id, scope, query, source, trace_json, created_at)
+               VALUES ('personal', $1, 'project-g1-reviews', '第一次查询', 'search',
+                       '{"prefilter":{"scope_matched":2},"candidates":[],"truncated":[],"low_confidence":[]}'::jsonb,
+                       NOW() - INTERVAL '1 hour')
+               RETURNING id""",
+            test_key["key_id"],
+        )
+        t2 = await db.fetchval(
+            """INSERT INTO crystal.workbench_review
+               (owner_type, owner_id, scope, query, source, trace_json, created_at)
+               VALUES ('personal', $1, 'project-g1-reviews', '第二次查询', 'context_inject',
+                       '{"prefilter":{"scope_matched":1},"candidates":[],"truncated":[],"low_confidence":[]}'::jsonb,
+                       NOW())
+               RETURNING id""",
+            test_key["key_id"],
+        )
+
+        # 列表（最新在前，scope 过滤隔离）
+        resp = await client.get(
+            "/api/v2/workbench/reviews?type=recall&scope=project-g1-reviews",
+            headers={"X-API-Key": test_key["api_key"]},
+        )
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert data["type"] == "recall"
+        assert len(data["items"]) == 2
+        assert data["items"][0]["trace_id"] == t2  # 最新在前
+        assert data["items"][0]["trace"]["prefilter"]["scope_matched"] == 1
+        assert data["items"][1]["trace_id"] == t1
+
+        # 详情
+        resp2 = await client.get(
+            f"/api/v2/workbench/reviews/{t2}",
+            headers={"X-API-Key": test_key["api_key"]},
+        )
+        assert resp2.status_code == 200
+        detail = resp2.json()["data"]
+        assert detail["trace_id"] == t2
+        assert detail["query"] == "第二次查询"
+        assert detail["source"] == "context_inject"
+
+    @pytest.mark.anyio
+    async def test_reviews_detail_cross_owner_404(self, client, test_db, test_key):
+        """他人 trace 不可见（A11 owner 隔离）"""
+        from src.database import db
+
+        other_trace = await db.fetchval(
+            """INSERT INTO crystal.workbench_review
+               (owner_type, owner_id, scope, query, source, trace_json, created_at)
+               VALUES ('personal', 'other-key-id', 'project-g1', '他人查询', 'search',
+                       '{"prefilter":{},"candidates":[]}'::jsonb, NOW())
+               RETURNING id"""
+        )
+        resp = await client.get(
+            f"/api/v2/workbench/reviews/{other_trace}",
+            headers={"X-API-Key": test_key["api_key"]},
+        )
+        assert resp.status_code == 404
+
+    @pytest.mark.anyio
+    async def test_reviews_invalid_cursor_400(self, client, test_db, test_key):
+        resp = await client.get(
+            "/api/v2/workbench/reviews?cursor=not-a-valid-cursor",
+            headers={"X-API-Key": test_key["api_key"]},
+        )
+        assert resp.status_code == 400
+
+
+# ==================== G4：列表游标分页（api-contract §5） ====================
+
+
+class TestCursorPagination:
+    @pytest.mark.anyio
+    async def test_claims_cursor_pagination_active_first(self, client, test_db, test_key):
+        """workbench/claims 游标分页：active 优先排序下翻页键一致、无重复无遗漏"""
+        from src.database import db
+
+        # 造 5 条（3 active + 2 superseded，混合状态验证 rank 游标）
+        for i, stmt in enumerate(["活跃断言A", "活跃断言B", "活跃断言C"]):
+            await db.execute(
+                """INSERT INTO crystal.claim
+                   (statement, claim_kind, content_confidence, scope, owner_type, owner_id, status, created_at)
+                   VALUES ($1, 'fact', 0.7, 'project-g4', 'personal', $2, 'active', NOW())""",
+                stmt,
+                test_key["key_id"],
+            )
+        for i, stmt in enumerate(["旧断言A", "旧断言B"]):
+            await db.execute(
+                """INSERT INTO crystal.claim
+                   (statement, claim_kind, content_confidence, scope, owner_type, owner_id, status, created_at)
+                   VALUES ($1, 'fact', 0.7, 'project-g4', 'personal', $2, 'superseded', NOW())""",
+                stmt,
+                test_key["key_id"],
+            )
+
+        # 第一页 limit=2
+        resp = await client.get(
+            "/api/v2/workbench/claims?scope=project-g4&limit=2",
+            headers={"X-API-Key": test_key["api_key"]},
+        )
+        assert resp.status_code == 200
+        d1 = resp.json()["data"]
+        assert len(d1["items"]) == 2
+        assert d1["has_more"] is True
+        assert d1["next_cursor"] is not None
+        # active 优先：前 2 条都是 active
+        assert all(i["status"] == "active" for i in d1["items"])
+
+        # 第二页
+        resp2 = await client.get(
+            f"/api/v2/workbench/claims?scope=project-g4&limit=2&cursor={d1['next_cursor']}",
+            headers={"X-API-Key": test_key["api_key"]},
+        )
+        assert resp2.status_code == 200
+        d2 = resp2.json()["data"]
+        assert len(d2["items"]) == 2
+        assert d2["has_more"] is True
+
+        # 第三页（翻到 superseded 段）
+        resp3 = await client.get(
+            f"/api/v2/workbench/claims?scope=project-g4&limit=2&cursor={d2['next_cursor']}",
+            headers={"X-API-Key": test_key["api_key"]},
+        )
+        assert resp3.status_code == 200
+        d3 = resp3.json()["data"]
+        assert len(d3["items"]) == 1
+        assert d3["has_more"] is False
+        assert d3["next_cursor"] is None
+        assert d3["items"][0]["status"] == "superseded"
+
+        # 无重复无遗漏
+        all_ids = [i["claim_id"] for i in d1["items"] + d2["items"] + d3["items"]]
+        assert len(all_ids) == 5
+        assert len(set(all_ids)) == 5
+
+    @pytest.mark.anyio
+    async def test_reviews_cursor_pagination(self, client, test_db, test_key):
+        """reviews?type=recall 游标分页（scope 过滤隔离本测试数据）"""
+        from src.database import db
+
+        for i in range(3):
+            await db.execute(
+                """INSERT INTO crystal.workbench_review
+                   (owner_type, owner_id, scope, query, source, trace_json, created_at)
+                   VALUES ('personal', $1, 'project-g4-reviews', $2, 'search',
+                           '{"prefilter":{},"candidates":[]}'::jsonb, NOW())""",
+                test_key["key_id"],
+                f"翻页查询 {i}",
+            )
+
+        resp = await client.get(
+            "/api/v2/workbench/reviews?type=recall&scope=project-g4-reviews&limit=2",
+            headers={"X-API-Key": test_key["api_key"]},
+        )
+        assert resp.status_code == 200
+        d1 = resp.json()["data"]
+        assert len(d1["items"]) == 2
+        assert d1["has_more"] is True
+        assert d1["next_cursor"] is not None
+
+        resp2 = await client.get(
+            f"/api/v2/workbench/reviews?type=recall&scope=project-g4-reviews&limit=2&cursor={d1['next_cursor']}",
+            headers={"X-API-Key": test_key["api_key"]},
+        )
+        assert resp2.status_code == 200
+        d2 = resp2.json()["data"]
+        assert len(d2["items"]) == 1
+        assert d2["has_more"] is False
+        ids1 = {i["trace_id"] for i in d1["items"]}
+        ids2 = {i["trace_id"] for i in d2["items"]}
+        assert ids1.isdisjoint(ids2)
 
 
 # ==================== M3：迁移（A9 幂等重放 / 断点续传） ====================

@@ -3,12 +3,15 @@ crystal 工作台端点（/api/v2/workbench，workbench 设计 v1）
 
 裁决面：confirm（+Δ content）/ correct（特权 Evidence → supersede）/ forget（retract）/
 promote-scope（scope 提权审计）
-洞察面：overview（统计）/ reviews（召回复盘 trace）
+洞察面：overview（统计）/ reviews（召回复盘 trace，G1 真实化）
 权限：个人 key 只看自己 owner；admin 的 debug 日志与个人数据隔离（A11）。
+G4（2026-08-19）：claims / reviews 列表游标分页（api-contract §5）。
 """
 
+import base64
 import json
 import logging
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, Query
@@ -25,6 +28,40 @@ from .security import owner_from_user
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v2/workbench", tags=["crystal-workbench"])
+
+
+# ==================== 游标分页工具（api-contract §5） ====================
+# 通用 cursor = base64(created_at.isoformat() + '|' + id)，按 (created_at, id) DESC 翻页；
+# claims 端点带 status 优先级（active 优先），cursor 附加 rank 前缀保持翻页键一致：
+#   cursor = base64(rank + '|' + created_at.isoformat() + '|' + id)
+#   rank = CASE status WHEN 'active' THEN 0 ELSE 1 END（与 ORDER BY 第一键一致）
+
+
+def _encode_cursor(created_at: datetime, row_id: str, rank: Optional[int] = None) -> str:
+    parts = [created_at.isoformat(), row_id]
+    if rank is not None:
+        parts.insert(0, str(rank))
+    raw = "|".join(parts)
+    return base64.urlsafe_b64encode(raw.encode("utf-8")).decode("utf-8")
+
+
+def _decode_cursor(cursor: Optional[str]) -> Optional[tuple]:
+    """返回 (created_at, id) 或 (rank, created_at, id)（带 rank 前缀时）"""
+    if not cursor:
+        return None
+    try:
+        raw = base64.urlsafe_b64decode(cursor.encode("utf-8")).decode("utf-8")
+        parts = raw.split("|")
+        if len(parts) == 2:
+            created_at = datetime.fromisoformat(parts[0])
+            return created_at, parts[1]
+        if len(parts) == 3:
+            rank = int(parts[0])
+            created_at = datetime.fromisoformat(parts[1])
+            return rank, created_at, parts[2]
+        raise ValueError("bad cursor parts")
+    except Exception:
+        raise CrystalAPIError(400, "Invalid cursor.")
 
 
 class CorrectRequest(BaseModel):
@@ -298,13 +335,14 @@ async def workbench_overview(
 @router.get("/reviews")
 async def workbench_reviews(
     type: Optional[str] = Query(None, description="low_confidence | promotion | recall"),
+    scope: Optional[str] = Query(None, description="按项目过滤召回复盘 trace（type=recall）"),
     limit: int = Query(20, ge=1, le=100),
     cursor: Optional[str] = Query(None),
     current_user: Dict = Depends(require_permission("read")),
 ):
     """召回复盘列表 / 假说池 / 提权建议（US-W5 / A8）
 
-    - type=recall: 最近召回 trace（落库 workbench_review，M2 先返回空）
+    - type=recall: 最近召回 trace（G1 真实化：读 crystal.workbench_review，游标分页）
     - type=low_confidence: 低置信 claim（假说池，workbench §3.3）
     - type=promotion: scope 提权建议（claim_activity promoted_scope 审计）
     """
@@ -356,8 +394,56 @@ async def workbench_reviews(
                 for r in rows
             ]
             return ok_response({"type": "promotion", "items": items})
-        # 默认 recall（M2：workbench_review 表 M2 落，先空）
-        return ok_response({"type": "recall", "items": [], "next_cursor": None})
+
+        # type=recall（默认）：召回复盘 trace（G1，游标分页 api-contract §5）
+        conditions = ["owner_type=$1", "owner_id=$2"]
+        params: List[Any] = [owner["owner_type"], owner["owner_id"]]
+        if scope is not None:
+            conditions.append(f"scope=${len(params) + 1}")
+            params.append(scope)
+        decoded = _decode_cursor(cursor)
+        if decoded:
+            conditions.append(
+                f"(created_at, id) < (${len(params) + 1}, ${len(params) + 2})"
+            )
+            params.extend([decoded[0], decoded[1]])
+
+        where = " AND ".join(conditions)
+        rows = await conn.fetch(
+            f"""SELECT id, scope, query, source, trace_json, created_at
+                FROM crystal.workbench_review
+                WHERE {where}
+                ORDER BY created_at DESC, id DESC
+                LIMIT ${len(params) + 1}""",
+            *params,
+            limit + 1,  # 多取一条判断是否还有下一页
+        )
+        has_more = len(rows) > limit
+        page = rows[:limit]
+        items = []
+        for r in page:
+            trace = r["trace_json"]
+            if isinstance(trace, str):
+                try:
+                    trace = json.loads(trace)
+                except (ValueError, TypeError):
+                    pass
+            items.append(
+                {
+                    "trace_id": r["id"],
+                    "scope": r["scope"],
+                    "query": r["query"],
+                    "source": r["source"],
+                    "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+                    "trace": trace,
+                }
+            )
+        next_cursor = None
+        if has_more and page:
+            next_cursor = _encode_cursor(page[-1]["created_at"], page[-1]["id"])
+        return ok_response(
+            {"type": "recall", "items": items, "next_cursor": next_cursor, "has_more": has_more}
+        )
 
 
 @router.get("/reviews/{trace_id}")
@@ -365,8 +451,35 @@ async def workbench_review_detail(
     trace_id: str,
     current_user: Dict = Depends(require_permission("read")),
 ):
-    """单次召回复盘 trace（US-W5 / A5；M2 落库 workbench_review 后有数据）"""
-    raise CrystalAPIError(501, "Recall review detail is available after M2 review persistence.")
+    """单次召回复盘 trace（US-W5 / A5；G1 真实化：读 workbench_review）"""
+    owner = owner_from_user(current_user)
+    async with db.get_connection() as conn:
+        row = await conn.fetchrow(
+            """SELECT id, scope, query, source, trace_json, created_at
+               FROM crystal.workbench_review
+               WHERE id=$1 AND owner_type=$2 AND owner_id=$3""",
+            trace_id,
+            owner["owner_type"],
+            owner["owner_id"],
+        )
+    if not row:
+        raise CrystalAPIError(404, f"Recall review '{trace_id}' not found or not owned by you.")
+    trace = row["trace_json"]
+    if isinstance(trace, str):
+        try:
+            trace = json.loads(trace)
+        except (ValueError, TypeError):
+            pass
+    return ok_response(
+        {
+            "trace_id": row["id"],
+            "scope": row["scope"],
+            "query": row["query"],
+            "source": row["source"],
+            "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+            "trace": trace,
+        }
+    )
 
 
 # ==================== 补充：claims 读端点（api-contract §2.3） ====================
@@ -378,9 +491,10 @@ async def workbench_claims(
     claim_kind: Optional[str] = Query(None),
     scope: Optional[str] = Query(None),
     limit: int = Query(50, ge=1, le=200),
+    cursor: Optional[str] = Query(None),
     current_user: Dict = Depends(require_permission("read")),
 ):
-    """我记住了什么（workbench §6：claim 列表，active 优先）"""
+    """我记住了什么（workbench §6：claim 列表，active 优先；G4 游标分页 api-contract §5）"""
     owner = owner_from_user(current_user)
     conditions = ["owner_type=$1", "owner_id=$2"]
     params: List[Any] = [owner["owner_type"], owner["owner_id"]]
@@ -393,17 +507,42 @@ async def workbench_claims(
     if scope is not None:
         conditions.append(f"(scope=${len(params) + 1}::text OR scope IS NULL)")
         params.append(scope)
+    decoded = _decode_cursor(cursor)
+    if decoded:
+        if len(decoded) == 3:
+            # 带 rank 前缀的游标：ORDER BY 第一键 rank ASC（active 优先），
+            # 翻页 = rank 更大 或 同 rank 且 (created_at, id) 更小（DESC 续页）
+            rank, created_at, row_id = decoded
+            conditions.append(
+                f"""(
+                    CASE status WHEN 'active' THEN 0 ELSE 1 END > ${len(params) + 1}
+                    OR (
+                        CASE status WHEN 'active' THEN 0 ELSE 1 END = ${len(params) + 1}
+                        AND (created_at, id) < (${len(params) + 2}, ${len(params) + 3})
+                    )
+                )"""
+            )
+            params.extend([rank, created_at, row_id])
+        else:
+            created_at, row_id = decoded
+            conditions.append(
+                f"(created_at, id) < (${len(params) + 1}, ${len(params) + 2})"
+            )
+            params.extend([created_at, row_id])
+
     where = " AND ".join(conditions)
     async with db.get_connection() as conn:
         rows = await conn.fetch(
             f"""SELECT id, statement, claim_kind, content_confidence, scope, status, created_at
                 FROM crystal.claim
                 WHERE {where}
-                ORDER BY CASE status WHEN 'active' THEN 0 ELSE 1 END, created_at DESC
+                ORDER BY CASE status WHEN 'active' THEN 0 ELSE 1 END, created_at DESC, id DESC
                 LIMIT ${len(params) + 1}""",
             *params,
-            limit,
+            limit + 1,  # 多取一条判断是否还有下一页
         )
+    has_more = len(rows) > limit
+    page = rows[:limit]
     items = [
         {
             "claim_id": r["id"],
@@ -414,6 +553,13 @@ async def workbench_claims(
             "status": r["status"],
             "created_at": r["created_at"].isoformat() if r["created_at"] else None,
         }
-        for r in rows
+        for r in page
     ]
-    return ok_response({"items": items, "count": len(items)})
+    next_cursor = None
+    if has_more and page:
+        last = page[-1]
+        rank = 0 if last["status"] == "active" else 1
+        next_cursor = _encode_cursor(last["created_at"], last["id"], rank=rank)
+    return ok_response(
+        {"items": items, "count": len(items), "next_cursor": next_cursor, "has_more": has_more}
+    )

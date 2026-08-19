@@ -32,6 +32,7 @@ Claim 只存简单断言、推理放谱系边；演变只做推导记录、不�
 |--------|----------------------|------|
 | **M1 建表 + API 骨架** | [foundation](foundation.md)（草稿） · [entity-attributes](entity-attributes.md)（定稿） · [api-contract](api-contract.md) v1 | **已实现（2026-08-18）**：`crystal.*` 七表 + `/api/v2` 21 路由（证据层真实写入 + 其余桩） |
 | **M2 两链路 + 工作台** | [workbench](workbench.md) v1 · [reconciliation-design](reconciliation-design.md) v1 · [recall-design](recall-design.md) v1 · [test-strategy](test-strategy.md) v1 | **已实现（2026-08-19）**：对账写路径 + 召回读路径 + 工作台，`/api/v2` 22 路由全真实（仅 debug 桩） |
+| **M2.1 claim 原子化** | [claim-atomicity](claim-atomicity.md) v1（草稿） · [外部调研](../../notes/research/2026-08-19-claim-atomicity/README.md)（进行中） · [reconciliation-design](reconciliation-design.md) v2（待落） | **进行中（2026-08-19）**：外部调研 round-01 待执行；判据定案后升 reconciliation-design v2 + 存量重建 |
 | **M3 旧数据迁移** | [migration-script-design](migration-script-design.md) v1（定稿） · [migration-path](migration-path.md) | **已实现（2026-08-19）**：迁移脚本 + migration_state 表 + admin 端点；**全量迁移已执行**（27 条真实记忆 → 27 evidence + 20 claim） |
 | **M4 插件切换（延后）** | [plugin-migration-contract](plugin-migration-contract.md) v1（定稿） · [migration-path](migration-path.md) | **契约已落稿（2026-08-19）**；切换动作延后（用户拍板：避免半切换两套逻辑并存，等 crystal 完整后统一做） |
 | **M5 退役** | [migration-path](migration-path.md) · [retirement-checklist](retirement-checklist.md) v1（定稿） | **检查单已落稿（2026-08-19）**；退役条件未满足（crystal 稳定观察 + 插件全切 + 用户确认），DROP 待条件达成 |
@@ -41,11 +42,12 @@ Claim 只存简单断言、推理放谱系边；演变只做推导记录、不�
 | 文件 | 层 | 角色 | 版本化 |
 |------|----|------|--------|
 | [foundation.md](foundation.md) | **语义** | 目标模型本体：北极星 + 对象模型 + 两链路 + 已拍板 35 项；**唯一裁判** | 独立版本（当前 v1 草稿） |
+| [claim-atomicity.md](claim-atomicity.md) | 工程 | **M2.1 claim 原子化规范 + 迭代计划**（原子判据/拆条流程/reinforce 边界/存量处理/验收；判据待调研定案回填） | 独立草稿（M2.1 前置，已落 v1） |
 | [entity-attributes.md](entity-attributes.md) | 落库 | crystal schema（evidence/claim/lineage_edge/claim_evidence/claim_usage/claim_activity 表字段/索引/枚举）**3 待定项已定案（2026-08-18）** | 独立草稿，**已定稿**（M1 可照此建表） |
 | [api-contract.md](api-contract.md) | 工程 | **crystal API 契约 v1**（/api/v2 路由表、鉴权映射、错误规范、幂等） | 独立草稿（M1 前置，已落） |
 | [workbench.md](workbench.md) | 工程 | **workbench (MR-011) 设计 v1**（裁决面+洞察面双轨 API/权限） | 独立草稿（M2 前置，已落） |
-| [workbench-web-prep.md](workbench-web-prep.md) | 工程 | **workbench web 开发准备 v1**（web 页面范围/规格/后端差距清单/任务分解；**页面 v1 已实现，2026-08-19**） | 独立草稿（web 开发启动前置，页面已按此实现） |
-| [reconciliation-design.md](reconciliation-design.md) | 工程 | **对账技术设计 v1**（worker/事务/retry/reinforce 计分强度权重表） | 独立草稿（M2 前置，已落） |
+| [workbench-web-prep.md](workbench-web-prep.md) | 工程 | **workbench web 开发准备 v1**（web 页面范围/规格/后端差距清单/任务分解；**页面 v1 已实现 + G1 召回历史/G4 游标分页已补齐，2026-08-19**） | 独立草稿（web 开发启动前置，页面已按此实现） |
+| [reconciliation-design.md](reconciliation-design.md) | 工程 | **对账技术设计 v1**（worker/事务/retry/reinforce 计分强度权重表；**M2.1 将升 v2**：拆条 0..N） | 独立草稿（M2 前置，已落；M2.1 待升级） |
 | [recall-design.md](recall-design.md) | 工程 | **召回技术设计 v1**（三级管道/精排公式/截断/trace 契约） | 独立草稿（M2 前置，已落） |
 | [test-strategy.md](test-strategy.md) | 工程 | **crystal 测试策略**（分层/矩阵/每 M 出口） | 独立草稿（M2 前置，已落） |
 | [migration-path.md](migration-path.md) | 工程 | 渐进迁移 Stage A–E：命名空间隔离、迁移策略、退役标准 | 独立草稿 |

@@ -572,6 +572,30 @@ CREATE TABLE IF NOT EXISTS crystal.migration_state (
 
 COMMENT ON TABLE crystal.migration_state IS 'crystal: 迁移进度/断点（M3，幂等可重放，断点续传）';
 
+-- ----------------------------------------------------------------------------
+-- 12.8 crystal.workbench_review（召回复盘 trace 落库，洞察面个人可回看）
+-- workbench 设计 §5 / recall-design §4：trace 契约与 explain 结构一致；
+-- 只存个人 owner 的召回行为（owner_type/owner_id 隔离，A11 与 admin debug 隔离）
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS crystal.workbench_review (
+    id TEXT PRIMARY KEY DEFAULT 'wr_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 22),
+    owner_type TEXT NOT NULL CHECK (owner_type IN ('personal', 'team')),
+    owner_id TEXT NOT NULL,
+    scope TEXT,
+    query TEXT,
+    source TEXT NOT NULL DEFAULT 'search' CHECK (source IN ('search', 'context_inject')),
+    trace_json JSONB NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_crystal_workbench_review_owner
+    ON crystal.workbench_review(owner_type, owner_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_crystal_workbench_review_owner_scope
+    ON crystal.workbench_review(owner_type, owner_id, scope);
+
+COMMENT ON TABLE crystal.workbench_review IS 'crystal: 召回复盘 trace 落库（洞察面个人可回看，A5 无静默丢弃）';
+COMMENT ON COLUMN crystal.workbench_review.trace_json IS 'explain 结构（recall-design §4：prefilter/candidates/ranked/truncated/low_confidence）';
+
 -- ============================================================================
 -- Complete
 -- ============================================================================

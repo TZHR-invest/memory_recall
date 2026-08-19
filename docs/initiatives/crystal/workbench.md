@@ -88,6 +88,7 @@
   4. **低置信标注**：只标注不静默丢弃。
 - **trace 契约**：与召回技术设计 v1 的 `explain` 结构一致（api-contract §4.2），
   workbench 只是把 explain 落库可回看（`workbench_review` 表，见 §5）。
+  **✅ 已实现（2026-08-19，G1）**：`workbench_review` 表落地 + 落库 + reviews 端点真实化。
 - **与 debug 的边界**：workbench/reviews 只含**个人召回行为**（自己 owner 的查询/注入）；
   `debug/traces` 是 admin 的全量运维 trace（embedding 日志、所有 key 的调用）——两者数据源可以同表，
   **权限层隔离**（A11）。
@@ -97,9 +98,11 @@
 | 表 | 用途 | 字段（骨架） |
 |----|------|-------------|
 | `claim_activity` | **变更审计日志**（承接 lineage_edge 触发证据职责 + workbench 审计动作；entity-attributes §5.1） | `id, claim_id, action(superseded_by/generalized_to/confirmed/retracted/promoted_scope/poison_warning), actor_type(system/user/admin), actor_id, triggered_by_evidence_id, detail, created_at` |
-| `workbench_review` | 召回复盘 trace 落库（个人可回看） | `id, owner_id, scope, query, trace_json(explain 结构), created_at` |
+| `workbench_review` | 召回复盘 trace 落库（个人可回看） | `id, owner_id, scope, query, source(search/context_inject), trace_json(explain 结构), created_at` |
 
-> 两表都是**运维/审计辅助**，非核心模型（Evidence/Claim/Edge 之外）；M1 不建，M2 随 workbench 建。
+> 两表都是**运维/审计辅助**，非核心模型（Evidence/Claim/Edge 之外）。`claim_activity` 已随 M2 建；
+> **`workbench_review` 已随 G1 落地（2026-08-19）**（schema.sql §12.8 + init_crystal_db.py 增量段），
+> 落库点在 recall_service.save_recall_trace（/search、/context-inject include_explain=true 时）。
 > **`claim_activity` 与原 `workbench_audit` 合并为同一张表**（2026-08-18 定案，v1 #35）：
 > 对账自动变更（superseded_by/generalized_to）、用户裁决（confirmed/retracted/promoted_scope）、
 > 投毒告警（poison_warning）统一落这一张 append-only 审计日志；scope 提权"建议"本身记

@@ -3,8 +3,10 @@ crystal 召回服务（读路径核心，recall-design v1）
 
 三级管道：结构化预过滤（scope + active）→ 向量粗排（pgvector HNSW top-K）→
 精排（相关 × content，一期 reuse 恒 1）→ 截断可见（explain 契约，不静默丢弃）。
+G1（2026-08-19）：include_explain=true 时 trace 落 crystal.workbench_review（洞察面个人可回看）。
 """
 
+import json
 import logging
 from typing import Any, Dict, List, Optional
 
@@ -76,6 +78,40 @@ async def _prefilter(
     return [dict(r) for r in rows]
 
 
+async def save_recall_trace(
+    owner_type: str,
+    owner_id: str,
+    scope: Optional[str],
+    query: Optional[str],
+    explain: Dict[str, Any],
+    source: str = "search",
+) -> Optional[str]:
+    """召回复盘 trace 落库（G1，workbench 设计 §5 / recall-design §4）。
+
+    include_explain=true 时由调用方（/search、/context-inject）调用；
+    只存个人 owner 的召回行为，供洞察面 reviews 回看（A5 无静默丢弃 / A11 owner 隔离）。
+    失败不抛（trace 落库是辅助能力，不影响召回主链路）。
+    """
+    try:
+        async with db.get_connection() as conn:
+            trace_id = await conn.fetchval(
+                """INSERT INTO crystal.workbench_review
+                   (owner_type, owner_id, scope, query, source, trace_json, created_at)
+                   VALUES ($1, $2, $3, $4, $5, $6::jsonb, NOW())
+                   RETURNING id""",
+                owner_type,
+                owner_id,
+                scope,
+                query,
+                source,
+                json.dumps(explain, ensure_ascii=False),
+            )
+        return trace_id
+    except Exception as e:
+        logger.error(f"crystal 召回 trace 落库失败（不影响召回）: {e}")
+        return None
+
+
 async def search_claims(
     query: str,
     owner_type: str,
@@ -84,10 +120,14 @@ async def search_claims(
     claim_kind: Optional[str] = None,
     limit: int = 10,
     include_explain: bool = False,
+    save_trace: bool = False,
+    trace_source: str = "search",
 ) -> Dict[str, Any]:
     """状态查询召回（US-S1/S2 / A4/A5）。
 
-    返回 {results, explain?}；explain 契约见 recall-design §4。
+    返回 {results, explain?, trace_id?}；explain 契约见 recall-design §4。
+    include_explain=true 时组装 explain；save_trace=true 时把 explain 落
+    crystal.workbench_review（G1），返回 trace_id 供洞察面回看。
     """
     # ① 预过滤
     async with db.get_connection() as conn:
@@ -212,6 +252,15 @@ async def search_claims(
                 "low_confidence": low_confidence,
             }
             response["explain"] = explain
+            if save_trace:
+                response["trace_id"] = await save_recall_trace(
+                    owner_type,
+                    owner_id,
+                    scope,
+                    query,
+                    explain,
+                    source=trace_source,
+                )
 
         return response
 

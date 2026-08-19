@@ -52,7 +52,11 @@ async def search(
     request: SearchRequest,
     current_user: Dict = Depends(require_permission("read")),
 ):
-    """状态查询召回（US-S1/S2 / A4/A5）"""
+    """状态查询召回（US-S1/S2 / A4/A5）
+
+    include_explain=true 时返回 explain，并落 crystal.workbench_review
+    （G1：洞察面召回复盘历史可回看，A5 无静默丢弃）。
+    """
     owner = owner_from_user(current_user)
     scope = verify_scope_ownership(request.scope, current_user["key_id"])
     result = await search_claims(
@@ -63,6 +67,8 @@ async def search(
         claim_kind=request.claim_kind,
         limit=request.limit,
         include_explain=request.include_explain,
+        save_trace=request.include_explain,
+        trace_source="search",
     )
     return ok_response(result)
 
@@ -99,6 +105,8 @@ async def context_inject(
             scope=scope,
             limit=10,
             include_explain=request.include_explain,
+            save_trace=request.include_explain,
+            trace_source="context_inject",
         )
 
     # 组装注入 payload
@@ -128,6 +136,8 @@ async def context_inject(
     }
     if request.include_explain and search_result and "explain" in search_result:
         response["explain"] = search_result["explain"]
+        if search_result.get("trace_id"):
+            response["trace_id"] = search_result["trace_id"]
 
     return ok_response(response)
 
