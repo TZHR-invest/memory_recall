@@ -65,7 +65,7 @@
 | M2 | ~~**workbench (MR-011) 设计 v1**~~ **已落稿（[workbench.md](workbench.md)）** + ~~**对账技术设计 v1**~~ **已落稿（[reconciliation-design.md](reconciliation-design.md)）** + ~~**召回技术设计 v1**~~ **已落稿（[recall-design.md](recall-design.md)）** + ~~**crystal 测试策略**~~ **已落稿（[test-strategy.md](test-strategy.md)）** | ~~证据采集 + 对账 + 状态查询 + 裁决/洞察工作台~~ **已完成（2026-08-19，见 [STATUS](../../STATUS.md)）**：对账 worker + 碰撞判定 + reinforce 计分 + 召回三级管道 + workbench 四动作/洞察面 | **出口达成**：写 evidence→自动对账→召回→工作台裁决闭环可用；explain 截断可见；crystal 测试 73 全绿、v5 回归 402 过、真实链路 E2E 全通（含 correct supersede / forget retract） |
 | M3 | ~~**迁移脚本设计 v1**~~ **已落稿（[migration-script-design.md](migration-script-design.md)，2026-08-19）** | ~~迁移脚本 + 对账重生成 claim~~ **已完成（2026-08-19，见 [STATUS](../../STATUS.md)）**：migrate_memories.py + migration_state 表 + admin 端点 | **出口达成**：幂等重放通过（第二次全 skipped）；真实库小容器受控迁移验证通过（5 claim，碰撞判定生效）；**全量迁移已执行**（用户确认，27 条真实记忆 → 27 evidence + 20 claim） |
 | M4 | ~~**插件切换契约**~~ **已落稿（[plugin-migration-contract.md](plugin-migration-contract.md)，2026-08-19）** | 四端切 `/api/v2` | **切换延后（用户拍板，2026-08-19）**：避免半切换两套逻辑并存；hybrid/profile/extract-memory 等 v5 特有能力在 crystal 无一一对应——等 crystal 完整后（M5 退役前）统一做；后端契约已就绪 |
-| M5 | **退役检查单**（备份/可重放/监控确认） | DROP 旧表（单独 commit） | 退役标准满足；可回退 |
+| M5 | ~~**退役检查单**~~ **已落稿（[retirement-checklist.md](retirement-checklist.md)，2026-08-19）** | DROP 旧表（单独 commit） | **退役条件未满足（2026-08-19）**：crystal 上线 1 天 + 插件未切；DROP 待退役标准达成（建议 crystal 稳定 ≥14 天 + 插件全切 + 用户确认），按检查单执行 |
 
 > 产品需求层（用户故事 + 能力验收）集中在 [crystal PRD](prd.md)，各 M 的前置产物是其能力的实现化展开。
 
