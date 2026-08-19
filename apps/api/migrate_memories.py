@@ -77,7 +77,7 @@ async def _count_migratable(conn, owner_id: Optional[str]) -> int:
         return await conn.fetchval(
             """SELECT COUNT(*) FROM memories
                WHERE is_latest = TRUE AND is_forgotten = FALSE
-                 AND (container_tag = $1 OR container_tag LIKE $1 || '\_%')""",
+                 AND (container_tag = $1 OR left(container_tag, length($1) + 1) = $1 || '_')""",
             owner_id,
         )
     return await conn.fetchval(
@@ -100,7 +100,7 @@ async def _load_batch(
             """SELECT id, container_tag, content, created_at, metadata, is_latest, is_forgotten
                FROM memories
                WHERE is_latest = TRUE AND is_forgotten = FALSE
-                 AND (container_tag = $1 OR container_tag LIKE $1 || '\_%')
+                 AND (container_tag = $1 OR left(container_tag, length($1) + 1) = $1 || '_')
                  AND id > $2
                ORDER BY id
                LIMIT $3""",
