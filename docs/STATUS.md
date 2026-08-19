@@ -9,7 +9,7 @@
 
 | 任务 | 状态 | 入口 |
 |------|------|------|
-| **crystal M2.1 claim 原子化（进行中）** | **迭代启动（2026-08-19）**：背景=现实库 22 条 claim 粒度跨 15 字~2383 字、一条 evidence 只产一条 claim（与 foundation「0..N 拆条」相悖）、reinforce 吸不同主题证据致置信度虚高、裁决只能整条 supersede。方向=对账写路径语义补全（拆条），存量 19 条 active 宽 claim **全部清理重建（等用户确认后执行）**。**当前阶段：外部调研 round-02 待执行**——round-01 五平台已收敛（粒度=可独立证伪单元；整篇文档是证据非结论；原子存储+聚合消费），5 分歧点追问已按平台打包，等用户手动执行 | [调研卡](notes/research/2026-08-19-claim-atomicity/README.md) · [round-01 结论](notes/research/2026-08-19-claim-atomicity/08-round-01-conclusions.md) · [round-02 提示词](notes/research/2026-08-19-claim-atomicity/04-round-02-prompts.md) |
+| **crystal M2.1 claim 原子化（已完成 2026-08-19）** | **P1–P3 全部完成**：①文档定案——foundation #36–39 + ADR-0020 + claim-atomicity v1.1 + reconciliation-design v2 + entity-attributes（event_key/quoted_text）；②实现——拆条 LLM ①（原子判据 prompt + event_key/quote + 重试 + 短降级/长隔离）+ 碰撞 LLM ② 批处理 + 批量单事务写 + 双上限隔离 + workbench isolated 待裁决视图 + rebuild_claims.py；③**存量重建已执行**——22 条旧 claim → **32 条原子 claim**（30 active + 2 superseded，平均 86 字，最长 762，原最长 2383）；不变量① 0 孤儿；event_key 分组（e1×7/e2×6）；quoted_text 16/44；2 条 user_correction 手动关联手电 claim；④测试——crystal 单元 52 + 集成 44 全绿，v5 回归 516 过（24 失败为既有基线）；⑤**根因修复：思考型 LLM（deepseek）max_tokens 4000 时思考链吃光预算致 content 空 → 提到 16000**（[note](notes/2026-08-19-reasoning-llm-max-tokens-empty-content.md)）。剩：workbench 假说池人工审视 supersede 循环（张三岗位矛盾链）+ 监控指标（Blast Radius/Contamination/Reconstruction） | [ADR-0020](decisions/0020-claim-atomicity.md) · [claim-atomicity](initiatives/crystal/claim-atomicity.md) · [重建脚本](../apps/api/rebuild_claims.py) |
 | OpenCode 压缩 hook 外部调研 | 已完成（三轮收敛，结论与 ADR-0003~0008 一致） | [调研目录](notes/research/2026-08-12-opencode-compaction-hook/README.md) |
 | 核心服务 + 插件精简实施 | 已完成（阶段 1~5 全量实施，见 commit） | [实施计划](notes/2026-08-12-core-plugin-refactor-plan.md) |
 | AGENTS.md 精炼重构（拆分到 ARCHITECTURE/TESTING/PLUGINS/RESEARCH_GUIDE） | 已完成（2026-08-13） | [记录](notes/2026-08-13-note.md) |
@@ -80,6 +80,7 @@
 | [0017](decisions/0017-entity-topic-p2-optional.md) | Entity/主题 P2 可选附属 | 未开始 | 关系表设计留实体属性文档（已确认不进核心 schema） |
 | [0018](decisions/0018-system-naming-v5-crystal.md) | 系统命名：旧 v5 / 新 crystal（crystal = 目标模型） | 已实现 | 命名规则 + ADR/README/设计文档打标已落地；schema `crystal.*` 段已落（2026-08-18） |
 | [0019](decisions/0019-confidence-single-axis-reuse-stats.md) | 置信度单轴（content）+ 复用/outcome 离散统计 | 已实现 | content_confidence 单轴（B5 网格初值 + reinforce 计分）已落地（M2）；claim_usage 表已建（P1 遥测激活时写入） |
+| [0020](decisions/0020-claim-atomicity.md) | Claim 原子化：粒度判据 + 拆条策略 | **已实现（2026-08-19）** | 拆条 LLM ① + 碰撞 LLM ② 批处理 + event_key/quote 落库 + 双上限隔离已落地；存量 32 条原子 claim 重建完成；crystal 测试 96 全绿 |
 
 
 ## 下一步
@@ -97,13 +98,14 @@
 9. ~~M4 前置文档：插件切换契约~~ → **已落稿（[plugin-migration-contract.md](initiatives/crystal/plugin-migration-contract.md)，2026-08-19）**；**插件切换延后**（用户拍板：避免半切换两套逻辑并存；hybrid/profile/extract-memory 等 v5 特有能力在 crystal 无一一对应）——等 crystal 完整后（M5 退役前）统一切。
 10. ~~M5 前置：退役检查单~~ → **已落稿（[retirement-checklist.md](initiatives/crystal/retirement-checklist.md)，2026-08-19）**；**退役条件未满足**（crystal 上线 1 天 + 插件未切），DROP 旧表等退役标准达成后按检查单执行（建议 crystal 稳定 ≥14 天 + 插件全切 + 用户确认）。
 11. **crystal 专项进入稳定观察期**：核心能力（M1–M3）已交付 + 全量迁移完成；插件切换 / v5 退役为后续阶段（M4/M5），等待退役标准。期间：crystal 写读链路正常使用，观察对账/召回质量（workbench 假说池/低置信视图）。
-11b. **M2.1 claim 原子化（进行中）**：外部调研（round-01 待执行，用户手动）→ 语义定稿（foundation 回写 + ADR-0020）→ 规范 + 设计（claim-atomicity.md + reconciliation-design v2 + milestone M2.1 行）→ 实现拆条 + 存量 19 条 active 宽 claim 全部清理重建（等用户确认）→ 测试/验证收尾。详见 [调研卡](notes/research/2026-08-19-claim-atomicity/README.md)。
+11b. ~~**M2.1 claim 原子化**~~ → **已完成（2026-08-19）**：调研 → 语义定稿（foundation #36–39 + ADR-0020）→ 规范/设计（claim-atomicity v1.1 + reconciliation-design v2）→ 实现（拆条 + 碰撞批处理 + 双上限）→ **存量重建（32 条原子 claim）** → 测试（crystal 96 全绿）。详见 [调研卡](notes/research/2026-08-19-claim-atomicity/README.md) 与 [ADR-0020](decisions/0020-claim-atomicity.md)。
 12. **workbench web 页面**：v1 已实现 + 真实库联调通过（[workbench-web-prep.md](initiatives/crystal/workbench-web-prep.md) / [workbench.html](../web/crystal/workbench.html)）——裁决面 + 审计面 + 洞察面 + 召回复盘四 tab，confirm/correct/forget/promote 全动作验证 ✅，A11 权限隔离 ✅；浏览器访问 `http://<host>:3000/crystal/workbench.html` 输入个人 key 即可用。**G1/G4 已补齐（2026-08-19）**：召回复盘历史（workbench_review 落库 + 页面「召回历史」面板）✅ + claims/reviews 游标分页 ✅。**G5 网络视图已补齐（2026-08-19）**：洞察面第 5 tab「🕸️ 网络视图」（claim × evidence 知识网络，SVG 力导向 + 裁决联动，设计见 [workbench-graph.md](initiatives/crystal/workbench-graph.md)）✅。后续可选：提权建议池（G2）、owner 审批面（US-W3）。
 12. 需求层已有 [crystal PRD](initiatives/crystal/prd.md)（用户故事 + 能力验收 A1–A11），各 design v1 已把对应验收细化。
 
 ## 等待项 / 阻塞
 
 - **crystal 专项等待**：插件切换（M4）与 v5 退役（M5）需退役标准达成（crystal 稳定观察 + 用户确认）。
+- **LLM 调用链 trace-id 日志系统**：开发计划已落（[plan](notes/2026-08-19-llm-trace-id-logging-plan.md)），待后续开发（contextvars + logging.Filter + LLM client 请求/响应日志）。
 - 遗留：MR-024（测试连接管理重构）未排期；MR-026（v5 基线坏测试 6 个）未排期，详见 [TESTING.md](TESTING.md) 与 [MR-026](issues/MR-026-v5-baseline-broken-tests.md)。
 
 *状态: ACTIVE · 最后更新: 2026-08-19*

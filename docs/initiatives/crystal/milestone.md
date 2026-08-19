@@ -45,6 +45,7 @@
 | **M0** | Stage 0 | 命名与规范（ADR-0018 打标） | 已完成 | — |
 | **M1** | Stage A | `crystal.*` 建表 + `/api/v2` 骨架 | 空表可写，v5 零影响 | — |
 | **M2** | Stage B | 证据采集 + 对账 + 状态查询召回 + **裁决/洞察工作台 v1** | 两链路可用 + 人可裁决 | **B5**（content 初值） |
+| **M2.1** | Stage B | **Claim 原子化（对账写路径语义补全）**：拆条（0..N）+ 原子判据 + reinforce 边界 + 存量重建 | 对账产出原子 claim；宽 claim 清理重建完成；v5 回归过 | **原子判据**（外部调研定案） |
 | **M3** | Stage C | 旧数据迁移（memories→evidence，一次性开发者触发）+ 对账重生成 claim | 迁移幂等可回放 | — |
 | **M4** | Stage D | 插件切 `/api/v2`（四端独立） | 插件不再调旧路由 | — |
 | **M5** | Stage E | v5 退役（DROP 旧表，单独 commit） | 满足退役标准（连续 N 天无活跃 + 全切 + 用户确认） | — |
@@ -63,6 +64,7 @@
 | M0 | ADR-0018 打标（已完成） | 命名/规范落地 | 已完成 |
 | M1 | ~~`entity-attributes.md` 定稿（claim 3 待定项 + claim_usage 落点）~~ **已定稿（2026-08-18）** + ~~**crystal API 契约 v1**~~ **已落稿（[api-contract.md](api-contract.md)，2026-08-18）** | ~~`crystal.*` 建表 + `/api/v2` 骨架~~ **已完成（2026-08-18，见 [STATUS](../../STATUS.md)）**：七表落地（[init_crystal_db.py](../../../apps/api/init_crystal_db.py)）+ 21 路由（证据层真实写入 + 桩）+ `verify_scope_ownership` + 统一信封 | **出口达成**：空表可写（evidence 202+pending+幂等命中）、v5 零影响（回归 402 过）、schema 与 design 一致（集成测试逐字段断言）；crystal 测试 38 全绿 |
 | M2 | ~~**workbench (MR-011) 设计 v1**~~ **已落稿（[workbench.md](workbench.md)）** + ~~**对账技术设计 v1**~~ **已落稿（[reconciliation-design.md](reconciliation-design.md)）** + ~~**召回技术设计 v1**~~ **已落稿（[recall-design.md](recall-design.md)）** + ~~**crystal 测试策略**~~ **已落稿（[test-strategy.md](test-strategy.md)）** | ~~证据采集 + 对账 + 状态查询 + 裁决/洞察工作台~~ **已完成（2026-08-19，见 [STATUS](../../STATUS.md)）**：对账 worker + 碰撞判定 + reinforce 计分 + 召回三级管道 + workbench 四动作/洞察面 | **出口达成**：写 evidence→自动对账→召回→工作台裁决闭环可用；explain 截断可见；crystal 测试 73 全绿、v5 回归 402 过、真实链路 E2E 全通（含 correct supersede / forget retract） |
+| M2.1 | ~~**外部调研（claim 原子判据）**~~ **已完成（2026-08-19：[调研卡](../../notes/research/2026-08-19-claim-atomicity/README.md)，两轮五平台 + 收敛轮定案）** + ~~**原子性规范 [claim-atomicity.md](claim-atomicity.md)**~~ **已定稿（v1.1）** + ~~**`reconciliation-design.md` 升 v2**~~ **已完成（拆条 LLM ① + 碰撞 LLM ② 批处理 + 双上限隔离）** + ~~**ADR-0020**~~ **已落（Accepted，2026-08-19）** + ~~**foundation 回写**~~ **已完成（#36–39）** | 对账拆条（0..N）+ 存量 19 条 active 宽 claim 清理重建（**等用户确认后执行**） | 出口达成：对账产出原子 claim（拆条 + 各自 claim_kind/claim_evidence/event_key/quote）；reinforce 只认 statement 覆盖的证据；双上限隔离生效；存量重建后粒度分布达标；crystal 测试 + v5 回归全绿 |
 | M3 | ~~**迁移脚本设计 v1**~~ **已落稿（[migration-script-design.md](migration-script-design.md)，2026-08-19）** | ~~迁移脚本 + 对账重生成 claim~~ **已完成（2026-08-19，见 [STATUS](../../STATUS.md)）**：migrate_memories.py + migration_state 表 + admin 端点 | **出口达成**：幂等重放通过（第二次全 skipped）；真实库小容器受控迁移验证通过（5 claim，碰撞判定生效）；**全量迁移已执行**（用户确认，27 条真实记忆 → 27 evidence + 20 claim） |
 | M4 | ~~**插件切换契约**~~ **已落稿（[plugin-migration-contract.md](plugin-migration-contract.md)，2026-08-19）** | 四端切 `/api/v2` | **切换延后（用户拍板，2026-08-19）**：避免半切换两套逻辑并存；hybrid/profile/extract-memory 等 v5 特有能力在 crystal 无一一对应——等 crystal 完整后（M5 退役前）统一做；后端契约已就绪 |
 | M5 | ~~**退役检查单**~~ **已落稿（[retirement-checklist.md](retirement-checklist.md)，2026-08-19）** | DROP 旧表（单独 commit） | **退役条件未满足（2026-08-19）**：crystal 上线 1 天 + 插件未切；DROP 待退役标准达成（建议 crystal 稳定 ≥14 天 + 插件全切 + 用户确认），按检查单执行 |

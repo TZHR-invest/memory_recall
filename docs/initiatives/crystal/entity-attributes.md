@@ -79,13 +79,14 @@
 | 字段 | 类型 | 约束 | 语义 | 性质 |
 |------|------|------|------|------|
 | `id` | TEXT | PK | `'cl_' + 22 hex` | 存储 |
-| `statement` | TEXT | NOT NULL | 简单断言，**适用条件折入句子** | 存储 |
+| `statement` | TEXT | NOT NULL | 简单断言，**适用条件折入句子**；M2.1 原子判据：可独立生命周期（[claim-atomicity §3](claim-atomicity.md)） | 存储 |
 | `claim_kind` | TEXT | NOT NULL, 枚举 | `fact / preference / constraint / learned-pattern`（见 §4.1；画像偏好层筛选依据） | 存储 |
 | `content_confidence` | FLOAT | NULL | **单轴内容置信度**，NULL = UNKNOWN（冷启动） | 派生·物化 |
 | `scope` | TEXT | NULL | 继承 Evidence；scope 提权后可 NULL | 存储 |
 | `owner_type` | TEXT | NOT NULL, 枚举 | `personal` / `team` | 存储 |
 | `owner_id` | TEXT | NOT NULL | key_id / team_id | 存储 |
 | `status` | TEXT | NOT NULL | **派生物化缓存**（写边事务内维护）：active/superseded/disputed/retracted | 派生·物化 |
+| `event_key` | TEXT | NULL | **M2.1 新增**：同一次 Evidence/决策表达中一起拆出的 grouping hint；非实体、无 truth lifecycle、不可被用户裁决、**不参与真值**（成员被 supersede 不连带失效同 key 其他成员）；`extraction_id + e1/e2...` | 存储 |
 | `embedding` | vector | NULL | 检索向量 | 派生·物化 |
 | `created_at` | TIMESTAMPTZ | NOT NULL | 建 Claim 时刻 | 存储 |
 
@@ -124,6 +125,7 @@
 | `claim_id` | TEXT | PK(复合), FK→claim ON DELETE CASCADE | 引用方 |
 | `evidence_id` | TEXT | PK(复合), FK→evidence | 被引用 Evidence |
 | `role` | TEXT | NOT NULL, 枚举 | `support`（支持，默认；contradicts 仲裁后不再引用） |
+| `quoted_text` | TEXT | NULL | **M2.1 新增**：LLM 拆条时从证据原文复制的支撑子句（原文精确子串，用于溯源 UX 高亮；不用字符级 offset 坐标） |
 | `created_at` | TIMESTAMPTZ | NOT NULL | 关联建立时刻 |
 
 - 复合 PK `(claim_id, evidence_id)` 天然防重复关联；`role` 保留为将来"支持/反证"分离留位

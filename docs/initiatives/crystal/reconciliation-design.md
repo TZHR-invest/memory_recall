@@ -1,17 +1,22 @@
-# 对账技术设计 v1（Evidence → Claim 写路径）（草稿）
+# 对账技术设计 v2（Evidence → Claim 写路径）（M2.1 拆条升级）
 
-> 状态: 草稿 · 系统: crystal · 版本: v1 · 最后更新: 2026-08-18
-> 关联: [目标模型](foundation.md)（§两链路 / §置信度与价值信号）· [实体属性文档](entity-attributes.md)（表结构）·
-> [里程碑](milestone.md)（M2 前置产物 §4.1）· [API 契约](api-contract.md)（§2.2）· [PRD](prd.md)（US-R1~R4 / A1~A3）
+> 状态: 草稿 · 系统: crystal · 版本: v2 · 最后更新: 2026-08-19
+> 关联: [目标模型](foundation.md)（§两链路 / §置信度与价值信号，已拍板 #36–39）· [实体属性文档](entity-attributes.md)（表结构）·
+> [里程碑](milestone.md)（M2/M2.1）· [API 契约](api-contract.md)（§2.2）· [PRD](prd.md)（US-R1~R4 / A1~A3）·
+> [Claim 原子化规范](claim-atomicity.md)（M2.1 判据/双上限）· [ADR-0020](../../decisions/0020-claim-atomicity.md)（决策）
 > 定位: 本文是 **对账（写路径）的实现设计**——worker 形态、事务边界、retry、reinforce 计分
 > （强度权重表 / 派生折扣分型 / 幂等键）、supersede/correct 流程。
 > 读路径（召回）见 [召回技术设计 v1](recall-design.md)。
 
+> **v2 变更（2026-08-19，M2.1）**：对账步从「提炼 1 条 claim」升级为「拆条 N 条原子 claim」——
+> LLM ① 拆条（输出 claims[] + event_key + evidence_quote）→ 检索候选 → LLM ② 碰撞判定批处理 N 条；
+> 超上限 evidence 默认隔离留存 workbench。细节见 [§2.4 拆条（M2.1 新增）](#24-拆条m21-新增)。
+
 ## 0. 一句话
 
 **Evidence 落库（ms 级，202）→ evidence_processing 状态机 → 对账 worker 异步推进：
-定位相关 Claim → 碰撞判定（新事实 / 冗余 reinforce / 冲突 supersede / 用户纠正特权 supersede）→
-在单事务内写 Claim + lineage_edge + claim_evidence + status 物化 → 更新 content_confidence（reinforce 计分）。**
+拆条（LLM ①）→ 定位相关 Claim → 碰撞判定（LLM ②，批处理）→
+在单事务内写 N 条 Claim + lineage_edge + claim_evidence + status 物化 → 更新 content_confidence（reinforce 计分）。**
 
 ## 1. 写路径总览（与 entity-attributes §3 状态机对齐）
 
@@ -98,6 +103,69 @@ COMMIT
 
 - **LLM 定位 vs 规则定位**：候选定位用向量（规则，无 LLM 成本）；碰撞判定用 LLM（一次调用，结构化 JSON）。
   `user_correction` 例外：用户已指认目标 claim，不 LLM。
+
+### 2.4 拆条（M2.1 新增，v2）
+
+> 依据: [Claim 原子化规范](claim-atomicity.md) §3 / [ADR-0020](../../decisions/0020-claim-atomicity.md)。
+> 对账步从「提炼 1 条」升级为「拆条 N 条原子 claim」。
+
+**双上限前置检查（§4.2）**——进入拆条前先判：
+
+```
+IF length(evidence.content) > 1500 字  OR  预期拆出 > 15 条
+  → 不自动拆条/不对账
+  → evidence_processing 保持 pending（或标记隔离）
+  → 留存 workbench「待裁决」视图（人工决定：手动拆分/概括/忽略/删除）
+  → 人工放行后才走正常对账
+ELSE
+  → 正常拆条流程
+```
+
+**拆条流程（分步，LLM ① → 检索 → LLM ②）**：
+
+```
+LLM ① 拆条（一次调用，temperature=0）
+  输入: evidence.content + scope + 拆条指令（claim-atomicity §3 判据 + 15 条核心指令）
+  输出: {
+    "claims": [
+      {"id": "c1", "statement": "...", "claim_kind": "...", "event_key": "e1",
+       "evidence_quote": "原文子句", "relations": []},
+      ...
+    ]
+  }
+  - 不含冲突/支持字段（LLM 没看到存量结论，不猜）
+  - event_key: 模型输出 e1/e2 序号（不浪费 token 在 UUID），服务端映射 extraction_id+e1
+  - evidence_quote: 原文精确子句，服务端在原文字符串匹配定位（不存字符 offset）
+
+检索候选（embedding，非 LLM）
+  对每条新 claim 向量检索同 owner active claim top-K（scope 语义与召回预过滤一致）
+
+LLM ② 碰撞判定（批处理，一次调用）
+  输入: N 条新 claim + 各自检索到的候选（按 claim_id 索引）
+  输出: [{"claim_id": "c1", "judgment": "CONFLICT|REDUNDANT|SUPPORT|UNRELATED", "target_claim_id": ...}]
+  - 批处理省成本（N 条一次传入，不逐条调）
+```
+
+**单事务写（N 条批量，§2.2 事务边界扩展）**：
+
+```
+BEGIN
+  对每条新 claim:
+    1. INSERT claim (statement, claim_kind, content_confidence 初值, scope, owner, status='active',
+                     embedding, event_key, created_at)
+    2. INSERT claim_evidence (claim_id, evidence_id, role='support', quoted_text=evidence_quote)
+    3. INSERT claim_activity（审计）
+  冲突路径: 逐条 supersede（每条一条边 + status 物化）
+  reinforce: 同主题证据追加关联 + 计分（claim-atomicity §4）
+  推进 evidence_processing: state=done
+COMMIT
+```
+
+**约束**：
+- **不变量①**：每条新 claim 必须有 ≥1 条 claim_evidence（同事务，应用层保证）；
+- **event_key 不参与真值**：同一 event_key 的成员被 supersede 不连带失效其他成员；
+- **拆条阶段输出不含冲突/支持字段**；LLM ② 只对检索到的候选做判断；
+- **超上限隔离不丢数据**：evidence 原文保留，`evidence_processing` 可见"待裁决"状态（MR-017 不静默丢弃）。
 
 ## 3. 三条主路径
 
@@ -227,7 +295,7 @@ Beta 更新（对目标 claim）:
 - 单条 evidence 触发 >3 条 supersede → 记 `workbench_audit`（type='poison_warning'）+ 日志告警，
   workbench 假说池可见；**不暂停破坏**（B4 guard 归 crystal 完整项目，PRD §4）。
 
-## 7. 验收标准（对应 PRD A1/A2/A3 + US-R*）
+## 7. 验收标准（对应 PRD A1/A2/A3 + US-R*，v2 加拆条）
 
 - [ ] **A1**：写 evidence → 202 + pending → 对账自动生成/更新 claim；失败卡点可见（failed + last_error.step）。
 - [ ] **A2**：对账生成 claim 必带 claim_evidence（不变量①）；evidence 不可变（append-only 无 update/delete 路径）。
@@ -235,12 +303,17 @@ Beta 更新（对目标 claim）:
 - [ ] **US-R4**：同源复述不 reinforce（独立性闸门生效）；inference 证据不喂分；被使用不喂分。
 - [ ] **幂等**：同键重复 POST 不重复落库；对账重试可安全重放（事务原子）。
 - [ ] **性能**：写接口 p95 < 50ms（不含对账）；对账单条 < 2s（LLM 碰撞一次）。
+- [ ] **拆条（M2.1）**：含多独立结论 evidence → 产出 N 条原子 claim（各自 claim_kind/claim_evidence/event_key/quote，单事务）；拆条阶段输出不含冲突/支持字段；LLM ② 批处理 N 条一次判断。
+- [ ] **双上限隔离（M2.1）**：超 1500 字 / 超 15 条 → 不自动拆条、evidence 保留、workbench 待裁决可见（不静默丢弃）。
 
 ## 8. 未决 / 后续
 
-- **LLM 碰撞判定的 prompt 与结构化输出 schema**：实现时定（对账步依赖一次 LLM 调用，temperature=0）。
-- **α+β 上限与折扣具体值**：工程 heuristic，上线后 A/B，V2 Beta-Binomial 收敛。
+- **拆条 LLM ① 的 prompt 与结构化输出 schema**：实现时定（claim-atomicity §3 判据 + 15 条核心指令落地，
+  输出 claims[] {id, statement, claim_kind, event_key, evidence_quote, relations}）；
+- **LLM ② 碰撞批处理的 prompt 与输出 schema**：按 claim_id 索引的判断数组（v2 新增，批处理形态）；
+- **双上限阈值**（1500 字 / 15 条）：工程初值，按 workbench 裁决数据调整；
+- **α+β 上限与折扣具体值**：工程 heuristic，上线后 A/B，V2 Beta-Binomial 收敛；
 - **claim_kind 判定**（对账时）：规则（从 evidence/旧 claim 继承）vs LLM——一期规则优先，
   迁移映射原样带类型；新 claim 从 E 提炼时 LLM 判定一次。
 
-*状态: 草稿 · 最后更新: 2026-08-18*
+*状态: 草稿 · 版本: v2 · 最后更新: 2026-08-19*

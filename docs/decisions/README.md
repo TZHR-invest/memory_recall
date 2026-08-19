@@ -77,6 +77,8 @@ ADR 只记录**已定**的决策，没有 Proposed / Rejected 状态：
 | [0016](0016-evidence-capture-scope.md) | Evidence 采集范围分四档 P0–P3（整个上下文理解不做） | Accepted | crystal | 2026-08-14 |
 | [0017](0017-entity-topic-p2-optional.md) | Entity/主题降级为 P2 可选附属，不进核心 | Accepted | crystal | 2026-08-14 |
 | [0018](0018-system-naming-v5-crystal.md) | 系统命名与归属标记（旧 v5，新 crystal） | Accepted | crystal | 2026-08-16 |
+| [0018](0018-system-naming-v5-crystal.md) | 系统命名与归属标记（旧 v5，新 crystal） | Accepted | crystal | 2026-08-16 |
 | [0019](0019-confidence-single-axis-reuse-stats.md) | 置信度收敛为单轴（content）+ 复用/outcome 离散统计 | Accepted | crystal | 2026-08-16 |
+| [0020](0020-claim-atomicity.md) | Claim 原子化：粒度判据（独立生命周期）+ 拆条策略（平行原子+event_key / 宁可多拆 / 分步 / 双上限） | Accepted | crystal | 2026-08-19 |
 
-*状态: ACTIVE · 最后更新: 2026-08-16*
+*状态: ACTIVE · 最后更新: 2026-08-19*
