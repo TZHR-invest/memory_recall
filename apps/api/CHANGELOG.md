@@ -2,6 +2,18 @@
 
 All notable changes to Memory Recall will be documented in this file.
 
+## [Unreleased] - 2026-08-19
+
+### Added
+- **LLM 调用链 trace-id 日志系统**（`src/logging_utils.py`，计划见 docs/notes/2026-08-19-llm-trace-id-logging-plan.md）：
+  - `TraceIdFilter`（logging.Filter）挂在 root logger 的每个 handler 上，业务 + LLM 日志自动带 `[trace_id=xxx]` 前缀（无 trace 上下文时原样输出，零影响）
+  - `reconcile_evidence` 入口生成 `ev_<12hex>` trace_id（contextvars 传播，嵌套调用沿用外层，finally 清理），对账开始/拆条 LLM ①/碰撞 LLM ②/对账完成 打点日志
+  - `llm/client.py` `chat`/`achat` 加请求/响应日志：`LLM 请求: model/max_tokens/prompt_len` + `LLM 响应: ok/content_len/reasoning_len/usage(reasoning)/elapsed`，空响应显式标"→ 返回空"（思考链吃光预算排查抓手）
+  - 测试：logging_utils 8 + llm client trace 5 + 集成 2（同一 trace_id 覆盖全部业务日志 / 早退清理）
+
+### Fixed
+- **root logger 无 handler → 应用 INFO 日志被静默丢弃**：uvicorn 默认 logging 配置只配置 uvicorn.* logger（propagate=False），root logger 无 handler，应用（业务 + LLM）INFO 日志默认不可见（lastResort 仅 WARNING+）。main.py 现已补 root StreamHandler + 按 LOG_LEVEL 设级别，业务日志与 trace 日志可正常 grep。
+
 ## [Unreleased] - 2026-08-14
 
 ### Changed

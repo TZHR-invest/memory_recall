@@ -4,6 +4,7 @@ Memory Recall API - Unified v5.0
 """
 
 import json
+import logging
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -22,6 +23,25 @@ from src.api.crystal.errors import (
     CrystalAPIError,
     crystal_error_handler,
 )
+
+# trace-id 日志基建（docs/notes/2026-08-19-llm-trace-id-logging-plan.md）：
+# ① uvicorn 的 logging.config 只配置了 uvicorn.* logger（propagate=False），
+#    root logger 无 handler → 应用（业务 + LLM）INFO 日志默认被丢弃（lastResort 仅 WARNING+），
+#    这会让 trace 日志 grep 不到；这里给 root 补 StreamHandler + 按 LOG_LEVEL 设级别。
+# ② TraceIdFilter 挂到 root 的每个 handler 上：所有业务 logger + LLM client logger 的
+#    日志 record 自动带 [trace_id=xxx] 前缀（无 trace 上下文时原样输出，零影响）。
+from src.logging_utils import TraceIdFilter
+
+_root_logger = logging.getLogger()
+if not _root_logger.handlers:
+    _root_handler = logging.StreamHandler()
+    _root_handler.setFormatter(
+        logging.Formatter("%(levelname)s %(asctime)s %(name)s: %(message)s")
+    )
+    _root_logger.addHandler(_root_handler)
+for _handler in _root_logger.handlers:
+    _handler.addFilter(TraceIdFilter())
+_root_logger.setLevel(getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO))
 
 
 class UnicodeJSONResponse(JSONResponse):

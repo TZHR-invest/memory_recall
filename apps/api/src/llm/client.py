@@ -4,6 +4,7 @@
 """
 import json
 import logging
+import time
 from typing import Dict, Any, Optional, List
 from openai import OpenAI, AsyncOpenAI
 
@@ -17,6 +18,53 @@ except ImportError:
     from cache.manager import cache_manager
 
 logger = logging.getLogger(__name__)
+
+
+def _prompt_len(messages: List[Dict[str, str]]) -> int:
+    """prompt 摘要：全部消息 content 的字符总数（近似 token 量）"""
+    return sum(len(str(m.get("content") or "")) for m in messages)
+
+
+def _response_summary(response, content: Optional[str], elapsed: float) -> str:
+    """LLM 响应日志摘要（trace-id 计划 §3.3）。
+
+    字段：ok / content_len / reasoning_len / usage（含 reasoning 子项，deepseek 才有）/
+    elapsed；内容为空时显式标"→ 返回空"（思考链吃光预算的排查抓手）。
+    """
+    message = response.choices[0].message
+    content_len = len(content or "")
+    reasoning = getattr(message, "reasoning_content", None) or ""
+    reasoning_len = len(reasoning) if reasoning else 0
+    usage = getattr(response, "usage", None)
+    usage_parts: List[str] = []
+    if usage is not None:
+        total = getattr(usage, "total_tokens", None)
+        if total:
+            usage_parts.append(f"usage={total}")
+        try:
+            reasoning_tokens = usage.completion_tokens_details.reasoning_tokens
+            if reasoning_tokens:
+                usage_parts.append(f"(reasoning={reasoning_tokens})")
+        except Exception:
+            pass
+    if content:
+        parts = [
+            "LLM 响应:",
+            f"ok=true content_len={content_len}",
+            f"reasoning_len={reasoning_len}",
+            *usage_parts,
+            f"elapsed={elapsed:.1f}s",
+        ]
+        return " ".join(parts)
+    parts = [
+        "LLM 响应:",
+        "ok=false content=''",
+        f"reasoning_len={reasoning_len}",
+        *usage_parts,
+        f"elapsed={elapsed:.1f}s",
+        "→ 返回空",
+    ]
+    return " ".join(parts)
 
 
 class LLMClient:
@@ -86,6 +134,7 @@ class LLMClient:
                 return cached
         
         # 调用 API
+        start = time.monotonic()
         response = self.client.chat.completions.create(
             model=self.model,
             messages=messages,
@@ -93,8 +142,14 @@ class LLMClient:
             max_tokens=self._effective_max_tokens(max_tokens),
             **self._apply_reasoning_effort(kwargs)
         )
-        
+        elapsed = time.monotonic() - start
+
         result = response.choices[0].message.content
+        logger.info(
+            f"LLM 请求: model={self.model} max_tokens={self._effective_max_tokens(max_tokens)} "
+            f"prompt_len={_prompt_len(messages)}"
+        )
+        logger.info(_response_summary(response, result, elapsed))
         
         # 缓存结果
         if use_cache:
@@ -132,6 +187,7 @@ class LLMClient:
             if cached is not None:
                 return cached
 
+        start = time.monotonic()
         response = await self.async_client.chat.completions.create(
             model=self.model,
             messages=messages,
@@ -139,8 +195,14 @@ class LLMClient:
             max_tokens=self._effective_max_tokens(max_tokens),
             **self._apply_reasoning_effort(kwargs)
         )
+        elapsed = time.monotonic() - start
 
         result = response.choices[0].message.content
+        logger.info(
+            f"LLM 请求: model={self.model} max_tokens={self._effective_max_tokens(max_tokens)} "
+            f"prompt_len={_prompt_len(messages)}"
+        )
+        logger.info(_response_summary(response, result, elapsed))
 
         if use_cache:
             cache_manager.cache_llm_result(cache_key, result)

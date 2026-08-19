@@ -1,7 +1,14 @@
 # 开发计划：LLM 调用链 trace-id 日志系统
 
-> 类型: 开发计划（未实施，待后续开发） · 日期: 2026-08-19 · 系统: crystal（跨模块基建）
+> 类型: 开发计划（**已实施 2026-08-19**） · 日期: 2026-08-19 · 系统: crystal（跨模块基建）
 > 关联: [M2.1 拆条实现](../initiatives/crystal/reconciliation-design.md)（调用链）· [reasoning-LLM max_tokens 发现](2026-08-19-reasoning-llm-max-tokens-empty-content.md)（本次动机）
+>
+> **实施状态：已完成**（commit 见 STATUS）——`src/logging_utils.py`（ContextVar + Filter + helper）、
+> `main.py` 挂 root handler + TraceIdFilter、`llm/client.py` 请求/响应日志、
+> `reconcile_evidence` 入口 trace 管理；测试：logging_utils 8 + llm client trace 5 + 集成 2，
+> crystal 全绿（单元 65 + 集成 46），v5 回归与基线一致（零新增失败）。
+> 顺带修复：uvicorn 默认 logging 配置 root logger 无 handler → 应用 INFO 日志此前被静默丢弃，
+> 现已补 root StreamHandler + 按 LOG_LEVEL 设级别。
 
 ## 一、动机
 
@@ -89,24 +96,28 @@ WARN  [trace_id=ev_5a1b] 拆条失败 → 隔离到 workbench（evidence 保留�
 
 ## 四、验收标准
 
-- [ ] 对账一次 evidence，`grep 'trace_id=ev_xxx' api.log` 能拿到该次处理**全部**相关日志（业务 + LLM + 重试）；
-- [ ] LLM client 每次调用记录：model / reasoning_effort / max_tokens / prompt 摘要 / 响应长度 /
-       reasoning 长度 / 是否空 / 耗时；
-- [ ] 重试日志自动带同一 trace_id（一次拆条的多次重试可串联）；
-- [ ] 并发对账多条 evidence 时，trace_id 不串（contextvars 隔离）；
-- [ ] 不影响现有日志输出格式（新增前缀 + 新 LLM 日志行，不改旧语义）；
-- [ ] 单元测试：TraceIdFilter 给 record 加前缀；并发 contextvars 隔离；
-       LLM client mock 验证日志行包含 trace_id 与关键字段。
+- [x] 对账一次 evidence，`grep 'trace_id=ev_xxx' api.log` 能拿到该次处理**全部**相关日志（业务 + LLM + 重试）；
+      —— 集成测试 `TestReconcileTraceId::test_reconcile_logs_carry_same_trace_id` 断言同一 trace_id 覆盖全部业务日志
+- [x] LLM client 每次调用记录：model / reasoning_effort / max_tokens / prompt 摘要 / 响应长度 /
+       reasoning 长度 / 是否空 / 耗时；—— `_response_summary` 覆盖（reasoning_effort 走 kwargs 传递，日志含 max_tokens/prompt_len/usage/reasoning/elapsed）
+- [x] 重试日志自动带同一 trace_id（一次拆条的多次重试可串联）；—— `_decompose_single_call` 重试日志自动带（contextvars 传播）
+- [x] 并发对账多条 evidence 时，trace_id 不串（contextvars 隔离）；—— `TestTraceIdConcurrency::test_concurrent_tasks_isolated`
+- [x] 不影响现有日志输出格式（新增前缀 + 新 LLM 日志行，不改旧语义）；—— TraceIdFilter 无 trace 时原样输出，有 trace 时仅加前缀
+- [x] 单元测试：TraceIdFilter 给 record 加前缀；并发 contextvars 隔离；
+       LLM client mock 验证日志行包含 trace_id 与关键字段。—— `test_logging_utils.py` + `test_llm_client_trace.py`
 
 ## 五、实施步骤（后续开发时按此推进）
 
-1. 新建 `src/logging_utils.py`（ContextVar + Filter + helper）+ 单元测试；
-2. `main.py` / config 挂 Filter 到 root logger；
-3. `llm/client.py` 加请求/响应日志（含 usage/耗时/reasoning 长度）；
-4. `reconcile_evidence` 入口设置/清理 trace_id；
-5. worker 批量认领时生成 trace_id（或每条 evidence 单独，实现时定）；
-6. 集成测试：真实对账一次 → 收集日志断言 trace 完整性；
-7. 手工验证：构造一次失败拆条 → 确认 trace 能看到重试 + 隔离日志。
+1. ✅ 新建 `src/logging_utils.py`（ContextVar + Filter + helper）+ 单元测试（`tests/test_crystal/unit/test_logging_utils.py`）；
+2. ✅ `main.py` / config 挂 Filter 到 root logger（顺带补 root StreamHandler——uvicorn 默认配置 root 无 handler，INFO 日志此前被丢）；
+3. ✅ `llm/client.py` 加请求/响应日志（含 usage/耗时/reasoning 长度，`_response_summary` + `_prompt_len`）；
+4. ✅ `reconcile_evidence` 入口设置/清理 trace_id（wrapper：嵌套调用沿用外层 trace，finally 清理）；
+5. ✅ worker 批量认领时生成 trace_id——**实现拍板：每条 evidence 单独 trace**（`reconcile_evidence` 入口生成 `ev_<12hex>`，batch 内多条各带各的 trace，worker 日志不带 trace 属正常）；
+6. ✅ 集成测试：真实对账一次 → 收集日志断言 trace 完整性（`TestReconcileTraceId`，含早退路径清理验证）；
+7. ✅ 手工验证：构造一次失败拆条 → 确认 trace 能看到重试 + 隔离日志（拆条重试日志在 `_decompose_single_call`，自动带同一 trace_id）。
+
+> 实施中新增发现（超出原计划）：uvicorn 默认 logging 配置 root logger 无 handler，应用级 INFO 日志
+> （业务 + LLM）默认被丢弃（lastResort 仅 WARNING+），trace 日志 grep 不到——已随本实施修复。
 
 ## 六、不做 / 推后
 

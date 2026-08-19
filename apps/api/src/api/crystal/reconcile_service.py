@@ -22,6 +22,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from src.database import db
 from src.embedding.client import get_embedding_client
 from src.llm.client import get_llm_client
+from src.logging_utils import generate_trace_id, get_trace_id, reset_trace_id, set_trace_id
 
 logger = logging.getLogger(__name__)
 
@@ -1087,12 +1088,24 @@ async def _mark_isolated_for_review(evidence_id: str, reason: str) -> None:
 async def reconcile_evidence(evidence_id: str) -> Dict[str, Any]:
     """对账单条 evidence（worker 调用）。
 
-    流程（§1）：
-      ① evidence_processing: pending/processing → processing + current_step='embedding'
-      ② embedding 步：生成向量 → 更新 evidence.embedding + current_step='reconcile'
-      ③ 对账步：候选定位 → 碰撞判定 → 单事务写
-      ④ done / failed（failed 记录 last_error.step）
+    入口生成 trace_id（trace-id 计划 §3.1）：对账全链路（embedding → 拆条 LLM ① →
+    碰撞 LLM ② → 批量写）的业务日志 + LLM client 日志自动带同一 [trace_id=ev_xxx]，
+    可按 id 一键串联排查；函数返回（含异常路径）后清理，并发对账不串。
     """
+    # 嵌套调用（如 reconcile/run 重跑多条）已有 trace → 沿用，不重复生成
+    had_trace = get_trace_id() is not None
+    if not had_trace:
+        token = set_trace_id(generate_trace_id("ev"))
+    try:
+        return await _reconcile_evidence_impl(evidence_id)
+    finally:
+        if not had_trace:
+            reset_trace_id(token)
+
+
+async def _reconcile_evidence_impl(evidence_id: str) -> Dict[str, Any]:
+    """对账单条 evidence 实现体（trace_id 由 reconcile_evidence 入口管理）。"""
+    logger.info(f"crystal 对账开始: evidence={evidence_id}")
     async with db.get_connection() as conn:
         ev = await conn.fetchrow(
             """SELECT e.*, p.processing_state
@@ -1149,6 +1162,7 @@ async def reconcile_evidence(evidence_id: str) -> Dict[str, Any]:
             return {"status": "isolated", "reason": "evidence_too_long"}
 
         # LLM ① 拆条（0..N 条原子 claim）
+        logger.info(f"crystal 拆条 LLM ①: evidence={evidence_id} content_len={len(evidence['content'])}")
         decomposed = await _llm_decompose_claims(evidence)
         if not decomposed:
             # 拆条全部失败（长文本分块失败）→ 不把原文照抄进 claim（分层错误），
@@ -1180,6 +1194,7 @@ async def reconcile_evidence(evidence_id: str) -> Dict[str, Any]:
             candidates_by_claim[f"c{idx + 1}"] = cands
 
         # LLM ② 碰撞判定批处理（N 条新 claim + 各自候选一次传入）
+        logger.info(f"crystal 碰撞 LLM ②: evidence={evidence_id} claims={len(decomposed)}")
         judgments = await _llm_collision_judge_batch(evidence, decomposed, candidates_by_claim)
 
         # 单事务批量写
@@ -1193,6 +1208,12 @@ async def reconcile_evidence(evidence_id: str) -> Dict[str, Any]:
                    WHERE evidence_id=$1""",
                 evidence_id,
             )
+        logger.info(
+            f"crystal 对账完成: evidence={evidence_id} "
+            f"created={len(result.get('created_claim_ids', []))} "
+            f"superseded={len(result.get('superseded_ids', []))} "
+            f"reinforced={len(result.get('reinforced_claim_ids', []))}"
+        )
         return {"status": "done", **result}
 
     except Exception as e:

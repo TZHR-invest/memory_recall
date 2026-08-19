@@ -1543,3 +1543,98 @@ class TestWorkbenchGraph:
         """无 key → 401（复用全局鉴权）"""
         resp = await client.get("/api/v2/workbench/graph")
         assert resp.status_code == 401
+
+
+# ==================== trace-id 日志（2026-08-19 计划实施） ====================
+
+
+class TestReconcileTraceId:
+    """对账链路 trace-id（计划验收 §4）：一次 reconcile 的日志自动带同一 [trace_id=ev_xxx]，
+    且嵌套调用不重复生成、异常路径也清理。"""
+
+    @staticmethod
+    def _collect_logger(logger_name):
+        """给 logger 挂内存 handler（带 TraceIdFilter），返回 (logger, records, 卸载函数)"""
+        import logging
+
+        from src.logging_utils import TraceIdFilter
+
+        logger = logging.getLogger(logger_name)
+        records = []
+        handler = logging.Handler()
+        handler.emit = lambda r: records.append(r)
+        handler.addFilter(TraceIdFilter())
+        old_level = logger.level
+        logger.setLevel(logging.INFO)
+        logger.addHandler(handler)
+        logger.propagate = False
+
+        def _detach():
+            logger.removeHandler(handler)
+            logger.setLevel(old_level)
+
+        return logger, records, _detach
+
+    @pytest.mark.anyio
+    async def test_reconcile_logs_carry_same_trace_id(
+        self, test_db, test_key, mock_llm, mock_embedding
+    ):
+        """一次对账：业务日志 + LLM 日志带同一 [trace_id=ev_xxx]，可 grep 串联（验收①③）"""
+        import logging
+
+        from src.api.crystal.reconcile_service import reconcile_evidence
+        from src.database import db
+
+        _, records, detach = self._collect_logger("src.api.crystal.reconcile_service")
+        _, llm_records, detach_llm = self._collect_logger("src.llm.client")
+        try:
+            ev_id = await db.fetchval(
+                """INSERT INTO crystal.evidence
+                   (observed_at, source_kind, content, scope, owner_type, owner_id,
+                    source_ref, extraction_type, created_at)
+                   VALUES (NOW(), 'agent_add', 'trace-id 测试：项目使用 FastAPI', 'project-trace',
+                           'personal', $1, '{"session_id":"s-trace-1","message_id":"m-trace-1"}'::jsonb,
+                           'verbatim', NOW())
+                   RETURNING id""",
+                test_key["key_id"],
+            )
+            await db.execute(
+                """INSERT INTO crystal.evidence_processing
+                   (evidence_id, processing_state, current_step, updated_at)
+                   VALUES ($1, 'pending', 'embedding', NOW())""",
+                ev_id,
+            )
+
+            result = await reconcile_evidence(ev_id)
+            assert result["status"] == "done"
+        finally:
+            detach()
+            detach_llm()
+
+        messages = [r.getMessage() for r in records]
+        # 开始/完成/拆条/碰撞 日志都在
+        assert any("对账开始" in m for m in messages)
+        assert any("对账完成" in m for m in messages)
+        assert any("拆条 LLM ①" in m for m in messages)
+        assert any("碰撞 LLM ②" in m for m in messages)
+        # 全部带同一个 trace_id 前缀
+        traced = [m for m in messages if m.startswith("[trace_id=ev_")]
+        assert len(traced) == len(messages)
+        tids = {m.split("]")[0] for m in traced}
+        assert len(tids) == 1, f"应只有一个 trace_id，实际 {tids}"
+        # LLM client 日志（真实 LLM 被 mock_llm 替身替换，本测试无 LLM 调用；仅验证业务日志）
+        # —— mock_llm 替身不经过 llm.client，故此处不 assert llm_records
+
+    @pytest.mark.anyio
+    async def test_reconcile_not_found_clears_trace(
+        self, test_db, test_key, mock_llm, mock_embedding
+    ):
+        """reconcile_evidence 返回后 trace 上下文清理（异常/早退路径不泄漏）"""
+        from src.api.crystal.reconcile_service import reconcile_evidence
+        from src.logging_utils import get_trace_id
+
+        # 不存在 → not_found 早退
+        result = await reconcile_evidence("no-such-evidence")
+        assert result["status"] == "not_found"
+        # 调用返回后当前上下文应无 trace（早退也走 finally 清理）
+        assert get_trace_id() is None
