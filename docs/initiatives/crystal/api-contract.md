@@ -100,6 +100,7 @@
 | `POST` | `/api/v2/workbench/claims/{id}/forget` | write | 遗忘 = `retract` 边 | US-W1 / A6 |
 | `POST` | `/api/v2/workbench/claims/{id}/promote-scope` | write | scope 提权审计：采纳/拒绝（系统建议 + 用户事后审计） | US-W2 / A7 |
 | `GET` | `/api/v2/workbench/overview` | read | 统计（claim 拓扑/价值分布/source_kind 构成） | US-W4 / A8 |
+| `GET` | `/api/v2/workbench/graph` | read | 知识网络聚合（G5：claim/evidence 节点 + claim_evidence/lineage 边，`with_evidence` 开关，纯只读） | US-W4 / A8 |
 | `GET` | `/api/v2/workbench/reviews` | read | 召回复盘列表（trace 展开） | US-W5 / A8 |
 | `GET` | `/api/v2/workbench/reviews/{trace_id}` | read | 单次召回 trace：粗排全部候选/精排因子分数/截断项 | US-W5 / A5 / A8 |
 

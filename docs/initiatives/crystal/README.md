@@ -46,7 +46,8 @@ Claim 只存简单断言、推理放谱系边；演变只做推导记录、不�
 | [entity-attributes.md](entity-attributes.md) | 落库 | crystal schema（evidence/claim/lineage_edge/claim_evidence/claim_usage/claim_activity 表字段/索引/枚举）**3 待定项已定案（2026-08-18）** | 独立草稿，**已定稿**（M1 可照此建表） |
 | [api-contract.md](api-contract.md) | 工程 | **crystal API 契约 v1**（/api/v2 路由表、鉴权映射、错误规范、幂等） | 独立草稿（M1 前置，已落） |
 | [workbench.md](workbench.md) | 工程 | **workbench (MR-011) 设计 v1**（裁决面+洞察面双轨 API/权限） | 独立草稿（M2 前置，已落） |
-| [workbench-web-prep.md](workbench-web-prep.md) | 工程 | **workbench web 开发准备 v1**（web 页面范围/规格/后端差距清单/任务分解；**页面 v1 已实现 + G1 召回历史/G4 游标分页已补齐，2026-08-19**） | 独立草稿（web 开发启动前置，页面已按此实现） |
+| [workbench-graph.md](workbench-graph.md) | 工程 | **workbench 网络视图设计 v1**（G5：claim × evidence 知识网络可视化，聚合端点 + 前端渲染，零 schema 变更） | 独立草稿（已实现，2026-08-19） |
+| [workbench-web-prep.md](workbench-web-prep.md) | 工程 | **workbench web 开发准备 v1**（web 页面范围/规格/后端差距清单/任务分解；**页面 v1 已实现 + G1 召回历史/G4 游标分页/G5 网络视图已补齐，2026-08-19**） | 独立草稿（web 开发启动前置，页面已按此实现） |
 | [reconciliation-design.md](reconciliation-design.md) | 工程 | **对账技术设计 v1**（worker/事务/retry/reinforce 计分强度权重表；**M2.1 将升 v2**：拆条 0..N） | 独立草稿（M2 前置，已落；M2.1 待升级） |
 | [recall-design.md](recall-design.md) | 工程 | **召回技术设计 v1**（三级管道/精排公式/截断/trace 契约） | 独立草稿（M2 前置，已落） |
 | [test-strategy.md](test-strategy.md) | 工程 | **crystal 测试策略**（分层/矩阵/每 M 出口） | 独立草稿（M2 前置，已落） |

@@ -3,9 +3,10 @@ crystal 工作台端点（/api/v2/workbench，workbench 设计 v1）
 
 裁决面：confirm（+Δ content）/ correct（特权 Evidence → supersede）/ forget（retract）/
 promote-scope（scope 提权审计）
-洞察面：overview（统计）/ reviews（召回复盘 trace，G1 真实化）
+洞察面：overview（统计）/ reviews（召回复盘 trace，G1 真实化）/ graph（网络视图，G5）
 权限：个人 key 只看自己 owner；admin 的 debug 日志与个人数据隔离（A11）。
 G4（2026-08-19）：claims / reviews 列表游标分页（api-contract §5）。
+G5（2026-08-19）：graph 网络视图聚合端点（workbench-graph.md v1）。
 """
 
 import base64
@@ -330,6 +331,114 @@ async def workbench_overview(
     owner = owner_from_user(current_user)
     stats = await _overview_stats(owner["owner_type"], owner["owner_id"])
     return ok_response(stats)
+
+
+# ==================== 网络视图（G5，workbench-graph.md v1） ====================
+
+
+@router.get("/graph")
+async def workbench_graph(
+    with_evidence: bool = Query(True, description="是否包含 evidence 节点与 claim_evidence 边"),
+    current_user: Dict = Depends(require_permission("read")),
+):
+    """知识网络聚合（G5，US-W4 增强 / A8）：本人 owner 全量 claim/evidence 节点 + 边。
+
+    - 非 active claim 保留返回（supersede/retract 链是网络叙事的一部分，前端弱化样式）。
+    - 纯只读、只统计个人 owner（A11）；不做布局（布局是前端职责，后端保持薄）。
+    - retract 边 to_claim_id=NULL 作为终点边返回（前端画成指向空）。
+    设计见 docs/initiatives/crystal/workbench-graph.md。
+    """
+    owner = owner_from_user(current_user)
+    async with db.get_connection() as conn:
+        claims = await conn.fetch(
+            """SELECT id, statement, claim_kind, content_confidence, scope, status, created_at
+               FROM crystal.claim
+               WHERE owner_type=$1 AND owner_id=$2
+               ORDER BY created_at DESC""",
+            owner["owner_type"],
+            owner["owner_id"],
+        )
+        lineage_edges = await conn.fetch(
+            """SELECT le.id, le.from_claim_id, le.to_claim_id, le.edge_type, le.reason, le.created_at
+               FROM crystal.lineage_edge le
+               JOIN crystal.claim c ON c.id = le.from_claim_id
+               WHERE c.owner_type=$1 AND c.owner_id=$2
+               ORDER BY le.created_at DESC""",
+            owner["owner_type"],
+            owner["owner_id"],
+        )
+        evidences: List[Any] = []
+        claim_evidence_edges: List[Any] = []
+        if with_evidence:
+            evidences = await conn.fetch(
+                """SELECT e.id, e.content, e.source_kind, e.scope, e.observed_at
+                   FROM crystal.evidence e
+                   WHERE e.owner_type=$1 AND e.owner_id=$2
+                   ORDER BY e.observed_at DESC""",
+                owner["owner_type"],
+                owner["owner_id"],
+            )
+            claim_evidence_edges = await conn.fetch(
+                """SELECT ce.claim_id, ce.evidence_id, ce.role
+                   FROM crystal.claim_evidence ce
+                   JOIN crystal.claim c ON c.id = ce.claim_id
+                   WHERE c.owner_type=$1 AND c.owner_id=$2
+                   ORDER BY ce.created_at DESC""",
+                owner["owner_type"],
+                owner["owner_id"],
+            )
+
+    claim_nodes = [
+        {
+            "claim_id": r["id"],
+            "statement": r["statement"],
+            "claim_kind": r["claim_kind"],
+            "content_confidence": r["content_confidence"],
+            "scope": r["scope"],
+            "status": r["status"],
+            "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+        }
+        for r in claims
+    ]
+    evidence_nodes = [
+        {
+            "evidence_id": r["id"],
+            "content": r["content"],
+            "source_kind": r["source_kind"],
+            "scope": r["scope"],
+            "observed_at": r["observed_at"].isoformat() if r["observed_at"] else None,
+        }
+        for r in evidences
+    ]
+    ce_edges = [
+        {"claim_id": r["claim_id"], "evidence_id": r["evidence_id"], "role": r["role"]}
+        for r in claim_evidence_edges
+    ]
+    le_edges = [
+        {
+            "edge_id": r["id"],
+            "from_claim_id": r["from_claim_id"],
+            "to_claim_id": r["to_claim_id"],
+            "edge_type": r["edge_type"],
+            "reason": r["reason"],
+            "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+        }
+        for r in lineage_edges
+    ]
+    return ok_response(
+        {
+            "claims": claim_nodes,
+            "evidences": evidence_nodes,
+            "claim_evidence_edges": ce_edges,
+            "lineage_edges": le_edges,
+            "stats": {
+                "claim_count": len(claim_nodes),
+                "evidence_count": len(evidence_nodes),
+                "claim_evidence_count": len(ce_edges),
+                "lineage_edge_count": len(le_edges),
+            },
+        }
+    )
 
 
 @router.get("/reviews")

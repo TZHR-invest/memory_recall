@@ -166,6 +166,66 @@
     .loading { text-align: center; color: #64748b; padding: 20px 0; font-size: 0.9em; }
     .kv { display: flex; gap: 16px; flex-wrap: wrap; font-size: 0.85em; }
     .kv .item b { color: #14532d; }
+
+    /* ===== 网络视图（G5，workbench-graph.md v1） ===== */
+    .graph-toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+    .graph-wrap {
+        position: relative; border: 1px solid #e4ede6; border-radius: 12px; background: #fbfdfb;
+        overflow: hidden; height: 640px;
+    }
+    .graph-wrap svg { display: block; width: 100%; height: 100%; cursor: grab; }
+    .graph-wrap svg.dragging { cursor: grabbing; }
+    .graph-legend {
+        position: absolute; left: 12px; bottom: 12px; background: rgba(255,255,255,0.94);
+        border: 1px solid #e4ede6; border-radius: 10px; padding: 10px 14px; font-size: 0.75em;
+        color: #475569; line-height: 1.7; box-shadow: 0 2px 8px rgba(20,83,45,0.08); pointer-events: none;
+    }
+    .graph-legend .legend-row { display: flex; align-items: center; gap: 6px; }
+    .legend-swatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
+    .legend-line { display: inline-block; width: 22px; height: 0; border-top: 2px solid #94a3b8; flex-shrink: 0; }
+    .legend-line.supersedes { border-top-color: #dc2626; }
+    .legend-line.generalizes { border-top-color: #2563eb; }
+    .legend-line.contradicts { border-top-color: #ea580c; }
+    .legend-line.retract { border-top-color: #94a3b8; border-top-style: dashed; }
+    .legend-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .legend-dot.user_correction { background: #c026d3; }
+    .legend-dot.agent_add { background: #94a3b8; }
+    .legend-dot.document { background: #0891b2; }
+    .legend-dot.outcome_trace { background: #65a30d; }
+    .graph-detail {
+        margin-top: 12px; border: 1px solid #e4ede6; border-radius: 12px; padding: 14px 16px;
+        background: #fcfdfc; display: none;
+    }
+    .graph-detail.show { display: block; }
+    .graph-detail h3 { font-size: 0.98em; color: #14532d; margin-bottom: 8px; }
+    .graph-detail .meta { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; font-size: 0.78em; margin: 8px 0; }
+    .graph-detail .actions { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
+    .graph-hint { font-size: 0.78em; color: #94a3b8; margin-top: 8px; }
+    .graph-node-claim {
+        stroke: #166534; stroke-width: 1.5; fill: #f0fdf4; rx: 8;
+    }
+    .graph-node-claim.superseded, .graph-node-claim.retracted { fill: #f1f5f9; stroke: #94a3b8; }
+    .graph-node-claim.disputed { fill: #fef2f2; stroke: #dc2626; }
+    .graph-node-claim.low-conf { stroke-dasharray: 4 3; }
+    .graph-node-claim.selected { stroke: #0f766e; stroke-width: 3; }
+    .graph-node-claim.halo { stroke-width: 2.5; }
+    .graph-node-claim text { font-size: 11px; fill: #1e293b; font-family: inherit; }
+    .graph-node-evidence { fill: #94a3b8; }
+    .graph-node-evidence.user_correction { fill: #c026d3; }
+    .graph-node-evidence.document { fill: #0891b2; }
+    .graph-node-evidence.outcome_trace { fill: #65a30d; }
+    .graph-edge { stroke: #cbd5e1; stroke-width: 1.2; }
+    .graph-edge.supersedes { stroke: #dc2626; stroke-width: 2; }
+    .graph-edge.generalizes { stroke: #2563eb; stroke-width: 2; }
+    .graph-edge.contradicts { stroke: #ea580c; stroke-width: 2; stroke-dasharray: 5 3; }
+    .graph-edge.retract { stroke: #94a3b8; stroke-width: 1.6; stroke-dasharray: 4 3; }
+    .graph-edge.dim { opacity: 0.12; }
+    .graph-arrow { fill: none; stroke: inherit; }
+    .graph-tooltip {
+        position: absolute; max-width: 320px; background: #0f172a; color: #f1f5f9; font-size: 0.78em;
+        padding: 8px 10px; border-radius: 8px; pointer-events: none; z-index: 50; line-height: 1.5;
+        box-shadow: 0 4px 14px rgba(0,0,0,0.25); white-space: pre-wrap; word-break: break-word;
+    }
 </style>
 </head>
 <body>
@@ -193,6 +253,7 @@
         <div class="tab" data-tab="audit" onclick="switchTab('audit')">🛡️ 审计面</div>
         <div class="tab" data-tab="insight" onclick="switchTab('insight')">📈 洞察面</div>
         <div class="tab" data-tab="recall" onclick="switchTab('recall')">🔍 召回复盘</div>
+        <div class="tab" data-tab="graph" onclick="switchTab('graph')">🕸️ 网络视图</div>
     </div>
 
     <!-- ============ 裁决面 ============ -->
@@ -246,6 +307,24 @@
             <h2>假说池（低置信） <span class="badge">US-W5 补充 · content_confidence &lt; 0.4 或 UNKNOWN · 只标注不丢弃</span></h2>
             <div class="muted" style="margin-bottom:12px">低置信 claim 永久存储、可检索、可确认升级（confirm 后脱离低置信）。</div>
             <div id="hypothesis-list"><div class="empty">加载中…</div></div>
+        </div>
+    </div>
+
+    <!-- ============ 网络视图（G5） ============ -->
+    <div class="pane" id="pane-graph">
+        <div class="card">
+            <h2>知识网络 <span class="badge">G5 · workbench-graph v1 · claim × evidence · 个人 owner</span></h2>
+            <div class="graph-toolbar">
+                <label class="graph-hint" style="margin:0">拖拽节点微调布局 · 点击 claim 查看详情/裁决 · 滚轮缩放</label>
+                <span style="flex:1"></span>
+                <label><input type="checkbox" id="g-with-evidence" checked onchange="loadGraph()"> 显示证据节点</label>
+                <button class="btn btn-secondary btn-sm" onclick="loadGraph()">⟳ 重绘</button>
+            </div>
+            <div id="graph-canvas">
+                <div class="empty">加载中…</div>
+            </div>
+            <div class="graph-detail" id="graph-detail"></div>
+            <div class="graph-hint" id="graph-stats"></div>
         </div>
     </div>
 
@@ -373,6 +452,7 @@ function switchTab(name) {
     if (name === 'audit') loadPromotions();
     if (name === 'adjudicate') loadClaims();
     if (name === 'recall') loadRecallHistory();
+    if (name === 'graph') loadGraph();
 }
 
 /* ================= 模态 ================= */
@@ -930,7 +1010,407 @@ async function toggleRecallTrace(traceId, btn) {
     }
 }
 
-/* ================= 初始化 ================= */
+/* ================= 网络视图（G5，workbench-graph.md v1） ================= */
+
+let graphData = null;          // 最近一次拉取的 {claims, evidences, claim_evidence_edges, lineage_edges}
+let graphNodes = [];           // 布局节点 {id, kind:'claim'|'evidence', x, y, vx, vy, fixed, ...ref}
+let graphSimTimer = null;
+let graphSelected = null;      // 当前选中 claim_id
+let graphZoom = 1, graphPanX = 0, graphPanY = 0;
+
+const GRAPH_W = 1400, GRAPH_H = 900;
+
+async function loadGraph() {
+    const canvas = document.getElementById('graph-canvas');
+    const withEv = document.getElementById('g-with-evidence').checked;
+    canvas.innerHTML = '<div class="loading">加载网络…</div>';
+    hideGraphDetail();
+    try {
+        graphData = await api(`/api/v2/workbench/graph?with_evidence=${withEv}`);
+        renderGraph();
+    } catch (e) {
+        canvas.innerHTML = `<div class="empty">网络加载失败：${esc(e.message)}</div>`;
+        toast(e.message, 'error');
+    }
+}
+
+function hideGraphDetail() {
+    const d = document.getElementById('graph-detail');
+    d.classList.remove('show');
+    d.innerHTML = '';
+    graphSelected = null;
+}
+
+function showGraphDetail(claimId) {
+    const d = document.getElementById('graph-detail');
+    const claim = (graphData.claims || []).find(c => c.claim_id === claimId);
+    if (!claim) return;
+    const evs = (graphData.claim_evidence_edges || [])
+        .filter(e => e.claim_id === claimId)
+        .map(e => (graphData.evidences || []).find(ev => ev.evidence_id === e.evidence_id))
+        .filter(Boolean);
+    const outs = (graphData.lineage_edges || []).filter(e => e.from_claim_id === claimId);
+    const ins = (graphData.lineage_edges || []).filter(e => e.to_claim_id === claimId);
+    d.classList.add('show');
+    d.innerHTML = `
+        <h3>${esc(claim.statement)}</h3>
+        <div class="meta">
+            <span class="pill status-${esc(claim.status || 'active')}">${esc(claim.status || 'active')}</span>
+            <span class="pill kind">${esc(claim.claim_kind || '-')}</span>
+            <span class="pill scope">${claim.scope == null ? '全局' : esc(claim.scope)}</span>
+            <span class="pill conf">置信 ${esc(fmtConf(claim.content_confidence))}（${confLabel(claim.content_confidence)}）</span>
+            <span class="muted">${esc((claim.created_at || '').replace('T', ' ').slice(0, 19))}</span>
+        </div>
+        <div class="actions">
+            <button class="btn btn-primary btn-sm" onclick="doConfirm('${esc(claim.claim_id)}')">✓ 确认</button>
+            <button class="btn btn-secondary btn-sm" onclick="openCorrect('${esc(claim.claim_id)}', '${esc(claim.statement.replace(/'/g, "\\'"))}')">✎ 纠错</button>
+            <button class="btn btn-danger btn-sm" onclick="openForget('${esc(claim.claim_id)}')">🗑 遗忘</button>
+            ${claim.scope != null && claim.status === 'active' ? `<button class="btn btn-secondary btn-sm" onclick="openPromote('${esc(claim.claim_id)}')">⬆ 提权建议</button>` : ''}
+        </div>
+        ${evs.length ? `<div class="meta" style="margin-top:10px"><span class="pill conf">支撑证据 ${evs.length}</span></div>
+            <div style="font-size:0.8em">${evs.map(ev => `<div class="sub-item"><div class="ev-content">${esc(ev.content)}</div>
+                <div class="ev-meta">${esc(ev.source_kind || '-')} · ${ev.scope == null ? '全局' : esc(ev.scope)}</div></div>`).join('')}</div>` : ''}
+        ${ins.length ? `<div class="meta" style="margin-top:10px"><span class="pill">入边 ${ins.length}</span></div>
+            <div style="font-size:0.8em">${ins.map(e => `<div class="sub-item"><span class="edge-tag">${esc(e.edge_type)}</span>
+                ${esc((e.from_claim_id || '').slice(0, 12))}… → ${esc((e.to_claim_id || '').slice(0, 12))}…
+                <div class="ev-meta">${esc(e.reason || '')}</div></div>`).join('')}</div>` : ''}
+        ${outs.length ? `<div class="meta" style="margin-top:10px"><span class="pill">出边 ${outs.length}</span></div>
+            <div style="font-size:0.8em">${outs.map(e => `<div class="sub-item"><span class="edge-tag">${esc(e.edge_type)}</span>
+                ${esc((e.from_claim_id || '').slice(0, 12))}… → ${esc(e.to_claim_id ? (e.to_claim_id || '').slice(0, 12) + '…' : 'NULL（遗忘）')}
+                <div class="ev-meta">${esc(e.reason || '')}</div></div>`).join('')}</div>` : ''}
+    `;
+    d.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function graphClaimById(id) { return (graphData.claims || []).find(c => c.claim_id === id); }
+function graphEvidenceById(id) { return (graphData.evidences || []).find(e => e.evidence_id === id); }
+
+/** 构建力导向布局节点 + 连线（不直接操作 DOM，返回数据） */
+function buildGraphLayout() {
+    const claims = graphData.claims || [];
+    const evidences = graphData.evidences || [];
+    graphNodes = [];
+    // 初始位置：环形散开（claim 居中偏上，evidence 随机）
+    const n = claims.length + evidences.length;
+    claims.forEach((c, i) => {
+        const ang = (i / Math.max(1, claims.length)) * Math.PI * 2;
+        graphNodes.push({
+            id: c.claim_id, kind: 'claim', ref: c,
+            x: GRAPH_W / 2 + Math.cos(ang) * (n > 20 ? 260 : 180),
+            y: GRAPH_H / 2 - 60 + Math.sin(ang) * (n > 20 ? 220 : 150),
+            vx: 0, vy: 0, fixed: false,
+        });
+    });
+    evidences.forEach((e, i) => {
+        graphNodes.push({
+            id: e.evidence_id, kind: 'evidence', ref: e,
+            x: GRAPH_W / 2 + (Math.random() - 0.5) * GRAPH_W * 0.6,
+            y: GRAPH_H / 2 + 80 + (Math.random() - 0.5) * GRAPH_H * 0.3,
+            vx: 0, vy: 0, fixed: false,
+        });
+    });
+    const byId = new Map(graphNodes.map(nd => [nd.id, nd]));
+    const edges = [];
+    (graphData.lineage_edges || []).forEach(e => {
+        const a = byId.get(e.from_claim_id), b = byId.get(e.to_claim_id);
+        if (a && b) edges.push({ from: a, to: b, type: e.edge_type, kind: 'lineage' });
+        else if (a && !b && e.edge_type === 'retract') edges.push({ from: a, to: null, type: 'retract', kind: 'lineage' });
+    });
+    (graphData.claim_evidence_edges || []).forEach(e => {
+        const a = byId.get(e.claim_id), b = byId.get(e.evidence_id);
+        if (a && b) edges.push({ from: a, to: b, type: 'support', kind: 'claim-evidence' });
+    });
+    return edges;
+}
+
+/** 力导向模拟（斥力 + 弹簧 + 中心引力），迭代收敛后返回最终坐标 */
+function simulate(edges, iterations = 160) {
+    const nodes = graphNodes;
+    const k = 140;               // 弹簧理想长度
+    const rep = 2600;            // 斥力强度
+    const centerX = GRAPH_W / 2, centerY = GRAPH_H / 2;
+    const connected = new Set();
+    edges.forEach(e => { connected.add(e.from && e.from.id); if (e.to) connected.add(e.to.id); });
+    for (let iter = 0; iter < iterations; iter++) {
+        const t = 1 - iter / iterations;   // 冷却
+        // 斥力（O(n²)，节点量级百级可接受）
+        for (let i = 0; i < nodes.length; i++) {
+            for (let j = i + 1; j < nodes.length; j++) {
+                const a = nodes[i], b = nodes[j];
+                let dx = a.x - b.x, dy = a.y - b.y;
+                let d2 = dx * dx + dy * dy;
+                if (d2 < 1) { dx = (Math.random() - 0.5); dy = (Math.random() - 0.5); d2 = 1; }
+                const d = Math.sqrt(d2);
+                const f = rep / d2;
+                const fx = dx / d * f, fy = dy / d * f;
+                if (!a.fixed) { a.vx += fx * t; a.vy += fy * t; }
+                if (!b.fixed) { b.vx -= fx * t; b.vy -= fy * t; }
+            }
+        }
+        // 弹簧（沿边）
+        edges.forEach(e => {
+            if (!e.from || !e.to) return;
+            const dx = e.to.x - e.from.x, dy = e.to.y - e.from.y;
+            const d = Math.sqrt(dx * dx + dy * dy) || 1;
+            const f = (d - k) * 0.06;
+            const fx = dx / d * f, fy = dy / d * f;
+            if (!e.from.fixed) { e.from.vx += fx * t; e.from.vy += fy * t; }
+            if (!e.to.fixed) { e.to.vx -= fx * t; e.to.vy -= fy * t; }
+        });
+        // 中心引力（孤岛节点不漂走）
+        nodes.forEach(nd => {
+            if (nd.fixed) return;
+            nd.vx += (centerX - nd.x) * 0.002 * t;
+            nd.vy += (centerY - nd.y) * 0.002 * t;
+            // 速度阻尼 + 积分
+            nd.vx *= 0.85; nd.vy *= 0.85;
+            nd.x += nd.vx; nd.y += nd.vy;
+            nd.x = Math.max(20, Math.min(GRAPH_W - 20, nd.x));
+            nd.y = Math.max(20, Math.min(GRAPH_H - 20, nd.y));
+        });
+    }
+}
+
+function graphSvg(edges) {
+    const claims = graphData.claims || [];
+    const evidences = graphData.evidences || [];
+    const claimSet = new Set(claims.map(c => c.claim_id));
+    const byId = new Map(graphNodes.map(nd => [nd.id, nd]));
+    const selectedNeighbors = new Set();
+    if (graphSelected) {
+        (graphData.claim_evidence_edges || []).forEach(e => {
+            if (e.claim_id === graphSelected) selectedNeighbors.add(e.evidence_id);
+        });
+        (graphData.lineage_edges || []).forEach(e => {
+            if (e.from_claim_id === graphSelected && e.to_claim_id) selectedNeighbors.add(e.to_claim_id);
+            if (e.to_claim_id === graphSelected) selectedNeighbors.add(e.from_claim_id);
+        });
+    }
+
+    // 边
+    let edgeSvg = edges.map(e => {
+        const from = byId.get(e.from && e.from.id);
+        if (!from) return '';
+        let to = e.to ? byId.get(e.to.id) : null;
+        let x1 = from.x, y1 = from.y, x2, y2;
+        if (to) {
+            x2 = to.x; y2 = to.y;
+        } else {
+            // retract 终点：指向 from 右侧稍远处（画"消失"）
+            x2 = from.x + 120; y2 = from.y + 30;
+        }
+        const cls = e.type === 'support' ? 'graph-edge' : `graph-edge ${e.type}`;
+        const dim = graphSelected && e.type !== 'support'
+            && !(e.from && e.from.id === graphSelected) && !(e.to && e.to.id === graphSelected) ? ' graph-edge-dim' : '';
+        const marker = e.type === 'support' || e.type === 'retract' ? '' : ` marker-end="url(#arrow-${e.type})"`;
+        return `<line class="${cls}${dim}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"${marker}></line>`;
+    }).join('');
+
+    // 节点
+    const nodeSvg = graphNodes.map(nd => {
+        if (nd.kind === 'claim') {
+            const c = nd.ref;
+            const w = 170, h = 44;
+            const x = nd.x - w / 2, y = nd.y - h / 2;
+            const low = c.content_confidence == null || c.content_confidence < 0.4;
+            const cls = ['graph-node-claim', c.status || 'active'];
+            if (low) cls.push('low-conf');
+            if (graphSelected === c.claim_id) cls.push('selected');
+            if (graphSelected && (selectedNeighbors.has(c.claim_id))) cls.push('halo');
+            const short = c.statement.length > 16 ? c.statement.slice(0, 16) + '…' : c.statement;
+            return `<g class="graph-claim" data-id="${esc(c.claim_id)}" transform="translate(${x},${y})">
+                <rect class="${cls.join(' ')}" width="${w}" height="${h}" rx="8"></rect>
+                <text x="${w / 2}" y="${h / 2 + 4}" text-anchor="middle">${esc(short)}</text>
+            </g>`;
+        }
+        const ev = nd.ref;
+        const r = ev.source_kind === 'user_correction' ? 7 : 5;
+        const dim = graphSelected && !selectedNeighbors.has(ev.evidence_id) ? ' graph-edge-dim' : '';
+        return `<g class="graph-evidence" data-id="${esc(ev.evidence_id)}" transform="translate(${nd.x},${nd.y})">
+            <circle class="graph-node-evidence ${esc(ev.source_kind || 'agent_add')}${dim}" r="${r}"></circle>
+        </g>`;
+    }).join('');
+
+    return `
+        <defs>
+            <marker id="arrow-supersedes" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+                <path d="M0,0 L6,3 L0,6" fill="none" stroke="#dc2626" stroke-width="1.5"></path>
+            </marker>
+            <marker id="arrow-generalizes" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+                <path d="M0,0 L6,3 L0,6" fill="none" stroke="#2563eb" stroke-width="1.5"></path>
+            </marker>
+            <marker id="arrow-contradicts" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+                <path d="M0,0 L6,3 L0,6" fill="none" stroke="#ea580c" stroke-width="1.5"></path>
+            </marker>
+        </defs>
+        ${edgeSvg}${nodeSvg}`;
+}
+
+function graphLegend() {
+    return `<div class="graph-legend">
+        <div class="legend-row"><span class="legend-swatch" style="background:#f0fdf4;border:1.5px solid #166534"></span> claim active</div>
+        <div class="legend-row"><span class="legend-swatch" style="background:#f1f5f9;border:1.5px solid #94a3b8"></span> superseded / retracted</div>
+        <div class="legend-row"><span class="legend-swatch" style="background:#fef2f2;border:1.5px solid #dc2626"></span> disputed</div>
+        <div class="legend-row"><span class="legend-line supersedes"></span> supersedes（纠错/取代）</div>
+        <div class="legend-row"><span class="legend-line generalizes"></span> generalizes（提权）</div>
+        <div class="legend-row"><span class="legend-line contradicts"></span> contradicts（冲突）</div>
+        <div class="legend-row"><span class="legend-line retract"></span> retract（遗忘）</div>
+        <div class="legend-row"><span class="legend-dot agent_add"></span> evidence</div>
+        <div class="legend-row"><span class="legend-dot user_correction"></span> user_correction（特权）</div>
+    </div>`;
+}
+
+function renderGraph() {
+    const canvas = document.getElementById('graph-canvas');
+    const stats = graphData.stats || {};
+    const edges = buildGraphLayout();
+    simulate(edges);
+    graphSelected = null;
+    const svg = `
+        <div class="graph-wrap" id="graph-wrap">
+            <svg id="graph-svg" viewBox="0 0 ${GRAPH_W} ${GRAPH_H}" preserveAspectRatio="xMidYMid meet">
+                ${graphSvg(edges)}
+            </svg>
+            ${graphLegend()}
+            <div class="graph-tooltip" id="graph-tooltip" style="display:none"></div>
+        </div>`;
+    canvas.innerHTML = svg;
+    document.getElementById('graph-stats').textContent =
+        `统计：claim ${stats.claim_count ?? '-'} · evidence ${stats.evidence_count ?? '-'} · 支撑边 ${stats.claim_evidence_count ?? '-'} · 谱系边 ${stats.lineage_edge_count ?? '-'}（点击 claim 高亮 1 跳邻居）`;
+    bindGraphEvents();
+}
+
+/** SVG 交互绑定：节点点击 / hover tooltip / 拖拽 / 滚轮缩放 */
+function bindGraphEvents() {
+    const svg = document.getElementById('graph-svg');
+    const wrap = document.getElementById('graph-wrap');
+    const tooltip = document.getElementById('graph-tooltip');
+    if (!svg || !wrap) return;
+
+    // 点击节点 → 选中 claim / 高亮 evidence
+    svg.querySelectorAll('.graph-claim').forEach(g => {
+        g.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            const id = g.dataset.id;
+            graphSelected = (graphSelected === id) ? null : id;
+            // 重绘（保留节点当前位置）并显示/收起详情
+            rerenderGraph();
+            if (graphSelected) showGraphDetail(id); else hideGraphDetail();
+        });
+    });
+    svg.querySelectorAll('.graph-evidence').forEach(g => {
+        g.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            // 点击 evidence：弱高亮其支撑 claim（若存在）
+            const id = g.dataset.id;
+            const claim = (graphData.claim_evidence_edges || []).find(e => e.evidence_id === id);
+            if (claim) {
+                graphSelected = claim.claim_id;
+                rerenderGraph();
+                showGraphDetail(claim.claim_id);
+            }
+        });
+    });
+
+    // hover tooltip
+    svg.querySelectorAll('.graph-claim').forEach(g => {
+        g.addEventListener('mouseenter', (ev) => {
+            const c = graphClaimById(g.dataset.id);
+            if (!c) return;
+            tooltip.style.display = 'block';
+            tooltip.textContent = `${c.statement}\n[${c.status}] ${c.claim_kind || '-'} · 置信 ${fmtConf(c.content_confidence)} · ${c.scope == null ? '全局' : c.scope}`;
+            positionTooltip(ev);
+        });
+        g.addEventListener('mousemove', positionTooltip);
+        g.addEventListener('mouseleave', () => { tooltip.style.display = 'none'; });
+    });
+    svg.querySelectorAll('.graph-evidence').forEach(g => {
+        g.addEventListener('mouseenter', (ev) => {
+            const e = graphEvidenceById(g.dataset.id);
+            if (!e) return;
+            tooltip.style.display = 'block';
+            tooltip.textContent = `${e.content}\n[evidence] ${e.source_kind || '-'} · ${e.scope == null ? '全局' : e.scope}`;
+            positionTooltip(ev);
+        });
+        g.addEventListener('mousemove', positionTooltip);
+        g.addEventListener('mouseleave', () => { tooltip.style.display = 'none'; });
+    });
+
+    // 拖拽节点（直接改坐标 + 标记 fixed；松手后不重排，保留用户布局）
+    let dragTarget = null, dragStartX = 0, dragStartY = 0;
+    svg.querySelectorAll('.graph-claim, .graph-evidence').forEach(g => {
+        g.addEventListener('mousedown', (ev) => {
+            if (ev.button !== 0) return;
+            const id = g.dataset.id;
+            const nd = graphNodes.find(n => n.id === id);
+            if (!nd) return;
+            dragTarget = nd;
+            dragStartX = ev.clientX; dragStartY = ev.clientY;
+            nd.fixed = true;
+            ev.preventDefault();
+        });
+    });
+    svg.addEventListener('mousemove', (ev) => {
+        if (!dragTarget) return;
+        const rect = svg.getBoundingClientRect();
+        const scaleX = GRAPH_W / rect.width, scaleY = GRAPH_H / rect.height;
+        dragTarget.x += (ev.clientX - dragStartX) * scaleX;
+        dragTarget.y += (ev.clientY - dragStartY) * scaleY;
+        dragStartX = ev.clientX; dragStartY = ev.clientY;
+        const g = svg.querySelector(`[data-id="${CSS.escape(dragTarget.id)}"]`);
+        if (g) {
+            if (dragTarget.kind === 'claim') g.setAttribute('transform', `translate(${dragTarget.x - 85},${dragTarget.y - 22})`);
+            else g.setAttribute('transform', `translate(${dragTarget.x},${dragTarget.y})`);
+        }
+    });
+    window.addEventListener('mouseup', () => { dragTarget = null; });
+
+    // 滚轮缩放
+    svg.addEventListener('wheel', (ev) => {
+        ev.preventDefault();
+        const rect = svg.getBoundingClientRect();
+        const px = (ev.clientX - rect.left) / rect.width * GRAPH_W;
+        const py = (ev.clientY - rect.top) / rect.height * GRAPH_H;
+        const factor = ev.deltaY < 0 ? 1.1 : 0.9;
+        const vb = svg.viewBox.baseVal;
+        const nw = vb.width * factor, nh = vb.height * factor;
+        const cx = vb.x + vb.width / 2, cy = vb.y + vb.height / 2;
+        // 保持鼠标位置不动：视口中心随缩放移动
+        const nx = cx - (px - cx) * (nw - vb.width) / 2;  // 近似保持中心
+        vb.x = nx; vb.y = cy - nh / 2;
+        vb.width = nw; vb.height = nh;
+    }, { passive: false });
+
+    // 空白点击 → 取消选中
+    svg.addEventListener('click', () => { hideGraphDetail(); });
+}
+
+function positionTooltip(ev) {
+    const tooltip = document.getElementById('graph-tooltip');
+    const wrap = document.getElementById('graph-wrap');
+    if (!tooltip || !wrap) return;
+    const r = wrap.getBoundingClientRect();
+    tooltip.style.left = `${ev.clientX - r.left + 14}px`;
+    tooltip.style.top = `${ev.clientY - r.top + 14}px`;
+}
+
+/** 重绘（保持当前节点坐标：buildGraphLayout 前先备份） */
+function rerenderGraph() {
+    const svgEl = document.getElementById('graph-svg');
+    if (!svgEl) return;
+    const saved = new Map(graphNodes.map(nd => [nd.id, { x: nd.x, y: nd.y, fixed: nd.fixed }]));
+    const edges = buildGraphLayout();
+    // 恢复坐标
+    graphNodes.forEach(nd => {
+        const s = saved.get(nd.id);
+        if (s) { nd.x = s.x; nd.y = s.y; nd.fixed = s.fixed; }
+    });
+    const inner = document.getElementById('graph-svg');
+    inner.innerHTML = graphSvg(edges);
+    bindGraphEvents();
+}
+
+
 (function init() {
     const savedKey = localStorage.getItem(LS_KEY);
     const savedBase = localStorage.getItem(LS_BASE);

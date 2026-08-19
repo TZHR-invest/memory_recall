@@ -1290,3 +1290,130 @@ class TestMigration:
         )
         assert resp.status_code == 202
         assert resp.json()["data"]["run_id"].startswith("mig_")
+
+
+# ==================== G5：网络视图聚合端点（workbench-graph.md v1） ====================
+
+
+class TestWorkbenchGraph:
+    """G5（2026-08-19）：GET /api/v2/workbench/graph——本人 owner 全量节点/边聚合
+    （workbench-graph.md §3：claim/evidence 节点 + claim_evidence/lineage 边，A11 owner 隔离）。"""
+
+    @pytest.mark.anyio
+    async def test_graph_returns_own_claims_and_edges(self, client, test_db, test_key):
+        """聚合返回本人 claim + evidence + 两种边（含非 active claim）"""
+        from src.database import db
+
+        # 造数据：2 claim（1 active + 1 superseded）+ 1 evidence + 支撑边 + supersedes 谱系边
+        c1 = await db.fetchval(
+            """INSERT INTO crystal.claim
+               (statement, claim_kind, content_confidence, scope, owner_type, owner_id, status, created_at)
+               VALUES ('网络视图测试 claim 1', 'fact', 0.8, 'project-g5', 'personal', $1, 'active', NOW())
+               RETURNING id""",
+            test_key["key_id"],
+        )
+        c2 = await db.fetchval(
+            """INSERT INTO crystal.claim
+               (statement, claim_kind, content_confidence, scope, owner_type, owner_id, status, created_at)
+               VALUES ('网络视图测试 claim 2（旧版）', 'fact', 0.3, 'project-g5', 'personal', $1, 'superseded', NOW())
+               RETURNING id""",
+            test_key["key_id"],
+        )
+        ev = await db.fetchval(
+            """INSERT INTO crystal.evidence
+               (content, source_kind, scope, owner_type, owner_id, observed_at)
+               VALUES ('网络视图测试证据', 'agent_add', 'project-g5', 'personal', $1, NOW())
+               RETURNING id""",
+            test_key["key_id"],
+        )
+        await db.execute(
+            "INSERT INTO crystal.claim_evidence (claim_id, evidence_id, role) VALUES ($1, $2, 'support')",
+            c1, ev,
+        )
+        await db.execute(
+            """INSERT INTO crystal.lineage_edge (from_claim_id, to_claim_id, edge_type, reason)
+               VALUES ($1, $2, 'supersedes', 'test supersede')""",
+            c2, c1,
+        )
+
+        resp = await client.get(
+            "/api/v2/workbench/graph",
+            headers={"X-API-Key": test_key["api_key"]},
+        )
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert data["stats"]["claim_count"] >= 2
+        assert data["stats"]["evidence_count"] >= 1
+
+        claim_ids = {c["claim_id"] for c in data["claims"]}
+        assert c1 in claim_ids and c2 in claim_ids  # 非 active 也返回
+        # status 透出（前端弱化样式用）
+        status_by_id = {c["claim_id"]: c["status"] for c in data["claims"]}
+        assert status_by_id[c2] == "superseded"
+        # 边
+        assert any(
+            e["claim_id"] == c1 and e["evidence_id"] == ev for e in data["claim_evidence_edges"]
+        )
+        assert any(
+            e["from_claim_id"] == c2 and e["to_claim_id"] == c1 and e["edge_type"] == "supersedes"
+            for e in data["lineage_edges"]
+        )
+
+    @pytest.mark.anyio
+    async def test_graph_with_evidence_false_returns_lineage_only(self, client, test_db, test_key):
+        """with_evidence=false：不返回 evidence 节点与 claim_evidence 边"""
+        from src.database import db
+
+        c1 = await db.fetchval(
+            """INSERT INTO crystal.claim
+               (statement, claim_kind, scope, owner_type, owner_id, status, created_at)
+               VALUES ('仅谱系 claim', 'fact', NULL, 'personal', $1, 'active', NOW())
+               RETURNING id""",
+            test_key["key_id"],
+        )
+        await db.execute(
+            "INSERT INTO crystal.evidence (content, source_kind, scope, owner_type, owner_id)"
+            " VALUES ('不应出现的证据', 'agent_add', NULL, 'personal', $1)",
+            test_key["key_id"],
+        )
+
+        resp = await client.get(
+            "/api/v2/workbench/graph",
+            headers={"X-API-Key": test_key["api_key"]},
+            params={"with_evidence": "false"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert data["evidences"] == []
+        assert data["claim_evidence_edges"] == []
+        assert any(c["claim_id"] == c1 for c in data["claims"])
+
+    @pytest.mark.anyio
+    async def test_graph_cross_owner_isolated(self, client, test_db, test_key):
+        """他人 claim/evidence 不出现在本人图里（A11 owner 隔离）"""
+        from src.database import db
+
+        other = await db.fetchval(
+            """INSERT INTO crystal.claim
+               (statement, claim_kind, scope, owner_type, owner_id, status, created_at)
+               VALUES ('他人 claim 不应可见', 'fact', NULL, 'personal', 'other-key-id', 'active', NOW())
+               RETURNING id"""
+        )
+        await db.execute(
+            "INSERT INTO crystal.evidence (content, source_kind, scope, owner_type, owner_id)"
+            " VALUES ('他人证据不应可见', 'agent_add', NULL, 'personal', 'other-key-id')"
+        )
+
+        resp = await client.get(
+            "/api/v2/workbench/graph",
+            headers={"X-API-Key": test_key["api_key"]},
+        )
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert other not in {c["claim_id"] for c in data["claims"]}
+
+    @pytest.mark.anyio
+    async def test_graph_requires_auth(self, client):
+        """无 key → 401（复用全局鉴权）"""
+        resp = await client.get("/api/v2/workbench/graph")
+        assert resp.status_code == 401

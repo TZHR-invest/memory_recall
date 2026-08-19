@@ -188,7 +188,8 @@ search explain。**缺口只影响「召回复盘历史」与「提权建议池�
 1. **~~G1 补全~~ ✅ 已实现（2026-08-19）**：`workbench_review` 表 + 召回 trace 落库 + `reviews?type=recall` / `reviews/{trace_id}` 真实化——页面已加「召回历史」面板（回看 trace 摊开）。
 2. **提权建议池（G2）**：系统主动出建议（workbench §3.2 候选池判据：召回命中高 + 无 scope 冲突 + 已 confirm），一期只有用户手动 promote-scope。
 3. **~~列表游标分页（G4）~~ ✅ 已实现（2026-08-19）**：claims / reviews 列表按 api-contract §5 游标化（evidence 已有）。
-4. **owner 审批面（US-W3）**：团队 owner P1 后再做。
+4. **~~网络视图（G5）~~ ✅ 已实现（2026-08-19）**：`GET /api/v2/workbench/graph` 聚合端点（claim/evidence 节点 + claim_evidence/lineage 边，owner 隔离，`with_evidence` 开关）+ 页面第 5 tab「🕸️ 网络视图」（SVG 力导向布局、点击 claim 高亮 1 跳邻居 + 裁决动作联动、拖拽/缩放/图例）。设计见 [workbench-graph.md](workbench-graph.md)；集成测试 `TestWorkbenchGraph` 4 用例 + 真实库 E2E 验证通过（写 evidence→对账→图含 claim/evidence/支撑边→correct→supersedes 谱系边呈现）。
+5. **owner 审批面（US-W3）**：团队 owner P1 后再做。
 
 ## 8. 验收映射（对应 PRD / workbench 设计）
 
