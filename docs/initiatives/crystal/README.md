@@ -32,8 +32,9 @@ Claim 只存简单断言、推理放谱系边；演变只做推导记录、不�
 |--------|----------------------|------|
 | **M1 建表 + API 骨架** | [foundation](foundation.md)（草稿） · [entity-attributes](entity-attributes.md)（定稿） · [api-contract](api-contract.md) v1 | **已实现（2026-08-18）**：`crystal.*` 七表 + `/api/v2` 21 路由（证据层真实写入 + 其余桩） |
 | **M2 两链路 + 工作台** | [workbench](workbench.md) v1 · [reconciliation-design](reconciliation-design.md) v1 · [recall-design](recall-design.md) v1 · [test-strategy](test-strategy.md) v1 | **已实现（2026-08-19）**：对账写路径 + 召回读路径 + 工作台，`/api/v2` 22 路由全真实（仅 debug 桩） |
-| **M3 旧数据迁移** | [migration-script-design](migration-script-design.md) v1（定稿） · [migration-path](migration-path.md) | **已实现（2026-08-19）**：迁移脚本 + migration_state 表 + admin 端点；**全量迁移（真实容器 27 条）待用户确认** |
-| **M4–M5 迁移收尾** | [migration-path](migration-path.md) · M4 插件切换契约 / M5 退役检查单（**待落**） | 迁移路径已定 Stage A–E |
+| **M3 旧数据迁移** | [migration-script-design](migration-script-design.md) v1（定稿） · [migration-path](migration-path.md) | **已实现（2026-08-19）**：迁移脚本 + migration_state 表 + admin 端点；**全量迁移已执行**（27 条真实记忆 → 27 evidence + 20 claim） |
+| **M4 插件切换（延后）** | [plugin-migration-contract](plugin-migration-contract.md) v1（定稿） · [migration-path](migration-path.md) | **契约已落稿（2026-08-19）**；切换动作延后（用户拍板：避免半切换两套逻辑并存，等 crystal 完整后统一做） |
+| **M5 退役** | [migration-path](migration-path.md) · M5 退役检查单（**待落**） | 迁移路径已定 Stage A–E |
 
 ## 文件地图（各层职责）
 
@@ -50,6 +51,7 @@ Claim 只存简单断言、推理放谱系边；演变只做推导记录、不�
 | [milestone.md](milestone.md) | 规划 | 能力范围 / 节奏 / 研发流程门槛（§3.5） | 独立草稿 |
 | [prd.md](prd.md) | 需求 | 用户故事（US-*）+ 能力验收（A1–A11）+ In/Out 范围 | 独立草稿 |
 | [migration-script-design.md](migration-script-design.md) | 工程 | **迁移脚本设计 v1**（映射规则/幂等/断点续传/回放/验收；M3 前置） | 独立草稿，**已定稿**（M3 按此实现） |
+| [plugin-migration-contract.md](plugin-migration-contract.md) | 工程 | **插件切换契约 v1**（四端接入/回退 + API 映射 + 切换顺序；M4 前置） | 独立草稿，**已定稿**（切换动作延后） |
 | [init_crystal_db.py](../../../apps/api/init_crystal_db.py) | 代码 | **crystal schema 幂等建表脚本**（M1 交付）：只跑 schema.sql crystal 段 + 增量迁移段，绝不触碰 v5；绕开 `init_db.py` 在已建库上因 v5 非幂等 ALTER 报错的阻塞 | 随代码版本化 |
 | [migrate_memories.py](../../../apps/api/migrate_memories.py) | 代码 | **旧数据迁移脚本**（M3 交付）：memories(active)→evidence→对账重生成 claim，幂等可重放/断点续传（--dry-run/--owner） | 随代码版本化 |
 
@@ -59,8 +61,8 @@ Claim 只存简单断言、推理放谱系边；演变只做推导记录、不�
    专项不设 LATEST 指针（避免给整个专项强造单一版本线）。包级配套版本见上表。
 2. **每 M 的前置产物是文档门槛**：见 [milestone.md §3.5](milestone.md)。缺文档不动代码（DOCUMENTATION_GUIDE §5 流程）。
 3. **待落文档进度（2026-08-19）**：M1 前置（API 契约）+ M2 前置（workbench / 对账 / 召回 / 测试策略）+
-   M3 前置（迁移脚本设计）**已全部落稿**；**M1 + M2 + M3 开发均已完成**（建表/API 骨架 + 两链路 + 工作台 +
-   旧数据迁移，见 [STATUS](../../STATUS.md)）；剩 M4 插件切换契约、M5 退役检查单（迁移收尾阶段前置）。
+   M3 前置（迁移脚本设计）+ M4 前置（插件切换契约）**已全部落稿**；**M1 + M2 + M3 开发已完成**（建表/API 骨架 +
+   两链路 + 工作台 + 旧数据迁移，见 [STATUS](../../STATUS.md)）；**M4 切换动作延后**（用户拍板）；剩 M5 退役检查单（迁移收尾阶段前置）。
 4. 新增本主题文档时更新本文文件地图与「当前配套版本」表。
 5. 专项生命周期：立项 → 推进（本目录）→ 交付 → 整目录归档 `docs/archive/initiatives/`。
 
