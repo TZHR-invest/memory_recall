@@ -1,0 +1,793 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Crystal Workbench - Memory Recall 个人工作台</title>
+<style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        background: #f0f4f1;  /* crystal 主色调：冷绿系，与 v5 dashboard 灰蓝区分 */
+        color: #333;
+        padding: 20px;
+    }
+    .container { max-width: 1200px; margin: 0 auto; }
+
+    /* ===== 头部 ===== */
+    header {
+        background: linear-gradient(135deg, #14532d, #166534);  /* crystal 深绿 */
+        color: #fff; border-radius: 12px; padding: 16px 20px; margin-bottom: 20px;
+    }
+    header h1 { font-size: 1.3em; margin-bottom: 10px; }
+    header .sys-badge {
+        display: inline-block; font-size: 0.7em; background: rgba(255,255,255,0.18);
+        padding: 2px 10px; border-radius: 10px; margin-left: 8px; vertical-align: middle;
+        letter-spacing: 0.5px;
+    }
+    .header-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+    .header-row label { font-size: 0.85em; color: #bbf7d0; }
+    .header-row input {
+        flex: 1; min-width: 200px; padding: 8px 10px; border: none; border-radius: 6px; font-size: 0.9em;
+    }
+    .nav-links { display: flex; gap: 14px; margin-top: 10px; font-size: 0.85em; flex-wrap: wrap; }
+    .nav-links a { color: #bbf7d0; text-decoration: none; }
+    .nav-links a:hover { text-decoration: underline; }
+    .nav-links .sep { color: #86efac; opacity: 0.6; }
+
+    /* ===== tab 导航 ===== */
+    .tabs { display: flex; gap: 6px; margin-bottom: 18px; flex-wrap: wrap; }
+    .tab {
+        padding: 9px 18px; border-radius: 8px 8px 0 0; cursor: pointer; font-size: 0.92em; font-weight: 500;
+        background: #dce7de; color: #334155; border: 1px solid #c3d5c8; border-bottom: none;
+        transition: background 0.15s;
+    }
+    .tab:hover { background: #cfe3d4; }
+    .tab.active { background: #fff; color: #166534; border-color: #c3d5c8; box-shadow: 0 -2px 6px rgba(20,83,45,0.08); }
+    .pane { display: none; }
+    .pane.active { display: block; }
+
+    /* ===== 卡片 ===== */
+    .card {
+        background: #fff; border-radius: 12px; padding: 20px; margin-bottom: 20px;
+        box-shadow: 0 2px 8px rgba(20,83,45,0.06); border: 1px solid #e4ede6;
+    }
+    .card h2 { font-size: 1.05em; margin-bottom: 14px; color: #14532d; display: flex; align-items: center; gap: 8px; }
+    .card h2 .badge { font-size: 0.75em; background: #dcfce7; color: #166534; padding: 2px 8px; border-radius: 10px; font-weight: 400; }
+
+    /* ===== 按钮 / 表单 ===== */
+    .btn {
+        padding: 8px 16px; border: none; border-radius: 8px; cursor: pointer; font-size: 0.88em; font-weight: 500;
+        transition: background 0.15s;
+    }
+    .btn-primary { background: #166534; color: #fff; }
+    .btn-primary:hover { background: #14532d; }
+    .btn-secondary { background: #e2e8f0; color: #334155; }
+    .btn-secondary:hover { background: #cbd5e1; }
+    .btn-danger { background: #dc2626; color: #fff; }
+    .btn-danger:hover { background: #b91c1c; }
+    .btn-sm { padding: 4px 10px; font-size: 0.8em; border-radius: 6px; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
+    .toolbar select, .toolbar input {
+        padding: 7px 10px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 0.88em; background: #fff;
+    }
+    .toolbar label { font-size: 0.82em; color: #64748b; }
+
+    input[type=text], input[type=password], textarea {
+        width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 0.9em;
+    }
+    textarea { min-height: 60px; resize: vertical; font-family: inherit; }
+
+    /* ===== 统计卡片 ===== */
+    .stat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+    .stat { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px; text-align: center; }
+    .stat .num { font-size: 1.7em; font-weight: 700; color: #14532d; }
+    .stat .num.small { font-size: 1.25em; }
+    .stat .num.bad { color: #dc2626; }
+    .stat .lbl { font-size: 0.8em; color: #64748b; margin-top: 4px; }
+    .stat .sub { font-size: 0.74em; color: #94a3b8; margin-top: 2px; }
+
+    /* ===== 柱状图 ===== */
+    .bar-chart { display: flex; align-items: flex-end; gap: 4px; height: 120px; padding-top: 8px; }
+    .bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; min-width: 0; }
+    .bar { width: 70%; max-width: 26px; background: #16a34a; border-radius: 3px 3px 0 0; min-height: 2px; transition: height 0.3s; }
+    .bar:hover { background: #15803d; }
+    .bar-col .b-label { font-size: 0.62em; color: #94a3b8; margin-top: 4px; white-space: nowrap; }
+    .bar-col .b-val { font-size: 0.62em; color: #475569; font-weight: 600; }
+
+    /* ===== 列表 ===== */
+    .claim-item {
+        border: 1px solid #e4ede6; border-radius: 10px; padding: 14px 16px; margin-bottom: 10px; background: #fcfdfc;
+        transition: border-color 0.15s;
+    }
+    .claim-item:hover { border-color: #86efac; }
+    .claim-item .stmt { font-size: 0.95em; line-height: 1.5; margin-bottom: 8px; }
+    .claim-item .meta { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; font-size: 0.78em; }
+    .pill {
+        display: inline-block; padding: 2px 9px; border-radius: 10px; font-weight: 500; font-size: 0.85em;
+    }
+    .pill.status-active { background: #dcfce7; color: #166534; }
+    .pill.status-superseded { background: #fef3c7; color: #92400e; }
+    .pill.status-disputed { background: #fee2e2; color: #991b1b; }
+    .pill.status-retracted { background: #e2e8f0; color: #475569; }
+    .pill.kind { background: #e0f2fe; color: #075985; }
+    .pill.scope { background: #f3e8ff; color: #6b21a8; }
+    .pill.conf { background: #f1f5f9; color: #334155; }
+    .claim-item .actions { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
+    .claim-item .actions .hint { font-size: 0.75em; color: #94a3b8; align-self: center; }
+
+    .detail-box { margin-top: 12px; border-top: 1px dashed #cbd5e1; padding-top: 12px; font-size: 0.88em; }
+    .detail-box h4 { color: #14532d; margin: 10px 0 6px; font-size: 0.9em; }
+    .detail-box .sub-item { padding: 6px 8px; background: #f8fafc; border-radius: 6px; margin-bottom: 6px; }
+    .detail-box .sub-item .ev-content { color: #334155; }
+    .detail-box .sub-item .ev-meta { font-size: 0.75em; color: #94a3b8; margin-top: 3px; }
+    .edge-tag { font-size: 0.75em; padding: 1px 7px; border-radius: 8px; background: #e2e8f0; color: #334155; margin-right: 6px; }
+
+    /* ===== 召回 trace ===== */
+    .trace-block { border: 1px solid #e4ede6; border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; background: #fcfdfc; }
+    .trace-block h4 { font-size: 0.9em; color: #14532d; margin-bottom: 8px; }
+    .trace-row { display: flex; gap: 10px; align-items: center; padding: 4px 0; font-size: 0.85em; border-bottom: 1px solid #f1f5f9; }
+    .trace-row:last-child { border-bottom: none; }
+    .trace-row .rank { width: 28px; text-align: right; color: #94a3b8; font-weight: 600; flex-shrink: 0; }
+    .trace-row .score { width: 90px; text-align: right; font-family: ui-monospace, monospace; font-size: 0.82em; flex-shrink: 0; }
+    .trace-row .stmt { flex: 1; }
+    .trunc-reason { font-size: 0.75em; color: #b45309; background: #fef3c7; padding: 1px 7px; border-radius: 8px; }
+
+    /* ===== 模态 ===== */
+    .modal-mask {
+        display: none; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.5); z-index: 100;
+        align-items: center; justify-content: center;
+    }
+    .modal-mask.show { display: flex; }
+    .modal {
+        background: #fff; border-radius: 12px; padding: 22px; width: 520px; max-width: 92vw;
+        box-shadow: 0 20px 50px rgba(0,0,0,0.25);
+    }
+    .modal h3 { font-size: 1.05em; color: #14532d; margin-bottom: 12px; }
+    .modal .field { margin-bottom: 12px; }
+    .modal .field label { display: block; font-size: 0.82em; color: #475569; margin-bottom: 4px; }
+    .modal .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px; }
+
+    /* ===== toast ===== */
+    #toast-box { position: fixed; top: 16px; right: 16px; z-index: 200; display: flex; flex-direction: column; gap: 8px; }
+    .toast {
+        padding: 10px 16px; border-radius: 8px; font-size: 0.88em; color: #fff; box-shadow: 0 4px 12px rgba(0,0,0,0.18);
+        max-width: 360px; animation: slideIn 0.2s ease;
+    }
+    .toast.success { background: #166534; }
+    .toast.error { background: #dc2626; }
+    .toast.info { background: #334155; }
+    @keyframes slideIn { from { transform: translateX(30px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+    .muted { color: #94a3b8; font-size: 0.82em; }
+    .empty { text-align: center; color: #94a3b8; padding: 30px 0; font-size: 0.9em; }
+    .loading { text-align: center; color: #64748b; padding: 20px 0; font-size: 0.9em; }
+    .kv { display: flex; gap: 16px; flex-wrap: wrap; font-size: 0.85em; }
+    .kv .item b { color: #14532d; }
+</style>
+</head>
+<body>
+<div class="container">
+
+    <header>
+        <h1>🧊 Crystal Workbench <span class="sys-badge">crystal 系统 · /api/v2</span></h1>
+        <div class="header-row">
+            <label>API Base</label>
+            <input id="api-base" placeholder="http://localhost:8000" spellcheck="false">
+            <label style="flex:0">API Key</label>
+            <input id="api-key" type="password" placeholder="rk_live_... / rk_test_..." spellcheck="false" style="max-width:320px">
+            <button class="btn btn-primary" onclick="saveSettings()">保存</button>
+        </div>
+        <div class="nav-links">
+            <a href="../dashboard.html">📊 v5 仪表盘</a>
+            <a href="../debug.html">🔬 v5 Debug 台</a>
+            <span class="sep">|</span>
+            <span>🧊 crystal 工作台（当前）</span>
+        </div>
+    </header>
+
+    <div class="tabs">
+        <div class="tab active" data-tab="adjudicate" onclick="switchTab('adjudicate')">⚖️ 裁决面</div>
+        <div class="tab" data-tab="audit" onclick="switchTab('audit')">🛡️ 审计面</div>
+        <div class="tab" data-tab="insight" onclick="switchTab('insight')">📈 洞察面</div>
+        <div class="tab" data-tab="recall" onclick="switchTab('recall')">🔍 召回复盘</div>
+    </div>
+
+    <!-- ============ 裁决面 ============ -->
+    <div class="pane active" id="pane-adjudicate">
+        <div class="card">
+            <h2>我记住了什么 <span class="badge">US-W1 · A6 · 仅自己 owner 数据</span></h2>
+            <div class="toolbar">
+                <label>状态</label>
+                <select id="f-status" onchange="loadClaims()">
+                    <option value="">全部</option>
+                    <option value="active">active</option>
+                    <option value="superseded">superseded</option>
+                    <option value="disputed">disputed</option>
+                    <option value="retracted">retracted</option>
+                </select>
+                <label>类型</label>
+                <select id="f-kind" onchange="loadClaims()">
+                    <option value="">全部</option>
+                    <option value="fact">fact</option>
+                    <option value="preference">preference</option>
+                    <option value="constraint">constraint</option>
+                    <option value="error-solution">error-solution</option>
+                </select>
+                <label>scope</label>
+                <input id="f-scope" type="text" placeholder="留空=全部（含全局）" style="width:220px" onchange="loadClaims()">
+                <button class="btn btn-secondary" onclick="loadClaims()">刷新</button>
+            </div>
+            <div id="claims-list"><div class="empty">加载中…</div></div>
+        </div>
+    </div>
+
+    <!-- ============ 审计面 ============ -->
+    <div class="pane" id="pane-audit">
+        <div class="card">
+            <h2>Scope 提权审计 <span class="badge">US-W2 · A7</span></h2>
+            <div class="muted" style="margin-bottom:12px">
+                一期现状：此处展示已发生的提权审计记录（claim_activity）；系统主动出建议池（候选判据）未实现，见
+                <code>workbench-web-prep.md §5 G2</code>。可对 scope 非空 claim 手动发起提权（裁决面详情内）。
+            </div>
+            <div id="promotion-list"><div class="empty">加载中…</div></div>
+        </div>
+    </div>
+
+    <!-- ============ 洞察面 ============ -->
+    <div class="pane" id="pane-insight">
+        <div class="card">
+            <h2>统计 <span class="badge">US-W4 · A8 · 只统计个人 owner</span></h2>
+            <div id="overview"><div class="loading">加载中…</div></div>
+        </div>
+        <div class="card">
+            <h2>假说池（低置信） <span class="badge">US-W5 补充 · content_confidence &lt; 0.4 或 UNKNOWN · 只标注不丢弃</span></h2>
+            <div class="muted" style="margin-bottom:12px">低置信 claim 永久存储、可检索、可确认升级（confirm 后脱离低置信）。</div>
+            <div id="hypothesis-list"><div class="empty">加载中…</div></div>
+        </div>
+    </div>
+
+    <!-- ============ 召回复盘 ============ -->
+    <div class="pane" id="pane-recall">
+        <div class="card">
+            <h2>召回实验 <span class="badge">US-S2 / US-W5 · A5 · explain 摊开，无静默丢弃</span></h2>
+            <div class="toolbar">
+                <label>query</label>
+                <input id="s-query" type="text" placeholder="查询文本（如：正式规划文档在哪）" style="flex:1; min-width:200px">
+                <label>scope</label>
+                <input id="s-scope" type="text" placeholder="可选" style="width:180px">
+                <label>limit</label>
+                <input id="s-limit" type="number" value="10" min="1" max="100" style="width:70px">
+                <button class="btn btn-primary" onclick="doSearch()">召回</button>
+            </div>
+            <div id="recall-result"><div class="empty">输入 query 后点击「召回」—— 结果将摊开粗排全貌 / 精排分数 / 截断项 / 低置信标注。</div></div>
+        </div>
+    </div>
+
+</div>
+
+<!-- ===== 模态 ===== -->
+<div class="modal-mask" id="modal-mask" onclick="if(event.target===this)closeModal()">
+    <div class="modal">
+        <h3 id="modal-title"></h3>
+        <div id="modal-body"></div>
+        <div class="modal-actions">
+            <button class="btn btn-secondary" onclick="closeModal()">取消</button>
+            <button class="btn btn-primary" id="modal-ok" onclick="modalOk()">确定</button>
+        </div>
+    </div>
+</div>
+
+<div id="toast-box"></div>
+
+<script>
+'use strict';
+/* ================= 共享基建 ================= */
+
+const LS_KEY = 'memory_recall_crystal_api_key';
+const LS_BASE = 'memory_recall_crystal_api_base';
+
+function apiBase() {
+    return document.getElementById('api-base').value.trim() || `http://${location.hostname || 'localhost'}:8000`;
+}
+function apiKey() {
+    return document.getElementById('api-key').value.trim();
+}
+function saveSettings() {
+    localStorage.setItem(LS_KEY, apiKey());
+    localStorage.setItem(LS_BASE, document.getElementById('api-base').value.trim());
+    toast('设置已保存', 'success');
+}
+
+function headers() {
+    const h = { 'Content-Type': 'application/json' };
+    const k = apiKey();
+    if (k) h['X-API-Key'] = k;
+    return h;
+}
+
+/** 统一信封解包：返回 data；抛错带后端 message */
+async function api(path, opts = {}) {
+    const url = apiBase().replace(/\/+$/, '') + path;
+    let res;
+    try {
+        res = await fetch(url, { ...opts, headers: { ...headers(), ...(opts.headers || {}) } });
+    } catch (e) {
+        throw new Error(`无法连接 API（${url}）：${e.message}`);
+    }
+    let body = null;
+    try { body = await res.json(); } catch (e) { /* 非 JSON */ }
+    if (!res.ok || (body && typeof body.code === 'number' && body.code !== 0)) {
+        const msg = (body && (body.message || body.detail)) || `HTTP ${res.status}`;
+        const err = new Error(msg);
+        err.status = res.status;
+        throw err;
+    }
+    return body && typeof body.data !== 'undefined' ? body.data : body;
+}
+
+function esc(s) {
+    return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+function toast(msg, type = 'info') {
+    const box = document.getElementById('toast-box');
+    const el = document.createElement('div');
+    el.className = `toast ${type}`;
+    el.textContent = msg;
+    box.appendChild(el);
+    setTimeout(() => el.remove(), 3500);
+}
+function fmtConf(c) {
+    if (c == null) return 'UNKNOWN';
+    return c.toFixed(3);
+}
+function confLabel(c) {
+    if (c == null) return '未知';
+    if (c < 0.4) return '低';
+    if (c <= 0.7) return '中';
+    return '高';
+}
+
+/* ================= Tab 切换 ================= */
+function switchTab(name) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+    document.querySelectorAll('.pane').forEach(p => p.classList.toggle('active', p.id === `pane-${name}`));
+    if (name === 'insight') loadInsight();
+    if (name === 'audit') loadPromotions();
+    if (name === 'adjudicate') loadClaims();
+}
+
+/* ================= 模态 ================= */
+let _modalOk = null;
+function openModal(title, bodyHtml, okFn, okLabel = '确定') {
+    document.getElementById('modal-title').textContent = title;
+    document.getElementById('modal-body').innerHTML = bodyHtml;
+    document.getElementById('modal-ok').textContent = okLabel;
+    _modalOk = okFn;
+    document.getElementById('modal-mask').classList.add('show');
+}
+function closeModal() {
+    document.getElementById('modal-mask').classList.remove('show');
+    _modalOk = null;
+}
+async function modalOk() {
+    if (!_modalOk) { closeModal(); return; }
+    try {
+        await _modalOk();
+        closeModal();
+    } catch (e) {
+        toast(e.message, 'error');
+    }
+}
+
+/* ================= 裁决面 ================= */
+
+async function loadClaims() {
+    const list = document.getElementById('claims-list');
+    list.innerHTML = '<div class="loading">加载中…</div>';
+    const params = new URLSearchParams();
+    const st = document.getElementById('f-status').value;
+    const kd = document.getElementById('f-kind').value;
+    const sc = document.getElementById('f-scope').value.trim();
+    if (st) params.set('status', st);
+    if (kd) params.set('claim_kind', kd);
+    if (sc) params.set('scope', sc);
+    params.set('limit', '100');
+    try {
+        const data = await api(`/api/v2/workbench/claims?${params}`);
+        renderClaims(list, data.items || []);
+    } catch (e) {
+        list.innerHTML = `<div class="empty">加载失败：${esc(e.message)}</div>`;
+        toast(e.message, 'error');
+    }
+}
+
+function renderClaims(el, items) {
+    if (!items.length) {
+        el.innerHTML = '<div class="empty">没有 claim。系统对账后会自动生成 claim，或先写一条 evidence。</div>';
+        return;
+    }
+    el.innerHTML = items.map(c => claimItemHtml(c)).join('');
+}
+
+function claimItemHtml(c) {
+    return `
+    <div class="claim-item" id="claim-${esc(c.claim_id)}">
+        <div class="stmt">${esc(c.statement)}</div>
+        <div class="meta">
+            <span class="pill status-${esc(c.status || 'active')}">${esc(c.status || 'active')}</span>
+            <span class="pill kind">${esc(c.claim_kind || '-')}</span>
+            <span class="pill scope">${c.scope == null ? '全局 (NULL)' : esc(c.scope)}</span>
+            <span class="pill conf">置信 ${esc(fmtConf(c.content_confidence))}（${confLabel(c.content_confidence)}）</span>
+            <span class="muted">${esc((c.created_at || '').replace('T', ' ').slice(0, 19))}</span>
+        </div>
+        <div class="actions">
+            <button class="btn btn-primary btn-sm" onclick="doConfirm('${esc(c.claim_id)}')">✓ 确认</button>
+            <button class="btn btn-secondary btn-sm" onclick="openCorrect('${esc(c.claim_id)}', '${esc(c.statement.replace(/'/g, "\\'"))}')">✎ 纠错</button>
+            <button class="btn btn-danger btn-sm" onclick="openForget('${esc(c.claim_id)}')">🗑 遗忘</button>
+            ${c.scope != null && c.status === 'active' ? `<button class="btn btn-secondary btn-sm" onclick="openPromote('${esc(c.claim_id)}')">⬆ 提权建议</button>` : ''}
+            <button class="btn btn-secondary btn-sm" onclick="toggleDetail('${esc(c.claim_id)}')">详情/谱系</button>
+        </div>
+        <div class="detail-box" id="detail-${esc(c.claim_id)}" style="display:none"></div>
+    </div>`;
+}
+
+async function toggleDetail(claimId) {
+    const box = document.getElementById(`detail-${claimId}`);
+    if (box.style.display !== 'none') { box.style.display = 'none'; return; }
+    box.style.display = 'block';
+    box.innerHTML = '<div class="loading">加载详情…</div>';
+    try {
+        const d = await api(`/api/v2/claims/${encodeURIComponent(claimId)}`);
+        box.innerHTML = renderDetail(d);
+    } catch (e) {
+        box.innerHTML = `<div class="muted">详情加载失败：${esc(e.message)}</div>`;
+    }
+}
+
+function renderDetail(d) {
+    let html = '<h4>证据（claim_evidence，不可再生地基）</h4>';
+    if (!d.evidences || !d.evidences.length) {
+        html += '<div class="muted">无证据引用</div>';
+    } else {
+        html += d.evidences.map(ev => `
+            <div class="sub-item">
+                <div class="ev-content">${esc(ev.content)}</div>
+                <div class="ev-meta">
+                    <span class="edge-tag">${esc(ev.role || 'support')}</span>
+                    ${esc(ev.source_kind || '-')} · ${esc(ev.scope == null ? '全局' : ev.scope)}
+                    · ${esc((ev.observed_at || '').replace('T', ' ').slice(0, 19))}
+                </div>
+            </div>`).join('');
+    }
+    html += '<h4>谱系（出边）</h4>';
+    if (!d.lineage || !d.lineage.out.length) {
+        html += '<div class="muted">无出边</div>';
+    } else {
+        html += d.lineage.out.map(e => `
+            <div class="sub-item">
+                <span class="edge-tag">${esc(e.edge_type)}</span>
+                ${esc(e.from_claim_id.slice(0, 12))}… → ${esc(e.to_claim_id ? e.to_claim_id.slice(0, 12) + '…' : 'NULL')}
+                <div class="ev-meta">${esc(e.reason || '')} · ${esc((e.created_at || '').replace('T', ' ').slice(0, 19))}</div>
+            </div>`).join('');
+    }
+    html += '<h4>谱系（入边）</h4>';
+    if (!d.lineage || !d.lineage.in.length) {
+        html += '<div class="muted">无入边</div>';
+    } else {
+        html += d.lineage.in.map(e => `
+            <div class="sub-item">
+                <span class="edge-tag">${esc(e.edge_type)}</span>
+                ${esc(e.from_claim_id.slice(0, 12))}… → ${esc(e.to_claim_id.slice(0, 12))}…
+                <div class="ev-meta">${esc(e.reason || '')} · ${esc((e.created_at || '').replace('T', ' ').slice(0, 19))}</div>
+            </div>`).join('');
+    }
+    html += '<h4>使用统计（价值引擎一期恒 0）</h4>';
+    if (d.usage) {
+        html += `<div class="kv">
+            <span class="item">复用 <b>${esc(d.usage.reuse_count ?? 0)}</b></span>
+            <span class="item">outcome 好 <b>${esc(d.usage.outcome_good ?? 0)}</b></span>
+            <span class="item">outcome 坏 <b>${esc(d.usage.outcome_bad ?? 0)}</b></span>
+        </div>`;
+    }
+    return html;
+}
+
+async function doConfirm(claimId) {
+    try {
+        const r = await api(`/api/v2/workbench/claims/${encodeURIComponent(claimId)}/confirm`, { method: 'POST', body: '{}' });
+        toast(`确认成功：content 置信 +Δ（${fmtConf(r.content_confidence)}）`, 'success');
+        loadClaims();
+    } catch (e) {
+        toast(`确认失败：${e.message}`, 'error');
+    }
+}
+
+function openCorrect(claimId, oldStmt) {
+    openModal('纠错（= 特权 Evidence → supersede）',
+        `<div class="field"><label>原 claim</label><div class="muted">${esc(oldStmt)}</div></div>
+         <div class="field"><label>正确版本 *</label><textarea id="m-new-stmt" placeholder="用户给出的正确版本"></textarea></div>
+         <div class="field"><label>原因（可选）</label><input id="m-reason" type="text" placeholder="如：会话中纠正"></div>`,
+        async () => {
+            const stmt = document.getElementById('m-new-stmt').value.trim();
+            if (!stmt) throw new Error('正确版本不能为空');
+            const reason = document.getElementById('m-reason').value.trim() || '用户纠正';
+            const r = await api(`/api/v2/workbench/claims/${encodeURIComponent(claimId)}/correct`, {
+                method: 'POST', body: JSON.stringify({ new_statement: stmt, reason })
+            });
+            toast(`纠错完成：${r.superseded_claim_id ? '旧 claim 已 supersede' : '已处理'}，新 claim ${r.new_claim_id || ''}`, 'success');
+            loadClaims();
+        }, '提交纠错');
+}
+
+function openForget(claimId) {
+    openModal('遗忘（= retract 边，claim 失活）',
+        `<div class="field"><label>原因（可选）</label><input id="m-reason" type="text" placeholder="如：用户遗忘"></div>
+         <div class="muted">被遗忘的 claim 不自动恢复；可再纠错显式重建（v1 #27）。证据不删除。</div>`,
+        async () => {
+            const reason = document.getElementById('m-reason').value.trim() || '用户遗忘';
+            const r = await api(`/api/v2/workbench/claims/${encodeURIComponent(claimId)}/forget`, {
+                method: 'POST', body: JSON.stringify({ reason })
+            });
+            toast(`遗忘成功：claim 状态 → ${esc(r.status || 'retracted')}`, 'success');
+            loadClaims();
+        }, '确认遗忘');
+}
+
+function openPromote(claimId) {
+    openModal('Scope 提权（US-W2 / A7）',
+        `<div class="field"><label>动作</label>
+            <select id="m-action">
+                <option value="adopt">采纳（创建无 scope 新 claim + generalizes 边）</option>
+                <option value="reject">拒绝（仅留审计痕迹）</option>
+            </select></div>
+         <div class="field"><label>理由（可选）</label><input id="m-reason" type="text"></div>
+         <div class="muted">一期为手动提权；系统自动建议池未实现（G2）。采纳后原 claim 不受影响，新 claim 继承证据。</div>`,
+        async () => {
+            const action = document.getElementById('m-action').value;
+            const reason = document.getElementById('m-reason').value.trim() || null;
+            const r = await api(`/api/v2/workbench/claims/${encodeURIComponent(claimId)}/promote-scope`, {
+                method: 'POST', body: JSON.stringify({ action, reason })
+            });
+            toast(`提权${action === 'adopt' ? `采纳：新 claim ${r.new_claim_id}` : '拒绝（已留痕）'}`, 'success');
+            loadClaims();
+        }, '提交');
+}
+
+/* ================= 审计面 ================= */
+
+async function loadPromotions() {
+    const el = document.getElementById('promotion-list');
+    el.innerHTML = '<div class="loading">加载中…</div>';
+    try {
+        const data = await api('/api/v2/workbench/reviews?type=promotion&limit=50');
+        const items = data.items || [];
+        if (!items.length) {
+            el.innerHTML = '<div class="empty">暂无提权审计记录。</div>';
+            return;
+        }
+        el.innerHTML = items.map(it => {
+            let detail = {};
+            try { detail = JSON.parse(it.detail || '{}'); } catch (e) { /* ignore */ }
+            const decision = detail.decision || '?';
+            const decPill = decision === 'adopt'
+                ? '<span class="pill status-active">采纳</span>'
+                : (decision === 'reject' ? '<span class="pill status-retracted">拒绝</span>' : `<span class="pill">${esc(decision)}</span>`);
+            return `<div class="claim-item">
+                <div class="stmt">claim <code>${esc(it.claim_id.slice(0, 12))}…</code></div>
+                <div class="meta">
+                    ${decPill}
+                    <span class="muted">${esc((it.created_at || '').replace('T', ' ').slice(0, 19))}</span>
+                    ${detail.reason ? `<span class="muted">理由：${esc(detail.reason)}</span>` : ''}
+                    ${detail.new_claim_id ? `<span class="muted">新 claim：${esc(detail.new_claim_id.slice(0, 12))}…</span>` : ''}
+                </div>
+            </div>`;
+        }).join('');
+    } catch (e) {
+        el.innerHTML = `<div class="empty">加载失败：${esc(e.message)}</div>`;
+    }
+}
+
+/* ================= 洞察面 ================= */
+
+async function loadInsight() {
+    loadOverview();
+    loadHypothesis();
+}
+
+async function loadOverview() {
+    const el = document.getElementById('overview');
+    try {
+        const o = await api('/api/v2/workbench/overview');
+        const topo = o.topology || {};
+        const claims = topo.claims || {};
+        const edges = topo.lineage_edges || {};
+        const vd = (o.value_distribution || {}).content_confidence || {};
+        const sk = o.source_kind_composition || {};
+        const ph = o.processing_health || {};
+
+        // 拓扑
+        let topoHtml = '<div class="stat-grid">';
+        const statusMeta = {
+            active: ['active', ''], superseded: ['superseded', 'small'], disputed: ['disputed', 'small'], retracted: ['retracted', 'small']
+        };
+        ['active', 'superseded', 'disputed', 'retracted'].forEach(s => {
+            const [lbl, cls] = statusMeta[s];
+            topoHtml += `<div class="stat"><div class="num ${cls}">${esc(claims[s] ?? 0)}</div><div class="lbl">claim ${lbl}</div></div>`;
+        });
+        topoHtml += `<div class="stat"><div class="num small">${esc(topo.evidence_links ?? 0)}</div><div class="lbl">证据关联</div></div>`;
+        ['supersedes', 'generalizes', 'retracts'].forEach(t => {
+            if (edges[t]) topoHtml += `<div class="stat"><div class="num small">${esc(edges[t])}</div><div class="lbl">边 ${t}</div></div>`;
+        });
+        topoHtml += '</div>';
+        el.innerHTML = `<h3 style="font-size:0.92em;color:#166534;margin-bottom:10px">拓扑</h3>${topoHtml}`;
+
+        // 价值分布（柱状图）
+        const buckets = [
+            ['UNKNOWN', vd.unknown ?? 0], ['<0.4', vd.low ?? 0], ['0.4–0.7', vd.mid ?? 0], ['>0.7', vd.high ?? 0]
+        ];
+        const max = Math.max(1, ...buckets.map(b => b[1]));
+        let barHtml = '<div class="bar-chart">' + buckets.map(b => `
+            <div class="bar-col">
+                <div class="b-val">${b[1]}</div>
+                <div class="bar" style="height:${Math.round(b[1] / max * 100)}%"></div>
+                <div class="b-label">${b[0]}</div>
+            </div>`).join('') + '</div>';
+        el.innerHTML += `<h3 style="font-size:0.92em;color:#166534;margin:16px 0 10px">价值分布（content_confidence）</h3>${barHtml}`;
+
+        // source_kind 构成
+        let skHtml = '<div class="stat-grid">';
+        Object.entries(sk).forEach(([k, v]) => {
+            skHtml += `<div class="stat"><div class="num small">${esc(v)}</div><div class="lbl">evidence ${esc(k)}</div></div>`;
+        });
+        if (!Object.keys(sk).length) skHtml += '<div class="stat"><div class="num small">0</div><div class="lbl">evidence</div></div>';
+        skHtml += '</div>';
+        el.innerHTML += `<h3 style="font-size:0.92em;color:#166534;margin:16px 0 10px">source_kind 构成</h3>${skHtml}`;
+
+        // 处理健康
+        let phHtml = '<div class="stat-grid">';
+        ['pending', 'processing', 'done', 'failed'].forEach(s => {
+            if (ph[s] != null) phHtml += `<div class="stat"><div class="num ${s === 'failed' ? 'bad' : 'small'}">${esc(ph[s])}</div><div class="lbl">${s}</div></div>`;
+        });
+        if (!Object.keys(ph).length) phHtml += '<div class="stat"><div class="num small">0</div><div class="lbl">处理中</div></div>';
+        phHtml += '</div>';
+        el.innerHTML += `<h3 style="font-size:0.92em;color:#166534;margin:16px 0 10px">处理健康（evidence_processing）</h3>${phHtml}`;
+    } catch (e) {
+        el.innerHTML = `<div class="empty">统计加载失败：${esc(e.message)}</div>`;
+        toast(e.message, 'error');
+    }
+}
+
+async function loadHypothesis() {
+    const el = document.getElementById('hypothesis-list');
+    try {
+        const data = await api('/api/v2/workbench/reviews?type=low_confidence&limit=50');
+        const items = data.items || [];
+        if (!items.length) {
+            el.innerHTML = '<div class="empty">暂无低置信 claim（< 0.4 或 UNKNOWN）。</div>';
+            return;
+        }
+        el.innerHTML = items.map(c => `
+            <div class="claim-item">
+                <div class="stmt">${esc(c.statement)}</div>
+                <div class="meta">
+                    <span class="pill conf">${esc(fmtConf(c.content_confidence))}（${confLabel(c.content_confidence)}）</span>
+                    <span class="pill kind">${esc(c.claim_kind || '-')}</span>
+                    <span class="pill scope">${c.scope == null ? '全局' : esc(c.scope)}</span>
+                </div>
+                <div class="actions">
+                    <button class="btn btn-primary btn-sm" onclick="doConfirm('${esc(c.claim_id)}')">✓ 确认升级</button>
+                    <button class="btn btn-secondary btn-sm" onclick="toggleDetail('${esc(c.claim_id)}')">详情</button>
+                </div>
+                <div class="detail-box" id="detail-${esc(c.claim_id)}" style="display:none"></div>
+            </div>`).join('');
+    } catch (e) {
+        el.innerHTML = `<div class="empty">加载失败：${esc(e.message)}</div>`;
+    }
+}
+
+/* ================= 召回复盘 ================= */
+
+async function doSearch() {
+    const el = document.getElementById('recall-result');
+    const q = document.getElementById('s-query').value.trim();
+    if (!q) { toast('请输入 query', 'error'); return; }
+    const scope = document.getElementById('s-scope').value.trim() || null;
+    const limit = parseInt(document.getElementById('s-limit').value, 10) || 10;
+    el.innerHTML = '<div class="loading">召回中…</div>';
+    try {
+        const data = await api('/api/v2/search', {
+            method: 'POST',
+            body: JSON.stringify({ query: q, scope, limit, include_explain: true })
+        });
+        renderRecall(el, data, q, scope, limit);
+    } catch (e) {
+        el.innerHTML = `<div class="empty">召回失败：${esc(e.message)}</div>`;
+        toast(e.message, 'error');
+    }
+}
+
+function renderRecall(el, data, q, scope, limit) {
+    const results = data.results || [];
+    const explain = data.explain || {};
+    let html = '';
+
+    // 精排结果
+    html += `<h3 style="font-size:0.95em;color:#14532d;margin-bottom:8px">精排结果（${results.length}）</h3>`;
+    if (!results.length) {
+        html += '<div class="empty">无结果。</div>';
+    } else {
+        html += results.map((r, i) => `
+            <div class="trace-block">
+                <div class="trace-row">
+                    <div class="rank">#${i + 1}</div>
+                    <div class="stmt">${esc(r.statement)}
+                        <div class="meta" style="margin-top:3px">
+                            <span class="pill status-active">${esc(r.status || 'active')}</span>
+                            <span class="pill kind">${esc(r.claim_kind || '-')}</span>
+                            <span class="pill conf">${esc(fmtConf(r.content_confidence))}</span>
+                        </div>
+                    </div>
+                    <div class="score">
+                        ${r.scores ? `rel ${r.scores.relevance?.toFixed?.(3) ?? '-'}<br>reuse ${r.scores.reuse?.toFixed?.(3) ?? '-'}<br>final ${r.scores.final?.toFixed?.(3) ?? '-'}` : ''}
+                    </div>                </div>
+            </div>`).join('');
+    }
+
+    // explain 摊开
+    html += `<h3 style="font-size:0.95em;color:#14532d;margin:16px 0 8px">Explain（无静默丢弃）</h3>`;
+
+    if (explain.prefilter) {
+        html += `<div class="trace-block"><h4>① 预过滤</h4><div class="kv">
+            <span class="item">owner <b>${esc((explain.prefilter.owner_id || '').slice(0, 8))}…</b></span>
+            <span class="item">scope 命中 <b>${esc(explain.prefilter.scope_matched ?? 0)}</b></span>
+            <span class="item">active-only <b>${explain.prefilter.active_only ? '是' : '否'}</b></span>
+        </div></div>`;
+    }
+    if (explain.candidates && explain.candidates.length) {
+        html += `<div class="trace-block"><h4>② 粗排候选（${explain.candidates.length}）</h4>` +
+            explain.candidates.map(c => `<div class="trace-row">
+                <div class="rank">#${c.rank ?? '-'}</div>
+                <div class="stmt muted">${esc((c.claim_id || '').slice(0, 12))}…</div>
+                <div class="score">rel ${c.relevance?.toFixed?.(3) ?? c.relevance ?? '-'}</div>
+            </div>`).join('') + '</div>';
+    }
+    if (explain.truncated && explain.truncated.length) {
+        html += `<div class="trace-block"><h4>③ 截断项（cap 砍掉，可见不丢弃）</h4>` +
+            explain.truncated.map(t => `<div class="trace-row">
+                <div class="rank">#${t.rank ?? '-'}</div>
+                <div class="stmt muted">${esc((t.claim_id || '').slice(0, 12))}…</div>
+                <div class="score">final ${t.final?.toFixed?.(3) ?? '-'}</div>
+                <span class="trunc-reason">${esc(t.reason || 'cap')}</span>
+            </div>`).join('') + '</div>';
+    } else if (explain.candidates) {
+        html += `<div class="trace-block"><h4>③ 截断项</h4><div class="muted">无（全部候选进入精排结果）</div></div>`;
+    }
+    if (explain.low_confidence && explain.low_confidence.length) {
+        html += `<div class="trace-block"><h4>④ 低置信标注</h4>` +
+            explain.low_confidence.map(l => `<div class="trace-row">
+                <div class="stmt muted">${esc((l.claim_id || '').slice(0, 12))}…</div>
+                <div class="score">conf ${l.content_confidence?.toFixed?.(3) ?? 'UNKNOWN'}</div>
+            </div>`).join('') + '</div>';
+    }
+    if (!explain.prefilter && !explain.candidates && !explain.truncated && !explain.low_confidence) {
+        html += '<div class="muted">后端未返回 explain（可能未开启 include_explain）。</div>';
+    }
+    el.innerHTML = html;
+}
+
+/* ================= 初始化 ================= */
+(function init() {
+    const savedKey = localStorage.getItem(LS_KEY);
+    const savedBase = localStorage.getItem(LS_BASE);
+    if (savedKey) document.getElementById('api-key').value = savedKey;
+    if (savedBase) document.getElementById('api-base').value = savedBase;
+    loadClaims();
+})();
+</script>
+</body>
+</html>
