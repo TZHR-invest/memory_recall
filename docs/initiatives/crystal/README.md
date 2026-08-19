@@ -44,6 +44,7 @@ Claim 只存简单断言、推理放谱系边；演变只做推导记录、不�
 | [entity-attributes.md](entity-attributes.md) | 落库 | crystal schema（evidence/claim/lineage_edge/claim_evidence/claim_usage/claim_activity 表字段/索引/枚举）**3 待定项已定案（2026-08-18）** | 独立草稿，**已定稿**（M1 可照此建表） |
 | [api-contract.md](api-contract.md) | 工程 | **crystal API 契约 v1**（/api/v2 路由表、鉴权映射、错误规范、幂等） | 独立草稿（M1 前置，已落） |
 | [workbench.md](workbench.md) | 工程 | **workbench (MR-011) 设计 v1**（裁决面+洞察面双轨 API/权限） | 独立草稿（M2 前置，已落） |
+| [workbench-web-prep.md](workbench-web-prep.md) | 工程 | **workbench web 开发准备 v1**（web 页面范围/规格/后端差距清单/任务分解；**页面 v1 已实现，2026-08-19**） | 独立草稿（web 开发启动前置，页面已按此实现） |
 | [reconciliation-design.md](reconciliation-design.md) | 工程 | **对账技术设计 v1**（worker/事务/retry/reinforce 计分强度权重表） | 独立草稿（M2 前置，已落） |
 | [recall-design.md](recall-design.md) | 工程 | **召回技术设计 v1**（三级管道/精排公式/截断/trace 契约） | 独立草稿（M2 前置，已落） |
 | [test-strategy.md](test-strategy.md) | 工程 | **crystal 测试策略**（分层/矩阵/每 M 出口） | 独立草稿（M2 前置，已落） |
@@ -64,6 +65,7 @@ Claim 只存简单断言、推理放谱系边；演变只做推导记录、不�
 3. **待落文档进度（2026-08-19）**：M1 前置（API 契约）+ M2 前置（workbench / 对账 / 召回 / 测试策略）+
    M3 前置（迁移脚本设计）+ M4 前置（插件切换契约）**已全部落稿**；**M1 + M2 + M3 开发已完成**（建表/API 骨架 +
    两链路 + 工作台 + 旧数据迁移，见 [STATUS](../../STATUS.md)）；**M4 切换动作延后**（用户拍板）；**M5 退役检查单已落稿**（退役条件未满足，等 crystal 稳定观察）。
+   **web 工作台开发准备已落稿**（[workbench-web-prep.md](workbench-web-prep.md)，2026-08-19：范围/页面规格/后端差距/任务分解）。
 4. 新增本主题文档时更新本文文件地图与「当前配套版本」表。
 5. 专项生命周期：立项 → 推进（本目录）→ 交付 → 整目录归档 `docs/archive/initiatives/`。
 
