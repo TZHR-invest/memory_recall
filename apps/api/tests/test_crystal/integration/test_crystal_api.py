@@ -170,6 +170,19 @@ class TestSchemaMatchesDesign:
             "last_used_at": "timestamp with time zone",
             "updated_at": "timestamp with time zone",
         },
+        "migration_state": {
+            "run_id": "text",
+            "owner_id": "text",
+            "total": "integer",
+            "migrated": "integer",
+            "skipped": "integer",
+            "failed": "integer",
+            "last_memory_id": "text",
+            "status": "text",
+            "error": "text",
+            "created_at": "timestamp with time zone",
+            "updated_at": "timestamp with time zone",
+        },
     }
 
     @pytest.mark.anyio
@@ -443,11 +456,10 @@ class TestEvidenceAPI:
 class TestStubEndpoints:
     @pytest.mark.anyio
     async def test_stub_501(self, client, test_key):
-        # search 已在 M2 实现；用仍为桩的 migrate 端点测 501
-        resp = await client.post(
-            "/api/v2/migrate/run",
+        # search/migrate 已在 M2/M3 实现；用仍为桩的 debug 端点测 501
+        resp = await client.get(
+            "/api/v2/debug/traces",
             headers={"X-API-Key": test_key["api_key"]},
-            json={},
         )
         assert resp.status_code == 501
         assert resp.json()["code"] == 501
@@ -865,3 +877,136 @@ class TestWorkbench:
             json={},
         )
         assert resp.status_code == 404  # 他人数据不可见 → 404（不泄露存在性）
+
+
+# ==================== M3：迁移（A9 幂等重放 / 断点续传） ====================
+
+
+class TestMigration:
+    async def _fresh_key(self):
+        """创建独立测试 key（迁移测试各自隔离，避免 owner 前缀匹配交叉污染）"""
+        from src.api.auth import AuthService
+
+        auth = AuthService()
+        result = await auth.create_key(
+            user_id="crystal-mig-test",
+            user_name="迁移测试",
+            name="crystal_test_migration",
+            permissions=["read", "write", "delete", "admin"],
+            is_test=True,
+        )
+        return {"api_key": result.key, "key_id": str(result.id)}
+
+    @pytest.mark.anyio
+    async def test_migration_idempotent_replay(self, test_db):
+        """迁移幂等：跑两次 migrated=0，全部 skipped（A9）"""
+        from migrate_memories import (
+            migrate_idempotency_key,
+            parse_container_tag,
+            run_migration,
+        )
+        from src.database import db
+
+        key = await self._fresh_key()
+
+        # 造 v5 测试记忆（用户级 + 项目级）
+        await db.execute(
+            """INSERT INTO memories (id, container_tag, content, is_latest, is_forgotten, created_at)
+               VALUES ('mig-test-1', $1, '迁移测试记忆A', TRUE, FALSE, NOW())""",
+            key["key_id"],
+        )
+        await db.execute(
+            """INSERT INTO memories (id, container_tag, content, is_latest, is_forgotten, created_at)
+               VALUES ('mig-test-2', $1, '迁移测试记忆B', TRUE, FALSE, NOW())""",
+            f"{key['key_id']}_project-mig-test",
+        )
+        # 孤儿旧版本不迁移
+        await db.execute(
+            """INSERT INTO memories (id, container_tag, content, is_latest, is_forgotten, created_at)
+               VALUES ('mig-test-3', $1, '孤儿旧版本', FALSE, FALSE, NOW())""",
+            key["key_id"],
+        )
+
+        # 第一次迁移
+        stats1 = await run_migration(owner_id=key["key_id"])
+        assert stats1["total"] == 2  # 只有 2 条 active
+        assert stats1["migrated"] == 2
+        assert stats1["skipped"] == 0
+        assert stats1["status"] == "done"
+
+        # 第二次迁移（幂等重放）
+        stats2 = await run_migration(owner_id=key["key_id"])
+        assert stats2["total"] == 2
+        assert stats2["migrated"] == 0
+        assert stats2["skipped"] == 2  # 全部幂等命中跳过
+        assert stats2["status"] == "done"
+
+        # evidence 落库验证（幂等键）
+        ev_count = await db.fetchval(
+            "SELECT COUNT(*) FROM crystal.evidence WHERE owner_id=$1",
+            key["key_id"],
+        )
+        assert ev_count == 2
+        # 孤儿旧版本不迁移
+        idem3 = migrate_idempotency_key("mig-test-3")
+        orphan_ev = await db.fetchval(
+            "SELECT COUNT(*) FROM crystal.evidence WHERE idempotency_key=$1", idem3
+        )
+        assert orphan_ev == 0
+
+    @pytest.mark.anyio
+    async def test_parse_container_tag(self, test_key):
+        """container_tag 解析（migration-script-design §1）"""
+        from migrate_memories import parse_container_tag
+
+        keys = {test_key["key_id"]: "user"}
+        # 用户级
+        assert parse_container_tag(test_key["key_id"], keys) == {
+            "scope": None,
+            "owner_id": test_key["key_id"],
+        }
+        # 项目级
+        assert parse_container_tag(f"{test_key['key_id']}_project-myapp", keys) == {
+            "scope": "project-myapp",
+            "owner_id": test_key["key_id"],
+        }
+        # 无法归属
+        assert parse_container_tag("test_perf_container", keys) is None
+        assert parse_container_tag("nonexistent-key_project-x", keys) is None
+
+    @pytest.mark.anyio
+    async def test_migration_state_tracks_progress(self, test_db):
+        """迁移状态落 migration_state（断点续传依据）"""
+        from migrate_memories import run_migration
+        from src.database import db
+
+        key = await self._fresh_key()
+
+        await db.execute(
+            """INSERT INTO memories (id, container_tag, content, is_latest, is_forgotten, created_at)
+               VALUES ('mig-state-1', $1, '状态记录测试', TRUE, FALSE, NOW())""",
+            key["key_id"],
+        )
+
+        stats = await run_migration(owner_id=key["key_id"])
+        assert stats["run_id"].startswith("mig_")
+
+        row = await db.fetchrow(
+            "SELECT * FROM crystal.migration_state WHERE run_id=$1", stats["run_id"]
+        )
+        assert row is not None
+        assert row["status"] == "done"
+        assert row["total"] == 1
+        assert row["migrated"] == 1
+
+    @pytest.mark.anyio
+    async def test_migrate_endpoint_requires_admin(self, client, test_key):
+        """/api/v2/migrate/run 需 admin（is_test=True 的 key 算 admin，A11）"""
+        # is_test=True → admin，应该 202；owner_id 指向不存在的 key → 后台迁移 0 条无副作用
+        resp = await client.post(
+            "/api/v2/migrate/run",
+            headers={"X-API-Key": test_key["api_key"]},
+            params={"owner_id": "no-such-key-for-test"},
+        )
+        assert resp.status_code == 202
+        assert resp.json()["data"]["run_id"].startswith("mig_")

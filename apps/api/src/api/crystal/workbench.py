@@ -391,7 +391,7 @@ async def workbench_claims(
         conditions.append(f"claim_kind=${len(params) + 1}")
         params.append(claim_kind)
     if scope is not None:
-        conditions.append(f"(scope=${len(params) + 1} OR scope IS NULL)")
+        conditions.append(f"(scope=${len(params) + 1}::text OR scope IS NULL)")
         params.append(scope)
     where = " AND ".join(conditions)
     async with db.get_connection() as conn:

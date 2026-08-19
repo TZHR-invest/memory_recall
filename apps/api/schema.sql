@@ -553,6 +553,25 @@ CREATE INDEX IF NOT EXISTS idx_crystal_claim_usage_reuse ON crystal.claim_usage(
 
 COMMENT ON TABLE crystal.claim_usage IS 'crystal: 复用频率/outcome 离散统计（一期不写入，P1 遥测激活）';
 
+-- ----------------------------------------------------------------------------
+-- 12.7 crystal.migration_state（M3 迁移进度/断点，admin 迁移端点用）
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS crystal.migration_state (
+    run_id TEXT PRIMARY KEY,
+    owner_id TEXT,
+    total INTEGER NOT NULL DEFAULT 0,
+    migrated INTEGER NOT NULL DEFAULT 0,
+    skipped INTEGER NOT NULL DEFAULT 0,
+    failed INTEGER NOT NULL DEFAULT 0,
+    last_memory_id TEXT,
+    status TEXT NOT NULL DEFAULT 'running',
+    error TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+COMMENT ON TABLE crystal.migration_state IS 'crystal: 迁移进度/断点（M3，幂等可重放，断点续传）';
+
 -- ============================================================================
 -- Complete
 -- ============================================================================

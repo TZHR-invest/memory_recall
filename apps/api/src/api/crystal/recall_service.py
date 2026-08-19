@@ -57,7 +57,7 @@ async def _prefilter(
     params: List[Any] = [owner_type, owner_id]
     if scope is not None:
         # scope 匹配：请求 scope 时，claim.scope == scope 或 claim.scope IS NULL（全局知识可见）
-        conditions.append("(scope=$3 OR scope IS NULL)")
+        conditions.append("(scope=$3::text OR scope IS NULL)")
         params.append(scope)
     else:
         # 请求 scope=NULL（全局）：只匹配全局（不含项目级），recall-design §1 ④

@@ -1,8 +1,9 @@
 """
-crystal 剩余端点桩（api-contract §2.5：debug / migrate）
+crystal 剩余端点桩（api-contract §2.5：debug）
 
 M2 已完成：证据层（evidence.py）、对账（reconcile.py）、召回（search.py）、
-工作台（workbench.py）。此处只留 debug（M2 收尾）/ migrate（M3）桩。
+工作台（workbench.py）；M3 已完成：迁移（migrate.py）。
+此处只留 debug（trace/embedding 日志）桩。
 """
 
 from typing import Dict
@@ -40,22 +41,3 @@ async def debug_embedding_logs(
 ):
     _admin_user(current_user)
     raise CrystalAPIError(501, "Debug embedding-logs endpoint is planned for M2 wrap-up, not yet implemented.")
-
-
-# ---- 迁移（§2.5，admin；M3） ----
-
-
-@stub_router.post("/api/v2/migrate/run", status_code=501)
-async def migrate_run(
-    current_user: Dict = Depends(require_permission("write")),
-):
-    _admin_user(current_user)
-    raise CrystalAPIError(501, "Migrate endpoint is planned for M3, not yet implemented.")
-
-
-@stub_router.get("/api/v2/migrate/status", status_code=501)
-async def migrate_status(
-    current_user: Dict = Depends(require_permission("read")),
-):
-    _admin_user(current_user)
-    raise CrystalAPIError(501, "Migrate status endpoint is planned for M3, not yet implemented.")

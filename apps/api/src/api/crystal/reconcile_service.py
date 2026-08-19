@@ -277,7 +277,14 @@ async def _find_candidate_claims(
     """
     if not embedding:
         return []
-    scope_clause = "AND (scope = $3 OR scope IS NULL)" if scope is not None else "AND scope IS NULL"
+    # scope 语义与召回预过滤一致：请求 scope 时匹配 claim.scope==scope 或全局（NULL）；
+    # 请求 scope=NULL 时只匹配全局。动态参数避免 PG 无法推断类型。
+    if scope is not None:
+        scope_clause = "AND (scope = $3::text OR scope IS NULL)"
+        params: List[Any] = [owner_type, owner_id, scope]
+    else:
+        scope_clause = "AND scope IS NULL"
+        params = [owner_type, owner_id]
     async with db.get_connection() as conn:
         rows = await conn.fetch(
             f"""SELECT id, statement, claim_kind, content_confidence, scope
@@ -285,11 +292,9 @@ async def _find_candidate_claims(
                WHERE owner_type=$1 AND owner_id=$2 AND status='active'
                  AND embedding IS NOT NULL
                  {scope_clause}
-               ORDER BY 1 - (embedding <=> $4::vector) ASC
-               LIMIT $5""",
-            owner_type,
-            owner_id,
-            scope if scope is not None else "unused",
+               ORDER BY 1 - (embedding <=> ${len(params) + 1}::vector) ASC
+               LIMIT ${len(params) + 2}""",
+            *params,
             _embedding_to_str(embedding),
             top_k,
         )
