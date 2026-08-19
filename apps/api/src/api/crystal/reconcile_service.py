@@ -13,6 +13,7 @@ Evidence 落库后异步对账：embedding 步 → 候选定位（向量检索 a
 - reinforce 只追加证据关联 + 计分，不复制 claim 行
 """
 
+import asyncio
 import json
 import logging
 from datetime import datetime, timezone
@@ -76,6 +77,12 @@ JUDGMENT_UNRELATED = "UNRELATED"
 JUDGMENTS = {JUDGMENT_CONFLICT, JUDGMENT_REDUNDANT, JUDGMENT_SUPPORT, JUDGMENT_UNRELATED}
 
 CONFLICT_SUPERSEDE_THRESHOLD = 3  # 单条 evidence 触发 >3 条 supersede → 投毒信号
+
+# ---- M2.1 双上限（claim-atomicity §4.2 / ADR-0020） ----
+# evidence 字数上限：超限不自动拆条（默认隔离，留存 workbench 待裁决）
+MAX_EVIDENCE_CHARS = 1500
+# 拆出条目上限：单次拆条拆出超过此数 → 视为密度异常（workbench 人工审视）
+MAX_CLAIMS_PER_EVIDENCE = 15
 
 
 def b5_prior(source_kind: str, claim_kind: str) -> Optional[Tuple[int, int]]:
@@ -195,7 +202,7 @@ async def _llm_collision_judge(
 - SUPPORT: 新证据支持/补充/佐证 claim（不矛盾、不重复、相关）
 - UNRELATED: 无关
 不要编造 claim_id，只对上面列出的候选判断。"""
-        result = await llm.aextract_json(prompt, temperature=0.0, max_tokens=1500)
+        result = await llm.aextract_json(prompt, temperature=0.0, max_tokens=16000)
         if not result or "relations" not in result:
             logger.warning("crystal 碰撞判定 LLM 返回空，降级为 UNRELATED")
             return []
@@ -215,6 +222,184 @@ async def _llm_collision_judge(
     except Exception as e:
         logger.error(f"crystal 碰撞判定 LLM 失败: {e}，降级为 UNRELATED")
         return []
+
+
+async def _llm_collision_judge_batch(
+    evidence: Dict[str, Any],
+    claims: List[Dict[str, Any]],
+    candidates_by_claim: Dict[str, List[Dict[str, Any]]],
+) -> List[Dict[str, Any]]:
+    """LLM ② 碰撞判定批处理（M2.1，reconciliation-design §2.4）。
+
+    一次调用把 N 条新 claim（拆条产物）连同各自检索到的候选一起判断：
+    输出 [{claim_id, judgment, target_claim_id, reason}]（按新 claim 索引）。
+
+    与 v1 单条 _llm_collision_judge 的区别：输入是新 claim（而非整条 evidence），
+    每条新 claim 只对其检索到的候选判断（不互相干扰）；批处理省成本（N 条一次调用）。
+
+    LLM 失败/超时 → 全部 UNRELATED 降级（建新 claim，不阻塞对账，v1 #17）。
+    """
+    if not claims:
+        return []
+    try:
+        llm = get_llm_client()
+        claim_blocks = []
+        for i, c in enumerate(claims):
+            cid = f"c{i + 1}"  # 临时 id，与 candidates_by_claim / 批量写对齐
+            cands = candidates_by_claim.get(cid, [])
+            cand_texts = "\n".join(
+                f"- claim_id: {x['id']}\n  statement: {x['statement']}"
+                for x in cands
+            )
+            claim_blocks.append(
+                f"[新 Claim {cid}] {c['statement']}\n"
+                f"  已有候选:\n{cand_texts if cand_texts else '  (无候选)'}"
+            )
+        prompt = f"""你是一个记忆对账助手。判断若干条新主张（Claim）与已有主张候选的关系。
+
+新 Claim 列表（每条含其检索到的已有候选）:
+{chr(10).join(claim_blocks)}
+
+对每条新 Claim，对其列出的候选判断关系（CONFLICT/REDUNDANT/SUPPORT/UNRELATED）。
+只输出 JSON:
+{{
+  "judgments": [
+    {{"claim_id": "<新claim id>", "judgment": "CONFLICT|REDUNDANT|SUPPORT|UNRELATED", "target_claim_id": "<候选id，UNRELATED 可为空>", "reason": "<一句话原因>"}}
+  ]
+}}
+
+判定标准：
+- CONFLICT: 新 claim 与候选矛盾（同一主题、结论相反/互斥）
+- REDUNDANT: 新 claim 是候选的近似重复/同源复述（意思几乎一样）
+- SUPPORT: 新 claim 支持/补充/佐证候选（不矛盾、不重复、相关）
+- UNRELATED: 无关（此时 target_claim_id 留空）
+不要编造候选 id，只对每条新 claim 列出的候选判断。每条新 claim 最多一条 CONFLICT/REDUNDANT/SUPPORT（取最强），其余候选 UNRELATED。"""
+        result = await llm.aextract_json(prompt, temperature=0.0, max_tokens=16000)
+        if not result or "judgments" not in result:
+            logger.warning("crystal 碰撞判定批处理 LLM 返回空，降级为 UNRELATED")
+            return []
+        judgments = []
+        for j in result["judgments"]:
+            claim_id = j.get("claim_id")
+            judgment = j.get("judgment")
+            if claim_id and judgment in JUDGMENTS:
+                judgments.append(
+                    {
+                        "claim_id": claim_id,
+                        "judgment": judgment,
+                        "target_claim_id": j.get("target_claim_id") or None,
+                        "reason": j.get("reason", ""),
+                    }
+                )
+        return judgments
+    except Exception as e:
+        logger.error(f"crystal 碰撞判定批处理 LLM 失败: {e}，降级为 UNRELATED")
+        return []
+
+
+async def _llm_decompose_claims(
+    evidence: Dict[str, Any],
+) -> List[Dict[str, Any]]:
+    """LLM ① 拆条（M2.1，reconciliation-design §2.4 / claim-atomicity §3）。
+
+    把 evidence 拆成 N 条原子 claim，输出 claims[] {statement, claim_kind,
+    event_key, evidence_quote, relations}。
+
+    策略：
+    - 一律整段单次调用拆条（含长文本；重试 3 次兜底服务端间歇空响应）；
+    - 拆条阶段**不含冲突/支持字段**（LLM 没看到存量结论，不猜冲突）。
+
+    降级（不阻塞对账，v1 #17）：
+    - 短文本（<500 字）拆条失败 → 降级为整条原文单 claim（短文本原文≈结论，可接受）；
+    - 长文本（≥500 字）拆条失败 → 返回 []（不把原文照抄进 claim——那是"分层错误"重演），
+      由上层 reconcile_evidence 判定为隔离/待人工裁决。
+
+    （2026-08-19 修正：曾用"分块拆条"，实测分块碎片失去上下文（孤立列表项/标题）后
+    模型拆条失败率更高——"拆分≠切句子，碎片不自足"（Claude round-01 自足性测试）。
+    改为整段调用 + 重试，长文本失败走隔离。）
+    """
+    content = evidence.get("content", "")
+    source_kind = evidence.get("source_kind", "agent_add")
+
+    try:
+        return await _decompose_single_call(evidence, source_kind)
+    except Exception as e:
+        # 2026-08-19 用户拍板：拆条失败一律不自动降级（不把原文照抄进 claim——
+        # 那是"分层错误"重演）。返回空 → 上层 reconcile_evidence 隔离到 workbench
+        # 待人工重试/裁决（evidence 保留，evidence_processing 标记 isolated）。
+        logger.warning(f"crystal 拆条失败（{len(content)} 字）: {e}，返回空（隔离待人工裁决）")
+        return []
+
+
+async def _decompose_single_call(evidence: Dict[str, Any], source_kind: str) -> List[Dict[str, Any]]:
+    """单次拆条 LLM 调用（短文本或单块）。失败自动重试 2 次（deepseek-v4-flash
+    对复杂 JSON 输出存在间歇性空响应，实测时好时坏，重试提高成功率）。
+    重试仍失败抛异常，由上层降级/隔离。"""
+    content = evidence.get("content", "")
+    last_error: Optional[Exception] = None
+    for attempt in range(3):  # 首次 + 2 次重试
+        try:
+            claims = await _decompose_single_call_once(evidence, source_kind)
+            if claims:
+                return claims
+            last_error = ValueError("拆条 LLM 返回空 claims")
+        except Exception as e:
+            last_error = e
+        logger.warning(f"crystal 拆条第 {attempt + 1} 次失败: {last_error}，重试中...")
+        await asyncio.sleep(0.5 * (attempt + 1))  # 0.5s / 1s 退避
+    raise last_error if last_error else ValueError("拆条失败")
+
+
+async def _decompose_single_call_once(evidence: Dict[str, Any], source_kind: str) -> List[Dict[str, Any]]:
+    """单次拆条 LLM 调用（不重试）。失败抛异常由 _decompose_single_call 重试。"""
+    content = evidence.get("content", "")
+    llm = get_llm_client()
+    prompt = f"""把下面这段内容拆分为原子主张（Claim）。每条约 15-80 字，独立可证伪。
+
+内容:
+{content}
+
+规则（精简版）：
+1. 粒度 = 独立生命周期：两个信息未来可能一个被改/失效、另一个仍成立 → 必须拆成两条。
+2. 不要机械拆分必要上下文（时间/范围/条件/原因）：如"第一阶段上限 20 个"是一条，不拆成两条。
+3. statement 脱离原文要能读懂（不要用"这个/那个"）；也不要整段复制原文。
+4. claim_kind 四选一：fact / preference / constraint / learned-pattern（踩坑经验保留"条件-做法-结果"）。
+5. event_key：同一段内容里一起说的多件事用同组 e1/e2。
+6. evidence_quote（可选）：从原文逐字复制支撑该条的原文子句；复制不了就留空字符串。
+
+只输出 JSON（不要输出其他内容）:
+{{"claims": [{{"id": "c1", "statement": "<断言>", "claim_kind": "<四选一>", "event_key": "e1", "evidence_quote": "<原文子句或空>"}}]}}"""
+    result = await llm.aextract_json(prompt, temperature=0.0, max_tokens=16000)
+    if not result or "claims" not in result:
+        raise ValueError("拆条 LLM 返回空")
+    claims = []
+    for c in result["claims"][:MAX_CLAIMS_PER_EVIDENCE]:
+        statement = (c.get("statement") or "").strip()
+        kind = c.get("claim_kind")
+        if not statement:
+            continue
+        if kind not in {"fact", "preference", "constraint", "learned-pattern"}:
+            kind = _fallback_claim_kind(content)
+        claims.append(
+            {
+                "statement": statement,
+                "claim_kind": kind,
+                "event_key": c.get("event_key") or "e1",
+                "evidence_quote": (c.get("evidence_quote") or "").strip() or None,
+                "relations": [],
+            }
+        )
+    if not claims:
+        raise ValueError("拆条 LLM 输出空 claims")
+    return claims
+
+
+def _fallback_claim_kind(content: str) -> str:
+    """拆条/提炼失败降级：关键词规则（constraint → constraint，否则 fact）。"""
+    lowered = content.lower()
+    if any(kw in lowered for kw in ["必须", "禁止", "不要", "always", "never", "required", "must"]):
+        return "constraint"
+    return "fact"
 
 
 async def _llm_claim_kind_and_statement(
@@ -243,7 +428,7 @@ claim_kind 四选一：
 
 只输出 JSON:
 {{"claim_kind": "<四选一>", "statement": "<简洁断言，适用条件折入句子>"}}"""
-        result = await llm.aextract_json(prompt, temperature=0.0, max_tokens=500)
+        result = await llm.aextract_json(prompt, temperature=0.0, max_tokens=16000)
         if result and result.get("claim_kind") in {"fact", "preference", "constraint", "learned-pattern"}:
             statement = (result.get("statement") or content).strip()
             return result["claim_kind"], statement
@@ -490,6 +675,184 @@ async def _write_reconcile_transaction(
     }
 
 
+async def _write_reconcile_transaction_batch(
+    evidence: Dict[str, Any],
+    claims: List[Dict[str, Any]],
+    judgments: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """对账单事务批量写（M2.1，reconciliation-design §2.4）。
+
+    把拆条产出的 N 条新 claim 连同碰撞判定结果（LLM ② 批处理输出）单事务写入：
+    - 每条新 claim: INSERT claim（含 event_key）+ claim_evidence（含 quoted_text）+ claim_activity
+    - CONFLICT → supersede 边（旧 claim → 新 claim）+ 旧 status=superseded
+    - REDUNDANT/SUPPORT → reinforce 目标 claim（追加证据 + 计分）
+    - UNRELATED / 无候选 → 新 claim 直接入库
+
+    evidence: 已落库 evidence 行
+    claims: 拆条产物 [{statement, claim_kind, event_key, evidence_quote, relations}]
+    judgments: LLM ② 输出 [{claim_id, judgment, target_claim_id, reason}]
+    （claim_id 对应 claims 的顺序 id: c1, c2, ...——调用方负责对齐）
+
+    返回 {created_claim_ids, superseded_ids, reinforced_claim_ids, poison_warning}
+    """
+    created_claim_ids: List[str] = []
+    superseded_ids: List[str] = []
+    reinforced_claim_ids: List[str] = []
+    poison_warning = False
+
+    # 为每条新 claim 建临时 id（事务内用），LLM ② 输出按此对齐
+    claim_ids = [f"c{i + 1}" for i in range(len(claims))]
+    judgment_by_claim: Dict[str, List[Dict[str, Any]]] = {cid: [] for cid in claim_ids}
+    for j in judgments:
+        if j.get("claim_id") in judgment_by_claim:
+            judgment_by_claim[j["claim_id"]].append(j)
+
+    conflicts_total = 0
+
+    async with db.get_connection() as conn:
+        async with conn.transaction():
+            for idx, claim in enumerate(claims):
+                cid = claim_ids[idx]
+                statement = claim["statement"]
+                kind = claim["claim_kind"]
+                event_key = claim.get("event_key")
+                quote = claim.get("evidence_quote")
+                # 该新 claim 的判定（取第一条非 UNRELATED，按序）
+                rels = judgment_by_claim.get(cid, [])
+                conflict = next((r for r in rels if r["judgment"] == JUDGMENT_CONFLICT), None)
+                reinforce = next(
+                    (r for r in rels if r["judgment"] in (JUDGMENT_REDUNDANT, JUDGMENT_SUPPORT)),
+                    None,
+                )
+
+                if reinforce and reinforce.get("target_claim_id"):
+                    # reinforce 路径：追加证据关联 + 计分（不建新 claim）
+                    target_id = reinforce["target_claim_id"]
+                    reinforced_claim_ids.append(target_id)
+                    await conn.execute(
+                        """INSERT INTO crystal.claim_evidence (claim_id, evidence_id, role, quoted_text, created_at)
+                           VALUES ($1, $2, 'support', $3, NOW())
+                           ON CONFLICT (claim_id, evidence_id) DO NOTHING""",
+                        target_id,
+                        evidence["id"],
+                        quote,
+                    )
+                    strength = _strength_for_evidence(evidence)
+                    same_source = await _is_same_source(conn, target_id, evidence)
+                    if strength > 0 and not same_source:
+                        current_conf = await conn.fetchval(
+                            "SELECT content_confidence FROM crystal.claim WHERE id=$1",
+                            target_id,
+                        )
+                        new_conf = reinforce_score(current_conf, strength)
+                        await conn.execute(
+                            "UPDATE crystal.claim SET content_confidence=$1 WHERE id=$2",
+                            new_conf,
+                            target_id,
+                        )
+                    await conn.execute(
+                        """INSERT INTO crystal.claim_activity
+                           (claim_id, action, actor_type, actor_id, triggered_by_evidence_id,
+                            detail, created_at)
+                           VALUES ($1, 'confirmed', 'system', NULL, $2, $3, NOW())""",
+                        target_id,
+                        evidence["id"],
+                        json.dumps({"action": "reinforce", "strength": strength, "scored": strength > 0 and not same_source}),
+                    )
+                    continue
+
+                # 新建 claim（UNRELATED / 无候选 / 冲突路径的新取代 claim）
+                confidence = content_confidence_from_prior(
+                    evidence["source_kind"], kind, evidence.get("extraction_type")
+                )
+                new_claim_id = await conn.fetchval(
+                    """INSERT INTO crystal.claim
+                       (statement, claim_kind, content_confidence, scope, owner_type, owner_id,
+                        status, event_key, embedding, created_at)
+                       VALUES ($1, $2, $3, $4, $5, $6, 'active', $7, $8, NOW())
+                       RETURNING id""",
+                    statement,
+                    kind,
+                    confidence,
+                    evidence.get("scope"),
+                    evidence["owner_type"],
+                    evidence["owner_id"],
+                    event_key,
+                    _embedding_to_str(evidence.get("embedding")),
+                )
+                created_claim_ids.append(new_claim_id)
+
+                # claim_evidence（不变量①）
+                await conn.execute(
+                    """INSERT INTO crystal.claim_evidence (claim_id, evidence_id, role, quoted_text, created_at)
+                       VALUES ($1, $2, 'support', $3, NOW())""",
+                    new_claim_id,
+                    evidence["id"],
+                    quote,
+                )
+                # claim_activity: 创建审计
+                await conn.execute(
+                    """INSERT INTO crystal.claim_activity
+                       (claim_id, action, actor_type, actor_id, triggered_by_evidence_id,
+                        detail, created_at)
+                       VALUES ($1, 'confirmed', 'system', NULL, $2, $3, NOW())""",
+                    new_claim_id,
+                    evidence["id"],
+                    json.dumps({"created_from_evidence": True, "event_key": event_key}),
+                )
+
+                # 冲突路径：旧 claim --supersedes--> 新 claim
+                if conflict and conflict.get("target_claim_id"):
+                    old_id = conflict["target_claim_id"]
+                    conflicts_total += 1
+                    await conn.execute(
+                        """INSERT INTO crystal.lineage_edge
+                           (from_claim_id, to_claim_id, edge_type, reason, created_at)
+                           VALUES ($1, $2, 'supersedes', $3, NOW())""",
+                        old_id,
+                        new_claim_id,
+                        f"新证据冲突: {conflict.get('reason', '')}",
+                    )
+                    await conn.execute(
+                        "UPDATE crystal.claim SET status='superseded' WHERE id=$1",
+                        old_id,
+                    )
+                    await conn.execute(
+                        """INSERT INTO crystal.claim_activity
+                           (claim_id, action, actor_type, actor_id, triggered_by_evidence_id,
+                            detail, created_at)
+                           VALUES ($1, 'superseded_by', 'system', NULL, $2, $3, NOW())""",
+                        old_id,
+                        evidence["id"],
+                        json.dumps({"new_claim_id": new_claim_id, "reason": conflict.get("reason", "")}),
+                    )
+                    superseded_ids.append(old_id)
+
+            # 投毒信号（§6）：单条 evidence 触发 >3 条 supersede
+            if conflicts_total > CONFLICT_SUPERSEDE_THRESHOLD:
+                poison_warning = True
+                logger.warning(
+                    f"crystal 投毒信号: evidence {evidence['id']} 触发 {conflicts_total} 条 supersede"
+                )
+                if created_claim_ids:
+                    await conn.execute(
+                        """INSERT INTO crystal.claim_activity
+                           (claim_id, action, actor_type, actor_id, triggered_by_evidence_id,
+                            detail, created_at)
+                           VALUES ($1, 'poison_warning', 'system', NULL, $2, $3, NOW())""",
+                        created_claim_ids[0],
+                        evidence["id"],
+                        json.dumps({"superseded_count": conflicts_total}),
+                    )
+
+    return {
+        "created_claim_ids": created_claim_ids,
+        "superseded_ids": superseded_ids,
+        "reinforced_claim_ids": reinforced_claim_ids,
+        "poison_warning": poison_warning,
+    }
+
+
 async def _is_same_source(conn, claim_id: str, evidence: Dict[str, Any]) -> bool:
     """同源复述闸门（§3.3）：E 与 claim 既有证据同源（source_ref 同一 session）→ True 不计分。"""
     source_ref = evidence.get("source_ref")
@@ -704,6 +1067,23 @@ async def reconcile_forget(
     return len(rows) > 0
 
 
+async def _mark_isolated_for_review(evidence_id: str, reason: str) -> None:
+    """超上限 evidence 隔离标记（claim-atomicity §4.2 / ADR-0020 #9）。
+
+    不自动拆条/不对账；evidence 原文保留（Evidence 不可再生，不删）；
+    evidence_processing 停留 pending（workbench「待裁决」视图可扫到）；
+    在 claim_activity 留审计（workbench 待裁决列表依据）。
+    """
+    async with db.get_connection() as conn:
+        await conn.execute(
+            """UPDATE crystal.evidence_processing
+               SET processing_state='pending', current_step='isolated', last_error=$1, updated_at=NOW()
+               WHERE evidence_id=$2""",
+            json.dumps({"step": "isolated", "message": f"双上限隔离: {reason}", "attempts": 0}),
+            evidence_id,
+        )
+
+
 async def reconcile_evidence(evidence_id: str) -> Dict[str, Any]:
     """对账单条 evidence（worker 调用）。
 
@@ -755,30 +1135,55 @@ async def reconcile_evidence(evidence_id: str) -> Dict[str, Any]:
         evidence = dict(ev)
         evidence["embedding"] = embedding
 
-        # ③ 对账步
+        # ③ 对账步（M2.1：拆条流程，reconciliation-design §2.4）
         # user_correction 特权路径（§3.1）由 workbench correct 端点走 reconcile_correction
         # （见 workbench.py），不进通用碰撞路径
-        candidates = await _find_candidate_claims(
-            evidence["owner_type"],
-            evidence["owner_id"],
-            evidence["scope"],
-            embedding,
-        )
-        relations = await _llm_collision_judge(evidence, candidates)
-        # 过滤：仅保留有意义的判定（UNRELATED 不建边，但用于判断"无候选"）
-        meaningful = [r for r in relations if r["judgment"] != JUDGMENT_UNRELATED]
-        if meaningful:
-            result = await _write_reconcile_transaction(evidence, meaningful, new_claim=None)
-        else:
-            # 无冲突无 reinforce 候选 → 建新 claim
-            kind, statement = await _llm_claim_kind_and_statement(
-                evidence["content"], evidence["source_kind"]
+
+        # 双上限前置检查（claim-atomicity §4.2）：超限默认隔离，留存 workbench 待裁决
+        if len(evidence["content"]) > MAX_EVIDENCE_CHARS:
+            logger.info(
+                f"crystal 对账: evidence {evidence_id} 超字数上限（{len(evidence['content'])} > {MAX_EVIDENCE_CHARS}），"
+                f"默认隔离留存 workbench 待裁决"
             )
-            result = await _write_reconcile_transaction(
-                evidence,
-                relations=[],
-                new_claim={"statement": statement, "claim_kind": kind},
+            await _mark_isolated_for_review(evidence_id, "evidence_too_long")
+            return {"status": "isolated", "reason": "evidence_too_long"}
+
+        # LLM ① 拆条（0..N 条原子 claim）
+        decomposed = await _llm_decompose_claims(evidence)
+        if not decomposed:
+            # 拆条全部失败（长文本分块失败）→ 不把原文照抄进 claim（分层错误），
+            # 标记隔离留存 workbench 人工裁决
+            logger.warning(
+                f"crystal 对账: evidence {evidence_id} 拆条失败（长文本），默认隔离留存 workbench 待裁决"
             )
+            await _mark_isolated_for_review(evidence_id, "decompose_failed")
+            return {"status": "isolated", "reason": "decompose_failed"}
+        if len(decomposed) > MAX_CLAIMS_PER_EVIDENCE:
+            logger.info(
+                f"crystal 对账: evidence {evidence_id} 拆出 {len(decomposed)} 条超条目上限（{MAX_CLAIMS_PER_EVIDENCE}），"
+                f"默认隔离留存 workbench 待裁决"
+            )
+            await _mark_isolated_for_review(evidence_id, "claims_too_many")
+            return {"status": "isolated", "reason": "claims_too_many"}
+
+        # 逐条检索候选（embedding，非 LLM；拆条后才知该查什么，§2.4 数据依赖顺序）
+        # 给每条拆条产物分配临时 id（c1/c2/...），与 _write_reconcile_transaction_batch
+        # 的 claim_ids 对齐（LLM ① 输出不含 id，id 是事务内临时标识）
+        candidates_by_claim: Dict[str, List[Dict[str, Any]]] = {}
+        for idx, c in enumerate(decomposed):
+            cands = await _find_candidate_claims(
+                evidence["owner_type"],
+                evidence["owner_id"],
+                evidence["scope"],
+                embedding,
+            )
+            candidates_by_claim[f"c{idx + 1}"] = cands
+
+        # LLM ② 碰撞判定批处理（N 条新 claim + 各自候选一次传入）
+        judgments = await _llm_collision_judge_batch(evidence, decomposed, candidates_by_claim)
+
+        # 单事务批量写
+        result = await _write_reconcile_transaction_batch(evidence, decomposed, judgments)
 
         # ④ done
         async with db.get_connection() as conn:

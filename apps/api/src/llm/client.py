@@ -91,7 +91,7 @@ class LLMClient:
             messages=messages,
             temperature=temperature,
             max_tokens=self._effective_max_tokens(max_tokens),
-            **kwargs
+            **self._apply_reasoning_effort(kwargs)
         )
         
         result = response.choices[0].message.content
@@ -101,6 +101,17 @@ class LLMClient:
             cache_manager.cache_llm_result(cache_key, result)
         
         return result
+
+    def _apply_reasoning_effort(self, kwargs: Dict[str, Any]) -> Dict[str, Any]:
+        """deepseek 思考型模型：默认 thinking effort=low（缩短思考链，
+        防复杂任务思考吃光 max_tokens 导致 content 空；也更快更省）。
+        调用方可传 reasoning_effort 覆盖；非 deepseek provider 不传。
+        """
+        if self.provider != "deepseek":
+            return kwargs
+        if "reasoning_effort" not in kwargs:
+            kwargs["reasoning_effort"] = "low"
+        return kwargs
 
     async def achat(
         self,
@@ -126,7 +137,7 @@ class LLMClient:
             messages=messages,
             temperature=temperature,
             max_tokens=self._effective_max_tokens(max_tokens),
-            **kwargs
+            **self._apply_reasoning_effort(kwargs)
         )
 
         result = response.choices[0].message.content

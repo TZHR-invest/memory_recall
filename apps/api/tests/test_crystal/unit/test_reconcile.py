@@ -108,3 +108,94 @@ class TestRecallScoring:
 
     def test_reuse_is_identity_in_phase_one(self):
         assert final_score(1.0, 0.8, reuse=1.0) == 0.8
+
+
+class TestDecomposeClaims:
+    """M2.1 拆条（LLM ①）：粒度判据落地 + 降级路径（无 DB，mock LLM）"""
+
+    @pytest.mark.anyio
+    async def test_decompose_multi_claims(self, monkeypatch):
+        """多独立结论 → 拆出 N 条原子 claim（含 event_key / evidence_quote）"""
+        from src.api.crystal import reconcile_service
+
+        async def fake_extract_json(prompt, temperature=0.0, max_tokens=3000):
+            return {
+                "claims": [
+                    {"id": "c1", "statement": "项目部署选型倾向 Miniflux", "claim_kind": "fact",
+                     "event_key": "e1", "evidence_quote": "部署选型偏 Miniflux", "relations": []},
+                    {"id": "c2", "statement": "初期信息源数量上限为 20", "claim_kind": "constraint",
+                     "event_key": "e1", "evidence_quote": "初期只加 ≤20 个信息源", "relations": []},
+                ]
+            }
+
+        class _FakeLLM:
+            async def aextract_json(self, prompt, temperature=0.0, max_tokens=3000):
+                return await fake_extract_json(prompt, temperature, max_tokens)
+
+        monkeypatch.setattr(reconcile_service, "get_llm_client", lambda: _FakeLLM())
+        claims = await reconcile_service._llm_decompose_claims(
+            {"content": "部署选型偏 Miniflux，初期只加 ≤20 个信息源", "source_kind": "agent_add"}
+        )
+        assert len(claims) == 2
+        assert claims[0]["statement"] == "项目部署选型倾向 Miniflux"
+        assert claims[0]["claim_kind"] == "fact"
+        assert claims[0]["event_key"] == "e1"
+        assert claims[0]["evidence_quote"] == "部署选型偏 Miniflux"
+        assert claims[1]["claim_kind"] == "constraint"
+
+    @pytest.mark.anyio
+    async def test_decompose_llm_failure_no_fallback(self, monkeypatch):
+        """LLM 失败 → 返回空（不降级原文——2026-08-19 用户拍板：拆条失败一律不自动降级，
+        隔离到 workbench 等人工重试/裁决）"""
+        from src.api.crystal import reconcile_service
+
+        class _FakeLLM:
+            async def aextract_json(self, prompt, temperature=0.0, max_tokens=3000):
+                raise RuntimeError("LLM 挂了")
+
+        monkeypatch.setattr(reconcile_service, "get_llm_client", lambda: _FakeLLM())
+        claims = await reconcile_service._llm_decompose_claims(
+            {"content": "张三喜欢喝咖啡", "source_kind": "agent_add"}
+        )
+        assert claims == []
+
+    @pytest.mark.anyio
+    async def test_decompose_caps_at_max(self, monkeypatch):
+        """拆出条数不超过 MAX_CLAIMS_PER_EVIDENCE（防过度输出）"""
+        from src.api.crystal import reconcile_service
+
+        many_claims = [
+            {"id": f"c{i}", "statement": f"断言{i}", "claim_kind": "fact",
+             "event_key": "e1", "evidence_quote": None, "relations": []}
+            for i in range(30)
+        ]
+
+        class _FakeLLM:
+            async def aextract_json(self, prompt, temperature=0.0, max_tokens=3000):
+                return {"claims": many_claims}
+
+        monkeypatch.setattr(reconcile_service, "get_llm_client", lambda: _FakeLLM())
+        claims = await reconcile_service._llm_decompose_claims(
+            {"content": "长文本", "source_kind": "agent_add"}
+        )
+        assert len(claims) <= reconcile_service.MAX_CLAIMS_PER_EVIDENCE
+
+
+class TestDoubleLimit:
+    """M2.1 双上限常量（claim-atomicity §4.2）"""
+
+    def test_thresholds(self):
+        from src.api.crystal.reconcile_service import (
+            MAX_EVIDENCE_CHARS,
+            MAX_CLAIMS_PER_EVIDENCE,
+        )
+
+        assert MAX_EVIDENCE_CHARS == 1500
+        assert MAX_CLAIMS_PER_EVIDENCE == 15
+
+    def test_fallback_claim_kind(self):
+        from src.api.crystal.reconcile_service import _fallback_claim_kind
+
+        assert _fallback_claim_kind("必须遵守规范") == "constraint"
+        assert _fallback_claim_kind("must use this") == "constraint"
+        assert _fallback_claim_kind("项目用了 FastAPI") == "fact"

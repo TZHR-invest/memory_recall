@@ -62,6 +62,8 @@ async def init_crystal_schema():
     #     幂等 IF NOT EXISTS 双跑安全。
     # 2026-08-19: crystal.workbench_review 表（G1 召回复盘 trace 落库，workbench 设计 §5）——
     #     schema.sql 已含（新库全量建）；本段服务既有库增量，IF NOT EXISTS 双跑安全。
+    # 2026-08-19: M2.1 claim 原子化——claim.event_key（拆条 grouping hint）+ claim_evidence.quoted_text
+    #     （原文子句引用）。schema.sql 已含（新库全量建）；本段服务既有库增量，IF NOT EXISTS 双跑安全。
     crystal_migrations = [
         (
             "ALTER TABLE crystal.evidence ADD COLUMN IF NOT EXISTS idempotency_key TEXT;"
@@ -84,6 +86,13 @@ async def init_crystal_schema():
             "CREATE INDEX IF NOT EXISTS idx_crystal_workbench_review_owner_scope"
             " ON crystal.workbench_review(owner_type, owner_id, scope);"
         ),
+        (
+            # M2.1: claim.event_key + claim_evidence.quoted_text（幂等增量）
+            "ALTER TABLE crystal.claim ADD COLUMN IF NOT EXISTS event_key TEXT;"
+            "ALTER TABLE crystal.claim_evidence ADD COLUMN IF NOT EXISTS quoted_text TEXT;"
+            "COMMENT ON COLUMN crystal.claim.event_key IS 'M2.1: 同一次 Evidence 拆出的 grouping hint（非实体、无 truth、不参与真值）';"
+            "COMMENT ON COLUMN crystal.claim_evidence.quoted_text IS 'M2.1: 拆条时从证据原文复制的支撑子句（原文精确子串）';"
+        ),
     ]
 
     print("连接数据库...")
@@ -91,9 +100,12 @@ async def init_crystal_schema():
 
     try:
         print("执行 crystal schema 初始化...")
-        await db.execute(crystal_sql)
+        # 先执行增量迁移段（加列等），再执行主段——旧库上主段的 COMMENT ON COLUMN
+        # 依赖新列存在（如 claim.event_key / claim_evidence.quoted_text），
+        # 若列不存在会 UndefinedColumnError。先加列保证主段 COMMENT 可执行。
         for migration in crystal_migrations:
             await db.execute(migration)
+        await db.execute(crystal_sql)
         print()
         print("=" * 60)
         print("✓ crystal schema 初始化成功（幂等）！")

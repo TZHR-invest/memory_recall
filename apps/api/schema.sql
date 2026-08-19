@@ -467,6 +467,7 @@ CREATE TABLE IF NOT EXISTS crystal.claim (
     owner_type TEXT NOT NULL CHECK (owner_type IN ('personal', 'team')),
     owner_id TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'superseded', 'disputed', 'retracted')),
+    event_key TEXT,
     embedding vector(1024),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -480,6 +481,7 @@ CREATE INDEX IF NOT EXISTS idx_crystal_claim_embedding_active ON crystal.claim U
 COMMENT ON TABLE crystal.claim IS 'crystal: 派生主张（对账产物，可重算；status 写边事务内同步维护）';
 COMMENT ON COLUMN crystal.claim.content_confidence IS '单轴内容置信度（Beta 期望），NULL=UNKNOWN';
 COMMENT ON COLUMN crystal.claim.status IS '派生物化缓存：active/superseded/disputed/retracted';
+COMMENT ON COLUMN crystal.claim.event_key IS 'M2.1: 同一次 Evidence 拆出的 grouping hint（非实体、无 truth、不参与真值；成员被 supersede 不连带失效同 key 其他成员）';
 
 -- ----------------------------------------------------------------------------
 -- 12.4 crystal.lineage_edge（谱系边，推理在边；无触发证据字段，审计走 claim_activity）
@@ -529,6 +531,7 @@ CREATE TABLE IF NOT EXISTS crystal.claim_evidence (
     claim_id TEXT NOT NULL REFERENCES crystal.claim(id) ON DELETE CASCADE,
     evidence_id TEXT NOT NULL REFERENCES crystal.evidence(id) ON DELETE CASCADE,
     role TEXT NOT NULL DEFAULT 'support' CHECK (role IN ('support')),
+    quoted_text TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY (claim_id, evidence_id)
 );
@@ -536,6 +539,7 @@ CREATE TABLE IF NOT EXISTS crystal.claim_evidence (
 CREATE INDEX IF NOT EXISTS idx_crystal_claim_evidence_ev ON crystal.claim_evidence(evidence_id);
 
 COMMENT ON TABLE crystal.claim_evidence IS 'crystal: 结论引用证据（1..N，不变量①）；role 预留支持/反证分离';
+COMMENT ON COLUMN crystal.claim_evidence.quoted_text IS 'M2.1: 拆条时从证据原文复制的支撑子句（原文精确子串，溯源 UX 高亮用；不用字符级 offset）';
 
 -- ----------------------------------------------------------------------------
 -- 12.6 crystal.claim_usage（复用/outcome 离散价值信号，P1 遥测激活）

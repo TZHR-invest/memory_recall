@@ -27,14 +27,16 @@ PROCESSING_TIMEOUT_SECONDS = 30  # processing 超时兜底
 async def _claim_batch() -> list:
     """认领一批待对账 evidence（CAS 防并发）：
     pending/processing/failed 且 updated_at < NOW()-30s（processing 超时兜底）。
+    排除 M2.1 双上限隔离项（current_step='isolated'，留存 workbench 待裁决，不自动重试）。
     """
     async with db.get_connection() as conn:
         rows = await conn.fetch(
             """SELECT p.evidence_id
                FROM crystal.evidence_processing p
-               WHERE p.processing_state IN ('pending', 'failed')
-                  OR (p.processing_state = 'processing'
-                      AND p.updated_at < NOW() - interval '30 seconds')
+               WHERE (p.processing_state IN ('pending', 'failed')
+                      OR (p.processing_state = 'processing'
+                          AND p.updated_at < NOW() - interval '30 seconds'))
+                 AND p.current_step IS DISTINCT FROM 'isolated'
                ORDER BY p.updated_at ASC
                LIMIT $1
                FOR UPDATE SKIP LOCKED""",

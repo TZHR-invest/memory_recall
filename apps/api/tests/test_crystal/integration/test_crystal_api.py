@@ -135,6 +135,7 @@ class TestSchemaMatchesDesign:
             "owner_type": "text",
             "owner_id": "text",
             "status": "text",
+            "event_key": "text",
             "embedding": "USER-DEFINED",
             "created_at": "timestamp with time zone",
         },
@@ -160,6 +161,7 @@ class TestSchemaMatchesDesign:
             "claim_id": "text",
             "evidence_id": "text",
             "role": "text",
+            "quoted_text": "text",
             "created_at": "timestamp with time zone",
         },
         "claim_usage": {
@@ -495,25 +497,46 @@ class TestStubEndpoints:
 
 @pytest.fixture
 def mock_llm(monkeypatch):
-    """mock LLM：碰撞判定 + claim_kind 判定（test-strategy §3 LLM 依赖隔离）"""
+    """mock LLM：拆条（LLM ①）+ 碰撞判定批处理（LLM ②）（test-strategy §3 LLM 依赖隔离）"""
     from src.api.crystal import reconcile_service
 
-    async def fake_aextract_json(prompt, temperature=0.0, max_tokens=2000):
-        if "判断新证据与已有主张" in prompt:
-            # 碰撞判定：第一条候选 SUPPORT，其余 UNRELATED
-            return {
-                "relations": [
-                    {"claim_id": "cl_target_1", "judgment": "SUPPORT", "reason": "支持"},
-                    {"claim_id": "cl_target_2", "judgment": "UNRELATED", "reason": "无关"},
-                ]
-            }
-        if "claim_kind 四选一" in prompt:
-            return {"claim_kind": "fact", "statement": "对账测试断言"}
-        return {}
-
+    monkeypatch.setattr(reconcile_service, "_llm_decompose_claims", _fake_decompose)
+    monkeypatch.setattr(reconcile_service, "_llm_collision_judge_batch", _fake_collision_batch)
     monkeypatch.setattr(reconcile_service, "_llm_collision_judge", _fake_collision)
     monkeypatch.setattr(reconcile_service, "_llm_claim_kind_and_statement", _fake_kind)
     yield
+
+
+async def _fake_decompose(evidence):
+    """拆条替身：单条原子 claim（statement=原文，claim_kind=fact，event_key=e1）"""
+    return [
+        {
+            "id": "c1",
+            "statement": evidence["content"],
+            "claim_kind": "fact",
+            "event_key": "e1",
+            "evidence_quote": None,
+            "relations": [],
+        }
+    ]
+
+
+async def _fake_collision_batch(evidence, claims, candidates_by_claim):
+    """碰撞判定批处理替身：对第一条新 claim，SUPPORT 其第一条候选（若有）；否则空"""
+    if not claims:
+        return []
+    cid = claims[0]["id"]
+    cands = candidates_by_claim.get(cid, [])
+    if cands:
+        return [
+            {
+                "claim_id": cid,
+                "judgment": "SUPPORT",
+                "target_claim_id": cands[0]["id"],
+                "reason": "测试替身",
+            }
+        ]
+    return []
 
 
 @pytest.fixture
@@ -582,10 +605,10 @@ class TestReconcileFlow:
         result = await reconcile_evidence(ev_id)
 
         assert result["status"] == "done"
-        # 无候选 → 建新 claim
-        assert result["created_claim_id"] is not None
+        # 无候选 → 建新 claim（批量版：created_claim_ids 列表）
+        assert result["created_claim_ids"], "应创建 claim"
 
-        claim_id = result["created_claim_id"]
+        claim_id = result["created_claim_ids"][0]
         # 不变量①：claim 必有 claim_evidence
         link_count = await db.fetchval(
             "SELECT COUNT(*) FROM crystal.claim_evidence WHERE claim_id=$1", claim_id
@@ -656,8 +679,8 @@ class TestReconcileFlow:
         result = await reconcile_evidence(ev_id)
 
         assert result["status"] == "done"
-        assert result["created_claim_id"] is None
-        assert result["reinforced_claim_id"] == claim_id
+        assert result["created_claim_ids"] == []
+        assert result["reinforced_claim_ids"] == [claim_id]
         # 关联追加
         link_count = await db.fetchval(
             "SELECT COUNT(*) FROM crystal.claim_evidence WHERE claim_id=$1", claim_id
@@ -747,6 +770,109 @@ class TestReconcileFlow:
         assert edge["edge_type"] == "retract"
 
 
+# ==================== M2.1：拆条（0..N 原子 claim + 双上限隔离） ====================
+
+
+class TestDecomposeReconcile:
+    """M2.1 拆条写路径：一条 evidence → N 条原子 claim（reconciliation-design §2.4）"""
+
+    @pytest.mark.anyio
+    async def test_reconcile_decomposes_multiple_claims(self, test_db, test_key, mock_llm, mock_embedding, monkeypatch):
+        """拆条替身返回 2 条 → 产出 2 条 claim，各带 claim_evidence + event_key"""
+        from src.api.crystal.reconcile_service import reconcile_evidence
+        from src.database import db
+
+        # 覆盖拆条替身：返回 2 条原子 claim（不同 event_key 分组 + evidence_quote）
+        async def _fake_decompose_multi(evidence):
+            return [
+                {"id": "c1", "statement": "项目部署选型倾向 Miniflux", "claim_kind": "fact",
+                 "event_key": "e1", "evidence_quote": "部署选型偏 Miniflux", "relations": []},
+                {"id": "c2", "statement": "初期信息源数量上限为 20", "claim_kind": "constraint",
+                 "event_key": "e1", "evidence_quote": "初期只加 20 个源", "relations": []},
+            ]
+
+        monkeypatch.setattr("src.api.crystal.reconcile_service._llm_decompose_claims", _fake_decompose_multi)
+
+        ev_id = await db.fetchval(
+            """INSERT INTO crystal.evidence
+               (observed_at, source_kind, content, scope, owner_type, owner_id,
+                source_ref, extraction_type, created_at)
+               VALUES (NOW(), 'agent_add', '部署选型偏 Miniflux，初期只加 20 个源', 'project-m21',
+                       'personal', $1, '{"session_id":"s-m21-1","message_id":"m-m21-1"}'::jsonb,
+                       'verbatim', NOW())
+               RETURNING id""",
+            test_key["key_id"],
+        )
+        await db.execute(
+            """INSERT INTO crystal.evidence_processing
+               (evidence_id, processing_state, current_step, updated_at)
+               VALUES ($1, 'pending', 'embedding', NOW())""",
+            ev_id,
+        )
+
+        result = await reconcile_evidence(ev_id)
+        assert result["status"] == "done"
+        assert len(result["created_claim_ids"]) == 2
+
+        # 各 claim 带 claim_evidence + event_key
+        for cid in result["created_claim_ids"]:
+            row = await db.fetchrow(
+                "SELECT statement, event_key FROM crystal.claim WHERE id=$1", cid
+            )
+            assert row["event_key"] == "e1"
+            link = await db.fetchval(
+                "SELECT COUNT(*) FROM crystal.claim_evidence WHERE claim_id=$1", cid
+            )
+            assert link >= 1
+
+    @pytest.mark.anyio
+    async def test_reconcile_isolates_overlong_evidence(self, test_db, test_key, mock_llm, mock_embedding):
+        """超 1500 字 evidence → 默认隔离（不自动拆条，evidence_processing 停留 pending + isolated）"""
+        from src.api.crystal.reconcile_service import reconcile_evidence, MAX_EVIDENCE_CHARS
+        from src.database import db
+
+        long_content = "长" * (MAX_EVIDENCE_CHARS + 100)
+        ev_id = await db.fetchval(
+            """INSERT INTO crystal.evidence
+               (observed_at, source_kind, content, scope, owner_type, owner_id,
+                source_ref, extraction_type, created_at)
+               VALUES (NOW(), 'agent_add', $1, 'project-m21',
+                       'personal', $2, '{"session_id":"s-m21-2","message_id":"m-m21-2"}'::jsonb,
+                       'verbatim', NOW())
+               RETURNING id""",
+            long_content,
+            test_key["key_id"],
+        )
+        await db.execute(
+            """INSERT INTO crystal.evidence_processing
+               (evidence_id, processing_state, current_step, updated_at)
+               VALUES ($1, 'pending', 'embedding', NOW())""",
+            ev_id,
+        )
+
+        result = await reconcile_evidence(ev_id)
+        assert result["status"] == "isolated"
+        assert result["reason"] == "evidence_too_long"
+
+        # evidence 原文保留（不可再生），processing 停留 pending + isolated
+        content_len = await db.fetchval("SELECT length(content) FROM crystal.evidence WHERE id=$1", ev_id)
+        assert content_len == len(long_content)
+        state = await db.fetchrow(
+            "SELECT processing_state, current_step FROM crystal.evidence_processing WHERE evidence_id=$1",
+            ev_id,
+        )
+        assert state["processing_state"] == "pending"
+        assert state["current_step"] == "isolated"
+
+        # 无 claim 产生
+        claim_count = await db.fetchval(
+            """SELECT COUNT(*) FROM crystal.claim_evidence ce
+               JOIN crystal.evidence e ON e.id = ce.evidence_id WHERE e.id=$1""",
+            ev_id,
+        )
+        assert claim_count == 0
+
+
 # ==================== M2：召回读路径（A4/A5） ====================
 
 
@@ -779,7 +905,7 @@ class TestRecall:
             query="FastAPI 后端",
             owner_type="personal",
             owner_id=test_key["key_id"],
-            scope="project-m2",
+            scope="project-search",
             limit=10,
             include_explain=True,
         )

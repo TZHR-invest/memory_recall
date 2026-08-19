@@ -449,14 +449,40 @@ async def workbench_reviews(
     cursor: Optional[str] = Query(None),
     current_user: Dict = Depends(require_permission("read")),
 ):
-    """召回复盘列表 / 假说池 / 提权建议（US-W5 / A8）
+    """召回复盘列表 / 假说池 / 提权建议 / 双上限隔离（US-W5 / A8）
 
     - type=recall: 最近召回 trace（G1 真实化：读 crystal.workbench_review，游标分页）
     - type=low_confidence: 低置信 claim（假说池，workbench §3.3）
     - type=promotion: scope 提权建议（claim_activity promoted_scope 审计）
+    - type=isolated: 双上限隔离 evidence（M2.1，claim-atomicity §4.2，待人工裁决）
     """
     owner = owner_from_user(current_user)
     async with db.get_connection() as conn:
+        if type == "isolated":
+            rows = await conn.fetch(
+                """SELECT e.id, e.content, e.scope, e.source_kind, length(e.content) AS content_len,
+                          p.current_step, p.last_error
+                   FROM crystal.evidence e
+                   JOIN crystal.evidence_processing p ON p.evidence_id = e.id
+                   WHERE e.owner_type=$1 AND e.owner_id=$2
+                     AND p.current_step = 'isolated'
+                   ORDER BY e.created_at DESC LIMIT $3""",
+                owner["owner_type"],
+                owner["owner_id"],
+                limit,
+            )
+            items = [
+                {
+                    "evidence_id": r["id"],
+                    "content": r["content"],
+                    "content_len": r["content_len"],
+                    "scope": r["scope"],
+                    "source_kind": r["source_kind"],
+                    "reason": (r["last_error"] or {}).get("message", "isolated") if isinstance(r["last_error"], dict) else "isolated",
+                }
+                for r in rows
+            ]
+            return ok_response({"type": "isolated", "items": items})
         if type == "low_confidence":
             rows = await conn.fetch(
                 """SELECT id, statement, claim_kind, content_confidence, scope, status, created_at
