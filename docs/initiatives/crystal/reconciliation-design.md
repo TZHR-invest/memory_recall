@@ -39,10 +39,15 @@ POST /api/v2/evidence  (202)
 ```text
 轮询：每 N 秒（默认 5s，可配置）扫描
   SELECT evidence_id FROM evidence_processing
-  WHERE processing_state IN ('pending','processing','failed')
-    AND updated_at < NOW() - interval '30s'     -- 处理中超时兜底（防死 worker 卡 processing）
-  ORDER BY (evidence JOIN observed_at) LIMIT batch_size(默认 50)
+  WHERE processing_state IN ('pending','failed')
+     OR (processing_state = 'processing' AND updated_at < NOW() - interval '30s')
+  ORDER BY updated_at ASC LIMIT batch_size(默认 50) FOR UPDATE SKIP LOCKED
 ```
+
+> **2026-08-19 M2 实现拍板（pending 立即认领）**：原设计把 pending/processing/failed 统一加
+> `updated_at < NOW()-30s` 条件，导致新写入的 pending evidence 要等 30s 才被处理（扫描空转）。
+> 落地改为：**pending/failed 立即认领**（无时间条件），**仅 processing 用 30s 超时兜底**
+> （防死 worker 卡 processing）；`FOR UPDATE SKIP LOCKED` 防多 worker 抢同一批。
 
 - **processing 超时兜底**：`updated_at` 超过 30s 未推进视为疑似死锁，重新认领（CAS 更新
   `processing_state='processing' WHERE updated_at < NOW()-30s`）。
@@ -75,7 +80,9 @@ COMMIT
 
 ```
 输入: 新 evidence E（content, source_kind, scope, owner, extraction_type）
-1. 定位候选: 向量检索同 owner 下 active claim（top-K=20）+ 同 scope 兜底
+1. 定位候选: 向量检索同 owner 下 active claim（top-K=20），scope 语义与召回预过滤一致
+   （请求 scope 时匹配 claim.scope==scope 或 scope IS NULL 全局；请求 scope=NULL 只匹配全局；
+   2026-08-19 M2 落地确认——避免跨 scope 知识误 reinforce/supersede）
    （user_correction 跳过 LLM 定位，直接取"用户指认的 claim"，见 §3.1）
 2. 对每个候选 C 判定关系（LLM 结构化判定，temperature=0）:
    - CONFLICT  : E 与 C 矛盾 → 冲突路径（§3.2）
@@ -183,6 +190,17 @@ Beta 更新（对目标 claim）:
 - **α+β 上限**（可选，防单 claim 无限累积）：α+β ≤ 100（超出后新证据只小幅移动，工程 heuristic，V2 校准）。
 - **负向通道**：矛盾证据（执行失败/用户纠正/代码对不上）→ 触发 supersede（不是加分）；
   contradicts 仲裁后改写 supersede（v1 #23）。计分不成立：冲突 claim 不因"说得多"保持高分。
+
+> **2026-08-19 M2 实现拍板（期望直接移动，α/β 不落库）**：§4.3 的 α/β 是内部状态，
+> 但 schema 只物化 `content_confidence`（Beta 期望）。落地实现：**不在 schema 加 α/β 两列**，
+> 直接在期望上按证据强度移动——
+> `reinforce_score(current_conf, weight, discount)`：
+>   - `current_conf == NULL`（UNKNOWN）→ 初值 = `weight × discount`（单证据期望）
+>   - 有值 → `conf += (1 - conf) × (weight × discount) × 0.2`（向 1 移动，单条 reinforce
+>     移动上限 20%，防单证据虚高；V2 Beta-Binomial 校准）
+> 效果等价于 α/β 更新（正向证据单调增、inference/被使用零权重不移动、NULL 可初始化），
+> 且避免 schema 演进。强度权重表 §4.1 原样实现；`extraction_type=inference` 证据权重恒 0
+> （不给分，v1 规则）。
 
 ### 4.4 幂等键（v1 #17 重试防线，entity-attributes §2 修正注）
 

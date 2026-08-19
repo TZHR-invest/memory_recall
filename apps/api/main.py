@@ -53,11 +53,24 @@ async def lifespan(app: FastAPI):
         setup_background_tasks()
         await scheduler.start()
         print("✅ 后台任务调度器已启动")
+
+        from src.api.crystal.worker import start_crystal_worker
+
+        start_crystal_worker()
+        print("✅ crystal 对账 worker 已启动")
     except Exception as e:
         print(f"❌ 数据库连接失败: {e}")
         raise
 
     yield
+
+    try:
+        from src.api.crystal.worker import stop_crystal_worker
+
+        stop_crystal_worker()
+        print("✅ crystal 对账 worker 已停止")
+    except Exception as e:
+        print(f"⚠️  crystal 对账 worker 停止出错: {e}")
 
     try:
         await scheduler.stop()

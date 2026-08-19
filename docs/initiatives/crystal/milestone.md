@@ -62,7 +62,7 @@
 |---|---------------------------|---------|---------------------|
 | M0 | ADR-0018 打标（已完成） | 命名/规范落地 | 已完成 |
 | M1 | ~~`entity-attributes.md` 定稿（claim 3 待定项 + claim_usage 落点）~~ **已定稿（2026-08-18）** + ~~**crystal API 契约 v1**~~ **已落稿（[api-contract.md](api-contract.md)，2026-08-18）** | ~~`crystal.*` 建表 + `/api/v2` 骨架~~ **已完成（2026-08-18，见 [STATUS](../../STATUS.md)）**：七表落地（[init_crystal_db.py](../../../apps/api/init_crystal_db.py)）+ 21 路由（证据层真实写入 + 桩）+ `verify_scope_ownership` + 统一信封 | **出口达成**：空表可写（evidence 202+pending+幂等命中）、v5 零影响（回归 402 过）、schema 与 design 一致（集成测试逐字段断言）；crystal 测试 38 全绿 |
-| M2 | ~~**workbench (MR-011) 设计 v1**~~ **已落稿（[workbench.md](workbench.md)）** + ~~**对账技术设计 v1**~~ **已落稿（[reconciliation-design.md](reconciliation-design.md)）** + ~~**召回技术设计 v1**~~ **已落稿（[recall-design.md](recall-design.md)）** + ~~**crystal 测试策略**~~ **已落稿（[test-strategy.md](test-strategy.md)）** | 证据采集 + 对账 + 状态查询 + 裁决/洞察工作台 | 设计内验收标准逐条回填；测试矩阵绿 |
+| M2 | ~~**workbench (MR-011) 设计 v1**~~ **已落稿（[workbench.md](workbench.md)）** + ~~**对账技术设计 v1**~~ **已落稿（[reconciliation-design.md](reconciliation-design.md)）** + ~~**召回技术设计 v1**~~ **已落稿（[recall-design.md](recall-design.md)）** + ~~**crystal 测试策略**~~ **已落稿（[test-strategy.md](test-strategy.md)）** | ~~证据采集 + 对账 + 状态查询 + 裁决/洞察工作台~~ **已完成（2026-08-19，见 [STATUS](../../STATUS.md)）**：对账 worker + 碰撞判定 + reinforce 计分 + 召回三级管道 + workbench 四动作/洞察面 | **出口达成**：写 evidence→自动对账→召回→工作台裁决闭环可用；explain 截断可见；crystal 测试 73 全绿、v5 回归 402 过、真实链路 E2E 全通（含 correct supersede / forget retract） |
 | M3 | **迁移脚本设计 v1**（接口/幂等/断点续传/回放） | 迁移脚本 + 对账重生成 claim | 幂等重放通过；抽样核对 claim 关联 |
 | M4 | **插件切换契约**（四端各自接入/回退方案） | 四端切 `/api/v2` | 访问日志无旧路由；回退演练过 |
 | M5 | **退役检查单**（备份/可重放/监控确认） | DROP 旧表（单独 commit） | 退役标准满足；可回退 |

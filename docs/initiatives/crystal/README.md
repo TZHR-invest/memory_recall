@@ -31,7 +31,7 @@ Claim 只存简单断言、推理放谱系边；演变只做推导记录、不�
 | 里程碑 | 配套文档（当前版本） | 说明 |
 |--------|----------------------|------|
 | **M1 建表 + API 骨架** | [foundation](foundation.md)（草稿） · [entity-attributes](entity-attributes.md)（定稿） · [api-contract](api-contract.md) v1 | **已实现（2026-08-18）**：`crystal.*` 七表 + `/api/v2` 21 路由（证据层真实写入 + 其余桩） |
-| **M2 两链路 + 工作台** | [workbench](workbench.md) v1 · [reconciliation-design](reconciliation-design.md) v1 · [recall-design](recall-design.md) v1 · [test-strategy](test-strategy.md) v1 | 前置文档已全部落稿（2026-08-18） |
+| **M2 两链路 + 工作台** | [workbench](workbench.md) v1 · [reconciliation-design](reconciliation-design.md) v1 · [recall-design](recall-design.md) v1 · [test-strategy](test-strategy.md) v1 | **已实现（2026-08-19）**：对账写路径 + 召回读路径 + 工作台，`/api/v2` 22 路由全真实（仅 debug/migrate 桩） |
 | **M3–M5 迁移收尾** | [migration-path](migration-path.md) · M3 迁移脚本设计 / M4 插件切换契约 / M5 退役检查单（**待落**） | 迁移路径已定 Stage A–E |
 
 ## 文件地图（各层职责）
@@ -55,8 +55,9 @@ Claim 只存简单断言、推理放谱系边；演变只做推导记录、不�
 1. **每份文档独立版本化**：各自带 `状态: 草稿/生效/被取代` + 版本 + 最后更新；
    专项不设 LATEST 指针（避免给整个专项强造单一版本线）。包级配套版本见上表。
 2. **每 M 的前置产物是文档门槛**：见 [milestone.md §3.5](milestone.md)。缺文档不动代码（DOCUMENTATION_GUIDE §5 流程）。
-3. **待落文档进度（2026-08-18）**：M1 前置（API 契约）+ M2 前置（workbench / 对账 / 召回 / 测试策略）
-   **已全部落稿**；**M1 开发已完成**（建表 + API 骨架，见 [STATUS](../../STATUS.md)）；剩 M3 迁移脚本设计、M4 插件切换契约、M5 退役检查单（迁移收尾阶段前置）。
+3. **待落文档进度（2026-08-19）**：M1 前置（API 契约）+ M2 前置（workbench / 对账 / 召回 / 测试策略）
+   **已全部落稿**；**M1 + M2 开发均已完成**（建表/API 骨架 + 两链路 + 工作台，见 [STATUS](../../STATUS.md)）；
+   剩 M3 迁移脚本设计、M4 插件切换契约、M5 退役检查单（迁移收尾阶段前置）。
 4. 新增本主题文档时更新本文文件地图与「当前配套版本」表。
 5. 专项生命周期：立项 → 推进（本目录）→ 交付 → 整目录归档 `docs/archive/initiatives/`。
 

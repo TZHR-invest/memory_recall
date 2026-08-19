@@ -443,8 +443,9 @@ class TestEvidenceAPI:
 class TestStubEndpoints:
     @pytest.mark.anyio
     async def test_stub_501(self, client, test_key):
+        # search 已在 M2 实现；用仍为桩的 migrate 端点测 501
         resp = await client.post(
-            "/api/v2/search",
+            "/api/v2/migrate/run",
             headers={"X-API-Key": test_key["api_key"]},
             json={},
         )
@@ -463,3 +464,404 @@ class TestStubEndpoints:
             "/api/v2/debug/traces", headers={"X-API-Key": test_key["api_key"]}
         )
         assert resp.status_code == 501  # 通过 admin 校验，桩返回 501
+
+
+# ==================== M2：对账闭环（写路径，A1/A2/A3） ====================
+# LLM 依赖隔离（test-strategy §3）：mock aextract_json + embedding
+# 对账函数直接调用（不经 worker，worker 异步时序不可控）
+
+
+@pytest.fixture
+def mock_llm(monkeypatch):
+    """mock LLM：碰撞判定 + claim_kind 判定（test-strategy §3 LLM 依赖隔离）"""
+    from src.api.crystal import reconcile_service
+
+    async def fake_aextract_json(prompt, temperature=0.0, max_tokens=2000):
+        if "判断新证据与已有主张" in prompt:
+            # 碰撞判定：第一条候选 SUPPORT，其余 UNRELATED
+            return {
+                "relations": [
+                    {"claim_id": "cl_target_1", "judgment": "SUPPORT", "reason": "支持"},
+                    {"claim_id": "cl_target_2", "judgment": "UNRELATED", "reason": "无关"},
+                ]
+            }
+        if "claim_kind 四选一" in prompt:
+            return {"claim_kind": "fact", "statement": "对账测试断言"}
+        return {}
+
+    monkeypatch.setattr(reconcile_service, "_llm_collision_judge", _fake_collision)
+    monkeypatch.setattr(reconcile_service, "_llm_claim_kind_and_statement", _fake_kind)
+    yield
+
+
+@pytest.fixture
+def mock_embedding(monkeypatch):
+    """mock embedding：确定性 1024 维向量（同内容同向量，支持向量检索命中）"""
+    from src.api.crystal import reconcile_service
+
+    async def fake_embed(text):
+        import hashlib
+
+        digest = hashlib.sha256(text.encode()).digest()
+        vec = [(b / 255.0) * 2 - 1 for b in digest]
+        vec = (vec * 64)[:1024]  # 扩展到 1024 维
+        return vec
+
+    monkeypatch.setattr(reconcile_service, "_embed", fake_embed)
+    yield
+
+
+async def _fake_collision(evidence, candidates):
+    """碰撞判定替身：SUPPORT 第一条候选（若有），否则空"""
+    if candidates:
+        return [
+            {
+                "claim_id": candidates[0]["id"],
+                "judgment": "SUPPORT",
+                "reason": "测试替身",
+            }
+        ]
+    return []
+
+
+async def _fake_kind(content, source_kind, old_claim_kind=None):
+    """claim_kind/statement 替身"""
+    if source_kind == "user_correction" and old_claim_kind:
+        return old_claim_kind, content
+    return "fact", content
+
+
+class TestReconcileFlow:
+    @pytest.mark.anyio
+    async def test_evidence_reconcile_creates_claim(self, test_db, test_key, mock_llm, mock_embedding):
+        """写 evidence → 对账 → 生成 claim + claim_evidence（A1/A2）"""
+        from src.api.crystal.reconcile_service import reconcile_evidence
+
+        # 先落 evidence（直接 SQL，模拟 POST 落库）
+        from src.database import db
+
+        ev_id = await db.fetchval(
+            """INSERT INTO crystal.evidence
+               (observed_at, source_kind, content, scope, owner_type, owner_id,
+                source_ref, extraction_type, created_at)
+               VALUES (NOW(), 'agent_add', 'M2 对账测试：项目使用 FastAPI', 'project-m2',
+                       'personal', $1, '{"session_id":"s-m2-1","message_id":"m-m2-1"}'::jsonb,
+                       'verbatim', NOW())
+               RETURNING id""",
+            test_key["key_id"],
+        )
+        await db.execute(
+            """INSERT INTO crystal.evidence_processing
+               (evidence_id, processing_state, current_step, updated_at)
+               VALUES ($1, 'pending', 'embedding', NOW())""",
+            ev_id,
+        )
+
+        result = await reconcile_evidence(ev_id)
+
+        assert result["status"] == "done"
+        # 无候选 → 建新 claim
+        assert result["created_claim_id"] is not None
+
+        claim_id = result["created_claim_id"]
+        # 不变量①：claim 必有 claim_evidence
+        link_count = await db.fetchval(
+            "SELECT COUNT(*) FROM crystal.claim_evidence WHERE claim_id=$1", claim_id
+        )
+        assert link_count >= 1
+        # status=active + claim_kind=fact
+        claim = await db.fetchrow(
+            "SELECT statement, claim_kind, status, content_confidence FROM crystal.claim WHERE id=$1",
+            claim_id,
+        )
+        assert claim["status"] == "active"
+        assert claim["claim_kind"] == "fact"
+        # evidence_processing done
+        state = await db.fetchval(
+            "SELECT processing_state FROM crystal.evidence_processing WHERE evidence_id=$1",
+            ev_id,
+        )
+        assert state == "done"
+
+    @pytest.mark.anyio
+    async def test_evidence_reconcile_reinforces_existing_claim(self, test_db, test_key, mock_llm, mock_embedding):
+        """已有 claim → 新 evidence SUPPORT → reinforce（不建新 claim，追加关联 + 计分）"""
+        from src.api.crystal.reconcile_service import reconcile_evidence
+        from src.database import db
+
+        # 建一个初始 claim
+        claim_id = await db.fetchval(
+            """INSERT INTO crystal.claim
+               (statement, claim_kind, content_confidence, scope, owner_type, owner_id,
+                status, created_at)
+               VALUES ('已有断言：项目使用 FastAPI', 'fact', 0.5, 'project-reinforce',
+                       'personal', $1, 'active', NOW())
+               RETURNING id""",
+            test_key["key_id"],
+        )
+
+        # 新 evidence（与 claim 相关 → 替身判定 SUPPORT）
+        ev_id = await db.fetchval(
+            """INSERT INTO crystal.evidence
+               (observed_at, source_kind, content, scope, owner_type, owner_id,
+                source_ref, extraction_type, created_at)
+               VALUES (NOW(), 'agent_add', '补充：FastAPI 用于后端', 'project-reinforce',
+                       'personal', $1, '{"session_id":"s-m2-2","message_id":"m-m2-2"}'::jsonb,
+                       'verbatim', NOW())
+               RETURNING id""",
+            test_key["key_id"],
+        )
+        await db.execute(
+            """INSERT INTO crystal.evidence_processing
+               (evidence_id, processing_state, current_step, updated_at)
+               VALUES ($1, 'pending', 'embedding', NOW())""",
+            ev_id,
+        )
+
+        # mock 候选定位：让 _find_candidate_claims 返回该 claim（需要 embedding 命中）
+        # 简化：直接给 claim 写 embedding 使向量检索命中
+        import hashlib
+
+        digest = hashlib.sha256("补充：FastAPI 用于后端".encode()).digest()
+        vec = [(b / 255.0) * 2 - 1 for b in digest]
+        vec = (vec * 64)[:1024]
+        await db.execute(
+            "UPDATE crystal.claim SET embedding=$1 WHERE id=$2",
+            "[" + ",".join(str(x) for x in vec) + "]",
+            claim_id,
+        )
+
+        result = await reconcile_evidence(ev_id)
+
+        assert result["status"] == "done"
+        assert result["created_claim_id"] is None
+        assert result["reinforced_claim_id"] == claim_id
+        # 关联追加
+        link_count = await db.fetchval(
+            "SELECT COUNT(*) FROM crystal.claim_evidence WHERE claim_id=$1", claim_id
+        )
+        assert link_count >= 1
+        # 置信度提升（reinforce 计分）
+        new_conf = await db.fetchval(
+            "SELECT content_confidence FROM crystal.claim WHERE id=$1", claim_id
+        )
+        assert new_conf > 0.5
+
+    @pytest.mark.anyio
+    async def test_correct_supersedes_claim(self, test_db, test_key):
+        """workbench correct → user_correction Evidence → supersede 边 + 旧 claim superseded（A3）"""
+        from src.api.crystal.reconcile_service import reconcile_correction
+        from src.database import db
+
+        # 建一个将被纠正的 claim
+        old_claim_id = await db.fetchval(
+            """INSERT INTO crystal.claim
+               (statement, claim_kind, content_confidence, scope, owner_type, owner_id,
+                status, created_at)
+               VALUES ('错误断言：数据库是 MySQL', 'fact', 0.8, 'project-m2',
+                       'personal', $1, 'active', NOW())
+               RETURNING id""",
+            test_key["key_id"],
+        )
+
+        result = await reconcile_correction(
+            old_claim_id,
+            "正确断言：数据库是 PostgreSQL",
+            "personal",
+            test_key["key_id"],
+            source_ref={"session_id": "s-cor", "message_id": "m-cor"},
+            actor_id=test_key["key_id"],
+        )
+
+        assert result["superseded_claim_id"] == old_claim_id
+        new_claim_id = result["new_claim_id"]
+
+        # 旧 claim superseded
+        old_status = await db.fetchval(
+            "SELECT status FROM crystal.claim WHERE id=$1", old_claim_id
+        )
+        assert old_status == "superseded"
+        # supersede 边存在
+        edge = await db.fetchrow(
+            """SELECT edge_type, reason FROM crystal.lineage_edge
+               WHERE from_claim_id=$1 AND to_claim_id=$2""",
+            old_claim_id,
+            new_claim_id,
+        )
+        assert edge["edge_type"] == "supersedes"
+        # 新 claim 引用纠正证据
+        ev = await db.fetchrow(
+            """SELECT e.source_kind FROM crystal.claim_evidence ce
+               JOIN crystal.evidence e ON e.id = ce.evidence_id
+               WHERE ce.claim_id=$1""",
+            new_claim_id,
+        )
+        assert ev["source_kind"] == "user_correction"
+
+    @pytest.mark.anyio
+    async def test_forget_retracts_claim(self, test_db, test_key):
+        """workbench forget → retract 边 + status=retracted"""
+        from src.api.crystal.reconcile_service import reconcile_forget
+        from src.database import db
+
+        claim_id = await db.fetchval(
+            """INSERT INTO crystal.claim
+               (statement, claim_kind, scope, owner_type, owner_id, status, created_at)
+               VALUES ('要遗忘的断言', 'fact', 'project-m2', 'personal', $1, 'active', NOW())
+               RETURNING id""",
+            test_key["key_id"],
+        )
+
+        result = await reconcile_forget(
+            claim_id, "personal", test_key["key_id"], actor_id=test_key["key_id"]
+        )
+        assert result["status"] == "retracted"
+        status = await db.fetchval("SELECT status FROM crystal.claim WHERE id=$1", claim_id)
+        assert status == "retracted"
+        edge = await db.fetchrow(
+            "SELECT edge_type FROM crystal.lineage_edge WHERE from_claim_id=$1 AND to_claim_id IS NULL",
+            claim_id,
+        )
+        assert edge["edge_type"] == "retract"
+
+
+# ==================== M2：召回读路径（A4/A5） ====================
+
+
+class TestRecall:
+    @pytest.mark.anyio
+    async def test_search_returns_active_only_and_explain(self, test_db, test_key, mock_embedding):
+        """search 只返回 active + scope 匹配；explain 含粗排/精排/截断（A4/A5）"""
+        from src.database import db
+        from src.api.crystal.recall_service import search_claims
+
+        # 造数据：2 active + 1 superseded（同 scope）
+        for i, (stmt, status) in enumerate(
+            [
+                ("FastAPI 用于后端开发", "active"),
+                ("PostgreSQL 用于存储", "active"),
+                ("旧断言已失效", "superseded"),
+            ]
+        ):
+            await db.execute(
+                """INSERT INTO crystal.claim
+                   (statement, claim_kind, content_confidence, scope, owner_type, owner_id,
+                    status, created_at)
+                   VALUES ($1, 'fact', 0.7, 'project-search', 'personal', $2, $3, NOW())""",
+                stmt,
+                test_key["key_id"],
+                status,
+            )
+
+        result = await search_claims(
+            query="FastAPI 后端",
+            owner_type="personal",
+            owner_id=test_key["key_id"],
+            scope="project-m2",
+            limit=10,
+            include_explain=True,
+        )
+
+        # A4：superseded 不混入
+        statements = [r["statement"] for r in result["results"]]
+        assert "旧断言已失效" not in statements
+        assert len(result["results"]) == 2
+        # A5：explain 结构
+        assert "explain" in result
+        explain = result["explain"]
+        assert "prefilter" in explain
+        assert "candidates" in explain
+        assert "ranked" in explain
+        assert "truncated" in explain
+        assert "low_confidence" in explain
+
+    @pytest.mark.anyio
+    async def test_search_scope_isolation(self, test_db, test_key):
+        """owner 隔离：他人 claim 不可见（A6）"""
+        from src.database import db
+        from src.api.crystal.recall_service import search_claims
+
+        # 另一个 owner 的 claim
+        await db.execute(
+            """INSERT INTO crystal.claim
+               (statement, claim_kind, scope, owner_type, owner_id, status, created_at)
+               VALUES ('他人的秘密断言', 'fact', 'project-m2', 'personal', 'other-key-id', 'active', NOW())"""
+        )
+
+        result = await search_claims(
+            query="秘密断言",
+            owner_type="personal",
+            owner_id=test_key["key_id"],
+            scope="project-m2",
+            limit=10,
+        )
+        statements = [r["statement"] for r in result["results"]]
+        assert "他人的秘密断言" not in statements
+
+    @pytest.mark.anyio
+    async def test_search_api_endpoint(self, client, test_db, test_key, mock_embedding):
+        """POST /api/v2/search 端点（api-contract §4.2）"""
+        resp = await client.post(
+            "/api/v2/search",
+            headers={"X-API-Key": test_key["api_key"]},
+            json={"query": "FastAPI", "scope": "project-m2", "limit": 5, "include_explain": True},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["code"] == 0
+        assert isinstance(body["data"]["results"], list)
+        assert "explain" in body["data"]
+
+
+# ==================== M2：工作台端点（A6/A7/A8） ====================
+
+
+class TestWorkbench:
+    @pytest.mark.anyio
+    async def test_overview_stats(self, test_db, test_key):
+        """overview 统计只含个人 owner（A8）"""
+        from src.database import db
+        from src.api.crystal.workbench import _overview_stats
+
+        # 造数据
+        await db.execute(
+            """INSERT INTO crystal.claim
+               (statement, claim_kind, content_confidence, scope, owner_type, owner_id, status, created_at)
+               VALUES ('统计测试断言', 'fact', 0.6, 'project-m2', 'personal', $1, 'active', NOW())""",
+            test_key["key_id"],
+        )
+
+        stats = await _overview_stats("personal", test_key["key_id"])
+        assert "topology" in stats
+        assert "value_distribution" in stats
+        assert "source_kind_composition" in stats
+        assert "processing_health" in stats
+        assert stats["topology"]["claims"].get("active", 0) >= 1
+
+    @pytest.mark.anyio
+    async def test_workbench_claims_list(self, client, test_db, test_key):
+        """workbench/claims 列表（个人 owner）"""
+        resp = await client.get(
+            "/api/v2/workbench/claims",
+            headers={"X-API-Key": test_key["api_key"]},
+        )
+        assert resp.status_code == 200
+        assert isinstance(resp.json()["data"]["items"], list)
+
+    @pytest.mark.anyio
+    async def test_workbench_cross_owner_403(self, client, test_db, test_key):
+        """他人 claim 不可 confirm（A6 越权）"""
+        from src.database import db
+
+        other_claim = await db.fetchval(
+            """INSERT INTO crystal.claim
+               (statement, claim_kind, scope, owner_type, owner_id, status, created_at)
+               VALUES ('他人 claim', 'fact', 'project-m2', 'personal', 'other-key-id', 'active', NOW())
+               RETURNING id"""
+        )
+        resp = await client.post(
+            f"/api/v2/workbench/claims/{other_claim}/confirm",
+            headers={"X-API-Key": test_key["api_key"]},
+            json={},
+        )
+        assert resp.status_code == 404  # 他人数据不可见 → 404（不泄露存在性）
