@@ -109,10 +109,11 @@
 12. ~~**LLM 调用链 trace-id 日志系统**~~ → **已完成（2026-08-19）**：logging_utils（ContextVar + TraceIdFilter）+ main 挂载（顺带修复 root logger 无 handler 致应用 INFO 日志被丢弃）+ llm client 请求/响应日志 + reconcile 入口 trace 管理；crystal 全绿 + v5 回归零新增失败。详见 [计划](notes/2026-08-19-llm-trace-id-logging-plan.md)。
 12. **LLM 调用链存储（llm-call-log）**：设计 v1 已落稿（[llm-call-logging.md](initiatives/crystal/llm-call-logging.md)，2026-08-19），**待实现**——`llm_call_logs` 表 + llm/client.py 落库（prompt 5k/response 50k 截断）+ scheduler 定时清理 7 天 + `GET /api/v2/debug/llm-logs`（admin）+ workbench 对账详情联动；按 §9 实施步骤推进。
 12. 需求层已有 [crystal PRD](initiatives/crystal/prd.md)（用户故事 + 能力验收 A1–A11），各 design v1 已把对应验收细化。
+13. **CI 修复（2026-08-20，已完成）**：GitHub Actions 报 `VOLC_API_KEY 未配置`——根因是 `tests/test_crystal/integration/` 未被 CI `--ignore` 排除，其 `client` fixture 构建完整 ASGI app 时 `RelationService.__init__` 顶层 `get_embedding_client()` 抛错。修复：①`relation_service/memory_store/document_store` 的 embedding client 改**惰性初始化**（无 key 时 `None`，调用侧已优雅降级）→ crystal 集成套件无需 key 即可在 CI 跑；②`test_stats_tz_integration.py` 先 `db.disconnect()` 再 `connect()` 规避 crystal 套件带来的跨 loop 冲突；③CI `--ignore` 补上 `test_llm_service.py`/`test_function_calling.py`（真实 LLM 脚本，属集成/验收测试而非单元测试）。本地无 key 复跑 CI 全命令：**219 passed / 15 skipped**。
 
 ## 等待项 / 阻塞
 
 - **crystal 专项等待**：插件切换（M4）与 v5 退役（M5）需退役标准达成（crystal 稳定观察 + 用户确认）。
 - 遗留：MR-024（测试连接管理重构）未排期；MR-026（v5 基线坏测试 6 个）未排期，详见 [TESTING.md](TESTING.md) 与 [MR-026](issues/MR-026-v5-baseline-broken-tests.md)。
 
-*状态: ACTIVE · 最后更新: 2026-08-19*
+*状态: ACTIVE · 最后更新: 2026-08-20*

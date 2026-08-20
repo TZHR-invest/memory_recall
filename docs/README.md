@@ -69,7 +69,7 @@ docs/
 | [DEPLOYMENT.md](DEPLOYMENT.md) | ACTIVE | 2026-08-12 | Docker Compose / 手动部署 / 备份恢复 |
 | [MEMORY_FLOW.md](MEMORY_FLOW.md) | ACTIVE | 2026-08-12 | 核心数据流：写入 → 处理 → 召回/注入 → 消费（含 /context-inject 契约） |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | ACTIVE | 2026-08-13 | 架构与模块地图：后端分层、核心服务、惰性导入、死代码清单 |
-| [TESTING.md](TESTING.md) | ACTIVE | 2026-08-13 | 测试指南：三层分级、环境注意点、常用命令 |
+| [TESTING.md](TESTING.md) | ACTIVE | 2026-08-20 | 测试指南：三层分级、环境注意点、常用命令；CI 无 VOLC_API_KEY 运行策略（2026-08-20 更新） |
 | [PLUGINS.md](PLUGINS.md) | ACTIVE | 2026-08-14 | 客户端插件：dsh / opencode / deepseek-tui / hermes |
  | [RESEARCH_GUIDE.md](RESEARCH_GUIDE.md) | ACTIVE | 2026-08-14 | 外部调研工作流（Human-in-the-Loop Research）；2026-08-14 补充平台执行观察 + codex 浏览器经验（并行/恢复/DOM/追问） |
 | [archive/README.md](archive/README.md) | ACTIVE | 2026-08-12 | 归档索引：为什么归档、历史文档在哪 |
