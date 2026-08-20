@@ -1,0 +1,49 @@
+{
+  "locale": "zh_CN",
+  "keywords": [
+    "记住",
+    "记住这个",
+    "别忘了",
+    "别忘记",
+    "记下来",
+    "记下这个",
+    "保存这个",
+    "很重要",
+    "注意",
+    "记录一下",
+    "备忘",
+    "以后参考",
+    "不要忘",
+    "不要忘记",
+    "记得这个"
+  ],
+  "nudge": "[强制操作：记忆存储]\n用户明确要求记住某些内容。\n\n你必须立即调用 `memory-recall` 工具：\n```\nmode: \"add\"\ncontent: <提取用户要求记住的核心内容>\nisStatic: true (如果是偏好/习惯) 或 false (如果是临时信息)\ntype: \"preference\" (偏好) 或 \"learned-pattern\" (模式)\nscope: \"project\" (项目相关) 或 \"user\" (跨项目通用)\n```\n\n这是强制操作，你必须执行，不可跳过。内容由你理解和提取，但工具调用是必须的。",
+  "context_header": "[记忆召回]",
+  "user_profile": "用户画像",
+  "recent_context": "最近动态",
+  "project_knowledge": "项目知识",
+  "relevant_memories": "相关记忆",
+  "session_summary": "[会话摘要]",
+  "session_summary_sections": {
+    "user_requests": "## 1. 用户请求（原文）",
+    "final_goal": "## 2. 最终目标",
+    "work_completed": "## 3. 已完成工作",
+    "remaining_tasks": "## 4. 剩余任务",
+    "active_working_context": "## 5. 当前工作上下文（用于无缝继续）",
+    "must_not_do": "## 6. 禁止事项（关键约束）",
+    "next_action": "## 7. 下一步行动"
+  },
+  "tool_messages": {
+    "help_title": "记忆系统使用指南",
+    "mode_add": "存储新记忆",
+    "mode_search": "搜索记忆",
+    "mode_profile": "查看用户画像",
+    "mode_list": "列出最近记忆",
+    "mode_forget": "删除记忆",
+    "scope_user": "跨项目",
+    "scope_project": "当前项目（默认）",
+    "memory_added": "记忆已添加到{scope}范围",
+    "memory_removed": "记忆已删除",
+    "cannot_store_private": "无法存储完全私密的内容"
+  }
+}

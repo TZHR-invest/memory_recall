@@ -1,0 +1,50 @@
+{
+  "locale": "en_US",
+  "keywords": [
+    "remember",
+    "memorize",
+    "save this",
+    "note this",
+    "keep in mind",
+    "don't forget",
+    "learn this",
+    "store this",
+    "record this",
+    "make a note",
+    "take note",
+    "jot down",
+    "commit to memory",
+    "remember that",
+    "never forget",
+    "always remember"
+  ],
+  "nudge": "[MANDATORY ACTION: Memory Storage]\nThe user explicitly wants you to remember something.\n\nYou MUST immediately call the `memory-recall` tool:\n```\nmode: \"add\"\ncontent: <extract the core content user wants remembered>\nisStatic: true (for preferences/habits) or false (for temporary info)\ntype: \"preference\" (preference) or \"learned-pattern\" (pattern)\nscope: \"project\" (project-specific) or \"user\" (cross-project)\n```\n\nThis is a mandatory operation. You MUST execute it. The content extraction is your decision, but the tool call is required.",
+  "context_header": "[MEMORY-RECALL]",
+  "user_profile": "User Profile",
+  "recent_context": "Recent Context",
+  "project_knowledge": "Project Knowledge",
+  "relevant_memories": "Relevant Memories",
+  "session_summary": "[Session Summary]",
+  "session_summary_sections": {
+    "user_requests": "## 1. User Requests (As-Is)",
+    "final_goal": "## 2. Final Goal",
+    "work_completed": "## 3. Work Completed",
+    "remaining_tasks": "## 4. Remaining Tasks",
+    "active_working_context": "## 5. Active Working Context (For Seamless Continuation)",
+    "must_not_do": "## 6. MUST NOT Do (Critical Constraints)",
+    "next_action": "## 7. Next Action"
+  },
+  "tool_messages": {
+    "help_title": "Memory Recall Usage Guide",
+    "mode_add": "Store a new memory",
+    "mode_search": "Search memories",
+    "mode_profile": "View user profile",
+    "mode_list": "List recent memories",
+    "mode_forget": "Remove a memory",
+    "scope_user": "Cross-project",
+    "scope_project": "This project (default)",
+    "memory_added": "Memory added to {scope} scope",
+    "memory_removed": "Memory removed",
+    "cannot_store_private": "Cannot store fully private content"
+  }
+}

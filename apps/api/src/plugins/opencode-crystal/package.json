@@ -1,0 +1,42 @@
+{
+  "name": "memory-recall-opencode-crystal",
+  "version": "0.1.0",
+  "description": "Memory Recall plugin for OpenCode (crystal /api/v2 thin adapter)",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "memory-recall-opencode-crystal": "./dist/cli.js"
+  },
+  "opencode": {
+    "type": "plugin",
+    "hooks": [
+      "chat.message",
+      "event",
+      "experimental.session.compacting"
+    ]
+  },
+  "files": [
+    "dist",
+    "dist/i18n",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "bun build ./src/index.ts --outdir ./dist --target node --external @opencode-ai/plugin --external @opencode-ai/sdk && cp -r src/i18n dist/ 2>/dev/null || cp -r ../_shared/i18n dist/i18n 2>/dev/null || true",
+    "prepublishOnly": "bun run build"
+  },
+  "dependencies": {
+    "@opencode-ai/plugin": "^1.18.0",
+    "@opencode-ai/sdk": "^1.18.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.4.0"
+  },
+  "keywords": [
+    "opencode",
+    "plugin",
+    "memory",
+    "crystal"
+  ],
+  "license": "MIT"
+}
