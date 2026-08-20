@@ -93,5 +93,8 @@ venv/bin/python -m pytest tests/test_crystal/live -q -x
 - **迁移抽样核对样本量**：A9 细化时定（建议 ≥5% 或 ≥100 条）。
 - **性能基准**：写接口 p95 < 50ms、粗排 p95 < 100ms（对账/召回设计验收）——性能测试文件
   沿用 v5 `test_performance.py` 模式，单独跑（`--ignore` 默认）。
+- **效果量化评估**（不属于测试层，见 [evaluation-design.md](evaluation-design.md)）：公共评估集
+  （LongMemEval 等）接入 + 口径 A 证据召回率（Recall@k/MRR），独立 runner `apps/api/eval/`，
+  不并入 pytest；A4 状态查询正确性可用 knowledge-update 类问题做评估级补充。
 
 *状态: 草稿 · 最后更新: 2026-08-18*

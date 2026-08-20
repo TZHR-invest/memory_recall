@@ -51,12 +51,14 @@ Claim 只存简单断言、推理放谱系边；演变只做推导记录、不�
 | [reconciliation-design.md](reconciliation-design.md) | 工程 | **对账技术设计 v2**（worker/事务/retry/reinforce 计分强度权重表 + **M2.1 拆条**：LLM ① 拆条 + LLM ② 碰撞批处理 + event_key/quote 落库 + 双上限隔离） | 独立草稿（M2 前置已落，M2.1 升 v2） |
 | [recall-design.md](recall-design.md) | 工程 | **召回技术设计 v1**（三级管道/精排公式/截断/trace 契约） | 独立草稿（M2 前置，已落） |
 | [test-strategy.md](test-strategy.md) | 工程 | **crystal 测试策略**（分层/矩阵/每 M 出口） | 独立草稿（M2 前置，已落） |
+| [evaluation-design.md](evaluation-design.md) | 工程 | **效果评估设计 v1**（"添加数据→召回"量化验证：LongMemEval/LoCoMo/BEAM 公共评估集 + ingest 适配 + 口径 A 证据召回率 + runner + P0–P3 阶段） | 独立草稿（2026-08-19 落稿，P0 spike 待做） |
 | [migration-path.md](migration-path.md) | 工程 | 渐进迁移 Stage A–E：命名空间隔离、迁移策略、退役标准 | 独立草稿 |
 | [milestone.md](milestone.md) | 规划 | 能力范围 / 节奏 / 研发流程门槛（§3.5） | 独立草稿 |
 | [prd.md](prd.md) | 需求 | 用户故事（US-*）+ 能力验收（A1–A11）+ In/Out 范围 | 独立草稿 |
 | [migration-script-design.md](migration-script-design.md) | 工程 | **迁移脚本设计 v1**（映射规则/幂等/断点续传/回放/验收；M3 前置） | 独立草稿，**已定稿**（M3 按此实现） |
 | [plugin-migration-contract.md](plugin-migration-contract.md) | 工程 | **插件切换契约 v1**（四端接入/回退 + API 映射 + 切换顺序；M4 前置） | 独立草稿，**已定稿**（切换动作延后） |
 | [retirement-checklist.md](retirement-checklist.md) | 工程 | **退役检查单 v1**（退役标准/备份可重放/DROP 步骤/回退；M5 前置） | 独立草稿，**已定稿**（退役条件未满足） |
+| [llm-call-logging.md](llm-call-logging.md) | 工程 | **LLM 调用链存储开发设计 v1**（crystal 全生命周期 LLM 调用输入/输出落库：`llm_call_logs` 表 + prompt 5k/response 50k 截断 + 定时清理 7 天 + workbench 查询；记录点统一在 llm/client.py，未来新增调用自动覆盖） | 独立草稿（2026-08-19 落稿，待实现） |
 | [init_crystal_db.py](../../../apps/api/init_crystal_db.py) | 代码 | **crystal schema 幂等建表脚本**（M1 交付）：只跑 schema.sql crystal 段 + 增量迁移段，绝不触碰 v5；绕开 `init_db.py` 在已建库上因 v5 非幂等 ALTER 报错的阻塞 | 随代码版本化 |
 | [migrate_memories.py](../../../apps/api/migrate_memories.py) | 代码 | **旧数据迁移脚本**（M3 交付）：memories(active)→evidence→对账重生成 claim，幂等可重放/断点续传（--dry-run/--owner） | 随代码版本化 |
 
