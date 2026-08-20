@@ -60,7 +60,14 @@ class DocumentStore:
     """Document storage with chunking support"""
 
     def __init__(self):
-        self.embedding_client = get_embedding_client()
+        # 惰性初始化 embedding client（与 DocumentProcessor/LLMEntityExtractor 同模式）：
+        # 无 VOLC_API_KEY 时 app import 不崩（CI/测试环境），调用侧 `if self.embedding_client`
+        # 已有优雅降级（跳过 embedding 生成）
+        self.embedding_client = None
+        try:
+            self.embedding_client = get_embedding_client()
+        except Exception:
+            pass
 
     async def create(
         self,

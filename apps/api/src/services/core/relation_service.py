@@ -66,7 +66,14 @@ class RelationService:
     def __init__(self):
         self.contradiction_patterns = CONTRADICTION_PATTERNS
         self.topic_keywords = TOPIC_KEYWORDS
-        self.embedding_client = get_embedding_client()
+        # 惰性初始化 embedding client（与 DocumentProcessor/LLMEntityExtractor 同模式）：
+        # 无 VOLC_API_KEY 时 app import 不崩（CI/测试环境），调用侧已有
+        # `if not self.embedding_client: return []` 优雅降级
+        self.embedding_client = None
+        try:
+            self.embedding_client = get_embedding_client()
+        except Exception:
+            pass
 
     async def create(
         self,

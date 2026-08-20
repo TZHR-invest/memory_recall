@@ -63,7 +63,14 @@ class Entity:
 
 class MemoryStore:
     def __init__(self):
-        self.embedding_client = get_embedding_client()
+        # 惰性初始化 embedding client（与 DocumentProcessor/LLMEntityExtractor 同模式）：
+        # 无 VOLC_API_KEY 时 app import 不崩（CI/测试环境），调用侧 `if not self.embedding_client`
+        # 已有优雅降级（_generate_embedding 返回 None）
+        self.embedding_client = None
+        try:
+            self.embedding_client = get_embedding_client()
+        except Exception:
+            pass
         self._llm_extractor = None
 
     def _get_llm_extractor(self) -> LLMEntityExtractor:

@@ -30,6 +30,9 @@ from src.database import db
 @pytest.mark.asyncio
 async def test_timeline_bucket_follows_requested_timezone():
     try:
+        # 先断开可能由其他模块（如 crystal 集成测试）在别的 event loop 上创建的全局池，
+        # 再在当前 loop 上重建 —— 规避 asyncpg "attached to a different loop"（TESTING.md §环境注意点）
+        await db.disconnect()
         await db.connect()
     except Exception:
         pytest.skip("database unavailable")
