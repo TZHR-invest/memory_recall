@@ -20,7 +20,7 @@ import z from "@deepseek-ai/schemastery";
 import { createUserMessage } from "@deepseek-ai/dsh-llm";
 import { resolveConfig, projectTagFor, detectLocale, shouldTriggerRecall } from "./config.js";
 import { MemoryRecallClient, buildInjectConfig } from "./client-lib.js";
-import { buildInjectionText, contextDigest, firstUserText, hasInjectedDigest, hasDirectUserMessage } from "./context.js";
+import { buildInjectionText, contextDigest, firstUserText, hasInjectedDigest } from "./context.js";
 import { registerTools } from "./tools.js";
 import { createCaptureHandler } from "./capture.js";
 
@@ -87,6 +87,12 @@ function apply(ctx, config = {}) {
   // 各会话独立召回，互不排除。
   const MAX_INJECTED_IDS = 100;
   const injectedByAgent = new Map(); // agentId -> Map(memoryId -> true)（插入序即 LRU 序）
+
+  // 会话内"首轮"状态（per-agent）：isFirst 判定不再依赖宿主事件时序——
+  // hasDirectUserMessage() 扫 session.events 时，pre-step 阶段历史 user/message
+  // 尚不可见（dsh 0.1.2 实测恒 false），导致 isFirst 恒 true、画像每轮全量注入。
+  // 2026-09-09 修复：插件在完成首次注入后自行置位（语义等同"首个真实用户消息轮"）。
+  const firstRoundDoneByAgent = new Set(); // agentId：已完成首轮注入
 
   const rememberInjected = (agent, ids) => {
     if (!agent?.id || !Array.isArray(ids) || ids.length === 0) return;
@@ -183,7 +189,7 @@ function apply(ctx, config = {}) {
       const text = firstUserText(decision.messages);
       if (!text || text.length < resolved.minRecallQueryLength) return decision;
 
-      const isFirst = !hasDirectUserMessage(agent);
+      const isFirst = !firstRoundDoneByAgent.has(agent.id);
       let shouldInject;
       if (resolved.injectionStrategy === "always") {
         shouldInject = true;
@@ -237,6 +243,9 @@ function apply(ctx, config = {}) {
       }
       // 记录本轮实际注入的记忆 ID，后续轮次召回时排除（跨轮去重）
       rememberInjected(agent, client.injectedMemoryIdsFrom(result));
+      // 首轮注入完成：置位后 once/smart 策略下 isFirst 分支不再无条件通过，
+      // 画像（inject_profile）仅随首轮下发（2026-09-09 修复恒 true 缺陷）
+      firstRoundDoneByAgent.add(agent.id);
       return { kind: "enter", messages: [...decision.messages, message] };
     } catch (error) {
       logger?.warn?.("[memory-recall-dsh] 自动召回失败（不影响本轮）: %s",
