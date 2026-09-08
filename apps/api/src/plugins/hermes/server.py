@@ -29,7 +29,7 @@ import httpx
 from urllib.parse import quote
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import Tool, TextContent
+from mcp.types import Tool, TextContent, ListToolsResult, CallToolResult
 
 logger = logging.getLogger("memory-recall")
 
@@ -39,7 +39,6 @@ API_KEY = os.environ.get("MEMORY_RECALL_API_KEY", "")
 USER_TAG = os.environ.get("MEMORY_RECALL_USER_TAG", "your-key-id")
 PROJECT_TAG = os.environ.get("MEMORY_RECALL_PROJECT_TAG", "your-key-id_hermes")
 
-app = Server("memory-recall")
 
 # ── 复用 HTTP 客户端 ──────────────────────────────────────────────
 _http_client: httpx.AsyncClient | None = None
@@ -83,8 +82,7 @@ def _tag(scope: str) -> str:
 
 
 # ── 工具定义 ──────────────────────────────────────────────────────
-@app.list_tools()
-async def list_tools() -> list[Tool]:
+async def _list_tools_impl() -> list[Tool]:
     return [
         Tool(
             name="add",
@@ -358,8 +356,7 @@ async def list_tools() -> list[Tool]:
 
 
 # ── 工具调用分发 ──────────────────────────────────────────────────
-@app.call_tool()
-async def call_tool(name: str, arguments: dict) -> list[TextContent]:
+async def _call_tool_impl(name: str, arguments: dict) -> list[TextContent]:
     try:
         handler = {
             "add": _handle_add,
@@ -723,7 +720,28 @@ async def _handle_context_inject(args: dict) -> list[TextContent]:
     return [TextContent(type="text", text="\n".join(lines))]
 
 
-# ── 启动 ──────────────────────────────────────────────────────────
+
+# ── mcp 2.0 注册（on_list_tools / on_call_tool 回调包装）──────────
+async def _on_list_tools(ctx, params) -> ListToolsResult:
+    tools = await _list_tools_impl()
+    return ListToolsResult(tools=tools)
+
+
+async def _on_call_tool(ctx, params) -> CallToolResult:
+    name = params.name
+    arguments = params.arguments or {}
+    contents = await _call_tool_impl(name, arguments)
+    return CallToolResult(content=contents)
+
+
+app = Server(
+    "memory-recall",
+    on_list_tools=_on_list_tools,
+    on_call_tool=_on_call_tool,
+)
+
+# ── 启动 ──
+
 async def main():
     async with stdio_server() as (read_stream, write_stream):
         await app.run(read_stream, write_stream, app.create_initialization_options())
