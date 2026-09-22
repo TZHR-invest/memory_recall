@@ -59,6 +59,50 @@ class TestMemoryStoreAsync:
         self.store = MemoryStore()
 
     @pytest.mark.asyncio
+    async def test_create_strips_inherited_pending_markers(self):
+        """create() 必须剥掉调用方带进来的陈旧 _pending_*。
+
+        create_update_version 会整份复制旧版本 metadata，同步路径又不覆盖这些键 ⇒
+        新版本会永久带着"_提取还没做"的假标记（库里 3 条 completed 版本行即此来源）。
+        """
+        inherited = {
+            "type": "learned-pattern",
+            "_status": "processing",
+            "_pending_extract_entities": True,
+            "_pending_auto_relations": True,
+            "_pending_entity_context": "陈旧上下文",
+        }
+
+        with patch.object(
+            self.store, "_generate_embedding", new_callable=AsyncMock,
+            return_value=[0.1] * 1024,
+        ):
+            with patch.object(
+                self.store, "_check_similar_memory", new_callable=AsyncMock,
+                return_value=None,
+            ):
+                with patch("src.services.core.memory_store.db") as mock_db:
+                    mock_db.fetchrow = AsyncMock(return_value={
+                        "id": "mem_inherit", "container_tag": "user_001",
+                        "content": "内容", "embedding": None, "is_static": False,
+                        "is_latest": True, "valid_from": None, "valid_until": None,
+                        "metadata": {}, "confidence": 0.8, "created_at": None,
+                        "is_forgotten": False,
+                    })
+                    await self.store.create(
+                        content="内容",
+                        container_tag="user_001",
+                        metadata=inherited,
+                        auto_relations=False,
+                        entity_context="",
+                    )
+
+        # fetchrow 位置参数：0=SQL, 1=container_tag, 2=content, 3=embedding, 4=is_static, 5=metadata
+        inserted = json.loads(mock_db.fetchrow.call_args.args[5])
+        assert not [k for k in inserted if k.startswith("_pending_")]
+        assert inserted["type"] == "learned-pattern"  # 业务字段不受影响
+
+    @pytest.mark.asyncio
     async def test_create_memory_mock(self):
         with patch.object(
             self.store, "_generate_embedding", new_callable=AsyncMock

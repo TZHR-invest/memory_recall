@@ -162,6 +162,13 @@ class MemoryStore:
             except Exception:
                 final_metadata = {}
 
+        # _pending_* 是"后台任务输入标记"，只允许由下面的 async 分支写入；调用方带进来的
+        # 陈旧标记必须剥掉——create_update_version 会整份复制旧版本 metadata，而同步路径
+        # 又不会覆盖它们 ⇒ 新版本会永久带着这些键（库里 3 条 completed 版本行即此来源）。
+        # 残留键会误导排查（看到 _pending_extract_entities=true 会以为提取还没做）。
+        for _pending_key in [k for k in final_metadata if k.startswith("_pending_")]:
+            final_metadata.pop(_pending_key, None)
+
         # 异步模式：跳过 LLM 实体提取和自动关系创建，后续在 process_memory_async 中完成
         extraction_profile_worthy = None
         if not async_process:
