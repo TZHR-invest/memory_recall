@@ -37,6 +37,19 @@
   一起跑时：crystal 套件先在模块 loop 上建全局池，tz 测试在另一模块 loop 复用会报
   "attached to a different loop"。tz 测试已改为先 `db.disconnect()` 再 `db.connect()` 规避。
 - 集成测试不清理自己的测试数据（容器如 `test_integration_*`、`test_perf_*`）。
+  **⚠️ 会持续累积，需定期清理**（历史上 08-14 / 08-15 / 08-17 / 09-22 各清过一次，每次都能再长回来）：
+  ```bash
+  cd apps/api
+  python scripts/cleanup_test_containers.py            # 预览（默认 dry-run）
+  python scripts/cleanup_test_containers.py --apply    # 备份 + 删除 + 复核
+  ```
+  脚本按**可判定命名**匹配（`test_*` / `user_test` / `_project-{capture-(test|accum|throttle)-<ts>|
+  recall-test[-<ts>]|debug<N>[-<ts>]|e2e-test|update-test|tmp|root|stock|…}` / 空项目名 / 拼错 keyId /
+  `MEMDECK-CROSS-CONTAINER-TEST-*` 测试行），删除前把受影响行备份到
+  `apps/api/backups/test-containers-rollback-<ts>.json`（该目录已 gitignore），并带**保护名单**
+  （有真实内容的 `ai-agent` / `deployment` 等不删）。
+  **新增会建容器的测试时，请同步把命名规则加进脚本的 `JUNK_PREDICATE`**——否则下次清理又会漏，
+  这正是它反复长回来的原因。
 - **`pytest.ini` 的 `asyncio_default_test_loop_scope = module` 不能删**：pytest-asyncio 1.x 默认测试函数用
   函数级 loop，而异步 fixture/db 用模块级 loop，asyncpg 连接会报 "attached to a different loop"。
   删掉后整个集成套件挂掉（0/7）。
