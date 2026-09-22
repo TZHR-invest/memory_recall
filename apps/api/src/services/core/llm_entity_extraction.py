@@ -628,7 +628,7 @@ class LLMEntityExtractor:
         Returns:
             包含实体和关系的字典：
             {
-                "entities": [{"name": "实体名", "type": "person/location/organization/event"}],
+                "entities": [{"name": "实体名", "type": "见 prompt 的【实体类型】（含 software/config/version 等技术类）"}],
                 "relations": [{"from": "实体1", "to": "实体2", "type": "关系类型", "confidence": 0.9}],
                 "confidence": 0.8
             }
@@ -703,7 +703,9 @@ class LLMEntityExtractor:
 返回 JSON 格式：
 {{
   "entities": [
-    {{"name": "实体名", "type": "person/location/organization/event"}}
+    {{"name": "dsh", "type": "software"}},
+    {{"name": "张三", "type": "person"}},
+    {{"name": "volatile-lru", "type": "config"}}
   ],
   "relations": [
     {{"from": "实体1", "to": "实体2", "type": "关系类型", "confidence": 0.9}}
@@ -722,19 +724,33 @@ class LLMEntityExtractor:
 - false: 项目特定的配置/经验/一次性事件（如"某插件 baseURL 配置"、"某项目 bug 修复"）
 - 判断：这条记忆是否值得在**每个项目、每个会话**都注入？还是仅在相关任务时召回？
 
-【实体类型】
-- person: 人物
-- organization: 组织/公司
-- location: 地点
-- event: 事件
-- preference: 偏好
-- thing: 物品/概念/技术/项目
+【实体类型】（type 必须取以下之一）
+- person: 具体人物（张三、李四）
+- organization: 具体组织/公司（字节跳动、腾讯）
+- location: 具体地点（北京、上海）
+- event: 事件（某次迁移、某次事故）
+- preference: 偏好（喜欢暗黑模式）
+- thing: 不属于以下任何一类、但可命名的具体事物
+- software: 软件/工具/客户端（dsh、opencodex、PostgreSQL、Cursor）
+- system: 系统/平台/环境（WSL2、PVE、Chrome、tailnet）
+- service: 服务/进程/端点（gunicorn、sshd、内存服务）
+- config: 配置项/参数/策略/开关（volatile-lru、timeout=120、reasoning_effort）
+- version: 版本号/发行版（0.1.5-rc.2、Debian 12、pgvector 0.8.2）
+- protocol: 协议/接口/标准（HTTP、SSH、CTP、OpenAI 兼容 API）
+- technology: 技术/框架/库/算法（pgvector、jieba、向量召回、MACD）
+- metric: 指标/度量（IC 值、命中率、Recall@k）
+- concept: 概念/模式/方法论（fail-open、影子调用、LRU）
+
+⚠️ **技术术语、命令、配置项、版本号、字段名、函数名、服务名都算实体**——
+不要因为它们不是人名/地名就丢弃；这类内容在本系统中占绝大多数。
 
 【关系类型】（优先使用预定义类型）
 {relation_types_list}
 
 【不要提取】
 1. 泛指名词：代码、技术、日志、数据库、系统、项目、功能、服务、接口、模块、组件、文件、配置、数据、信息、内容、问题、方案、方法、方式、模式、架构、设计、实现
+   ⚠️ 例外：**带具体名字**的技术名词必须提取（如 dsh、opencodex、PostgreSQL、volatile-lru、0.1.5-rc.2、WSL2、
+   qmt-proxy、gunicorn）；这里排除的只是**没有名字的泛指词**（光写"服务"、"系统"、"配置"不算）。
 2. 语言名称：中文、英文、EN、CN、英文版、中文版
 3. 文件路径：apps/api/、document_store.py:82、src/services/core/
 4. 纯数值：0.85、100%、3.14
@@ -792,7 +808,7 @@ Text: {text}
 Return JSON format:
 {{
   "entities": [
-    {{"name": "entity_name", "type": "person/location/organization/event"}}
+    {{"name": "entity_name", "type": "software|person|config|..."}}
   ],
   "relations": [
     {{"from": "entity1", "to": "entity2", "type": "relation_type", "confidence": 0.9}}
@@ -811,13 +827,26 @@ profile_worthy rules (meaningful only when is_static=true):
 - false: project-specific config/experience/one-time event (e.g. "plugin baseURL config", "project bug fix")
 - Judge: should this memory be injected in EVERY project/session, or only recalled when relevant?
 
-【Entity Types】
-- person: Person name
-- organization: Company/Organization
-- location: Place
-- event: Event
-- preference: Preference
-- thing: Object/Concept/Technology/Project
+【Entity Types】(type MUST be one of these)
+- person: Person name (John, Alice)
+- organization: Company/Organization (Google, Meta)
+- location: Place (Beijing, San Francisco)
+- event: Event (a migration, an incident)
+- preference: Preference (prefers dark mode)
+- thing: A concrete namable object that fits none of the categories below
+- software: Software/tool/client (dsh, opencodex, PostgreSQL, Cursor)
+- system: System/platform/environment (WSL2, PVE, Chrome, tailnet)
+- service: Service/process/endpoint (gunicorn, sshd)
+- config: Config item/parameter/policy (volatile-lru, timeout=120, reasoning_effort)
+- version: Version/release (0.1.5-rc.2, Debian 12, pgvector 0.8.2)
+- protocol: Protocol/interface/standard (HTTP, SSH, CTP, OpenAI-compatible API)
+- technology: Technology/framework/library/algorithm (pgvector, jieba, MACD)
+- metric: Metric/measure (IC value, hit rate, Recall@k)
+- concept: Concept/pattern/methodology (fail-open, shadow call, LRU)
+
+⚠️ Technical terms, commands, config keys, version strings, field/function names and service names
+ARE entities — do not drop them just because they are not a person or place. Such content dominates
+this memory base.
 
 【Relation Types】 (use predefined types when applicable)
 {relation_types_list}

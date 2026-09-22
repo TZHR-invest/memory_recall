@@ -480,3 +480,59 @@ class TestExtractWithRelations:
 
             assert "entities" in result
             assert "relations" in result
+
+    @pytest.mark.asyncio
+    async def test_technical_entity_types_not_coerced_to_thing(self):
+        """技术类实体类型必须原样保留（2026-09-22）。
+
+        `_filter_entities_with_types` 会把不在 `ENTITY_TYPES` 白名单里的类型**静默改成 thing**；
+        本测试锁住"白名单已含技术类"，否则 prompt 里新写的 software/config/version 会被压平、
+        实测到的类型标注收益（盲评 1.58→3.83）会在生产里悄悄失效。
+        """
+        mock_client = MagicMock()
+        mock_client.aextract_json = AsyncMock(
+            return_value={
+                "entities": [
+                    {"name": "dsh", "type": "software"},
+                    {"name": "volatile-lru", "type": "config"},
+                    {"name": "0.1.5-rc.2", "type": "version"},
+                    {"name": "gunicorn", "type": "service"},
+                ],
+                "relations": [],
+                "confidence": 0.9,
+            }
+        )
+
+        with patch(
+            "src.services.core.llm_entity_extraction.get_llm_client",
+            return_value=mock_client,
+        ):
+            extractor = LLMEntityExtractor()
+            result = await extractor.extract_with_relations("dsh 用 volatile-lru，版本 0.1.5-rc.2")
+
+        by_name = {e["name"]: e["type"] for e in result["entities"]}
+        assert by_name.get("dsh") == "software"
+        assert by_name.get("volatile-lru") == "config"
+        assert by_name.get("gunicorn") == "service"
+        # 边界（实测）：**裸版本号**会被存储侧 `should_skip_entity` 的 `^v?\d+\.\d+` 规则丢掉
+        # （与 "0.85"、"100%" 同类），所以 version 类型只有带名字的形态（"Debian 12"、"pgvector 0.8.2"）能进图谱。
+        assert "0.1.5-rc.2" not in by_name
+
+    def test_prompt_entity_types_match_whitelist(self):
+        """prompt 里列出的实体类型必须全部在 ENTITY_TYPES 白名单内（防静默压平）。
+
+        这两处必须同步：prompt 说要抽 software，白名单没有 ⇒ 存进库时被改成 thing。
+        """
+        import re
+
+        from src.services.graph_tools import ENTITY_TYPES
+
+        extractor = LLMEntityExtractor()
+        for lang, header in (("chinese", "【实体类型】"), ("english", "【Entity Types】")):
+            prompt = extractor._get_prompt_with_relations("测试文本", lang, None)
+            assert header in prompt, f"{lang} prompt 缺少类型清单段"
+            section = prompt.split(header, 1)[1].split("【", 1)[0]
+            types = set(re.findall(r"^-\s*([a-z_]+)\s*:", section, re.M))
+            assert types, f"{lang} prompt 未解析到类型"
+            missing = types - set(ENTITY_TYPES)
+            assert not missing, f"{lang} prompt 用了白名单外的类型（会被压成 thing）: {sorted(missing)}"
