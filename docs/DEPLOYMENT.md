@@ -64,7 +64,21 @@ DATABASE_PASSWORD=your_password
 > 填了也不生效，见 [ISSUES.md](ISSUES.md)。
 
 必须配置：`VOLC_API_KEY`；无 Key 时记忆创建（embedding）、实体提取、关系检测全部失败。
-可选：`LLM_PROVIDER=volcengine|deepseek`，embedding 始终走火山。
+可选：`LLM_PROVIDER=volcengine|deepseek|opencodex`，embedding 始终走火山。
+
+**LLM provider 与对应变量**（三者只选一个生效，embedding 不受影响）：
+
+| `LLM_PROVIDER` | 变量 | 说明 |
+|---|---|---|
+| `volcengine`（默认） | `VOLC_API_KEY` / `VOLC_API_BASE` / `VOLC_LLM_MODEL` | 火山方舟 OpenAI 兼容端点 |
+| `deepseek` | `DEEPSEEK_API_KEY` / `DEEPSEEK_API_BASE` / `DEEPSEEK_LLM_MODEL` | DeepSeek 官方直连（只有 `deepseek-flash` / `deepseek-v4-pro`，**无 v4.1**） |
+| `opencodex` | `OPENCODEX_API_KEY` / `OPENCODEX_API_BASE` / `OPENCODEX_LLM_MODEL` | 本机 opencodex 代理（聚合商模型，id 为斜杠形态） |
+
+> **当前生产（2026-09-22 起）跑 `opencodex` + `commandcode/deepseek/deepseek-v4.1-flash`**。它是
+> **思考型模型**：思考 token 计入 `max_tokens`，代码里的下限 `REASONING_MIN_MAX_TOKENS=8000`
+> 就是为它设的（调小会让实体提取静默返回空），换模型前先读
+> [note](notes/2026-09-22-llm-provider-opencodex.md)。
+> ⚠️ **容器内 `OPENCODEX_API_BASE` 必须写局域网/宿主地址**（`127.0.0.1` 是容器自身）。
 
 ### 4. 初始化数据库
 

@@ -1,6 +1,6 @@
 # Memory Recall 任务状态（实时工作台）
 
-> 状态: ACTIVE · 最后更新: 2026-08-19
+> 状态: ACTIVE · 最后更新: 2026-09-22
 >
 > 规则：本文件只放"当前活跃工作 + 下一步 + 等待项"；历史一律进 `docs/notes/`；
 > 每次任务收尾必须更新；无活跃工作则写"空闲"。
@@ -9,6 +9,7 @@
 
 | 任务 | 状态 | 入口 |
 |------|------|------|
+| **LLM 换 provider：opencodex / commandcode deepseek-v4.1-flash** | **已完成（2026-09-22）**：新增 `LLM_PROVIDER=opencodex` 分支（config/client + docker-compose + .env.example；embedding 不动仍 doubao-1024）。关键坑：思考型模型把思考链计入 `max_tokens`，调用方默认 2000/1500 被吃光 ⇒ `content=''`、实体提取**静默丢结果**（实测 3 连空、该条 0 实体）→ 思考型 provider 下限提到 **8000**（实测需 ~1.2k–4.8k 思考 token）。真实链路验证：写记忆抽 6 实体 + `extends` 关系 0.9 + 语义召回命中、embedding 日志仍 doubao；单元回归与换前**逐项一致**（6F/474P/38E 全是既有基线：crystal schema 未建 + 测试耦合） | [note](notes/2026-09-22-llm-provider-opencodex.md) |
 | **crystal 效果评估建设（添加数据→召回）** | **方案已落稿（2026-08-19）**：外部调研确认存在成熟公共评估集（LongMemEval/LoCoMo/BEAM，主源核实，无需平台调研）→ 评估设计 v1 落稿——口径 A 证据召回率（Recall@k/MRR，用数据集自带标注，无需 LLM 判分）为主口径、口径 B 端到端 QA 后置；ingest 适配器（对话 turns→evidence，复用对账/拆条链路）+ runner（`apps/api/eval/`）+ P0–P3 阶段（P0=oracle 子集 50 题 spike） | [evaluation-design](initiatives/crystal/evaluation-design.md) |
 | **crystal M2.1 claim 原子化（已完成 2026-08-19）** | **P1–P3 全部完成**：①文档定案——foundation #36–39 + ADR-0020 + claim-atomicity v1.1 + reconciliation-design v2 + entity-attributes（event_key/quoted_text）；②实现——拆条 LLM ①（原子判据 prompt + event_key/quote + 重试 + 短降级/长隔离）+ 碰撞 LLM ② 批处理 + 批量单事务写 + 双上限隔离 + workbench isolated 待裁决视图 + rebuild_claims.py；③**存量重建已执行**——22 条旧 claim → **32 条原子 claim**（30 active + 2 superseded，平均 86 字，最长 762，原最长 2383）；不变量① 0 孤儿；event_key 分组（e1×7/e2×6）；quoted_text 16/44；2 条 user_correction 手动关联手电 claim；④测试——crystal 单元 52 + 集成 44 全绿，v5 回归 516 过（24 失败为既有基线）；⑤**根因修复：思考型 LLM（deepseek）max_tokens 4000 时思考链吃光预算致 content 空 → 提到 16000**（[note](notes/2026-08-19-reasoning-llm-max-tokens-empty-content.md)）。剩：workbench 假说池人工审视 supersede 循环（张三岗位矛盾链）+ 监控指标（Blast Radius/Contamination/Reconstruction） | [ADR-0020](decisions/0020-claim-atomicity.md) · [claim-atomicity](initiatives/crystal/claim-atomicity.md) · [重建脚本](../apps/api/rebuild_claims.py) |
 | OpenCode 压缩 hook 外部调研 | 已完成（三轮收敛，结论与 ADR-0003~0008 一致） | [调研目录](notes/research/2026-08-12-opencode-compaction-hook/README.md) |
