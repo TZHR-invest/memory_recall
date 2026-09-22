@@ -103,6 +103,17 @@ class Settings(BaseSettings):
     # 依据：思考型模型下后台单条处理实测 13~25s，10 分钟足够区分"在跑"与"丢了"。
     STUCK_PROCESSING_MINUTES: int = 10
 
+    # crystal 对账 worker 开关（默认关）。
+    # 背景（2026-09-22 实测）：生产库**没有 crystal schema**（0 张表 / 0 migration_state），
+    # 但 main.py 原先无条件启动该 worker ⇒ 每 5 秒一条
+    # `relation "crystal.evidence_processing" does not exist` 的 ERROR，
+    # 把真实错误淹在噪音里（排查时全程要 grep -v 过滤它）。
+    # 而文档（STATUS「crystal M1」条）声称 08-18 已在正式库落地 crystal.* 七表，
+    # 且 git/文档/记忆里都查不到回退记录 ⇒ 文档与实况不符，待定夺。
+    # 要恢复 crystal：跑 `python init_crystal_db.py`（建表）后把本开关置 True；
+    # 要正式退役：保持 False 并清理 /api/v2 路由与 web/crystal。
+    ENABLE_CRYSTAL_WORKER: bool = False
+
     # Recall Trace 配置
     TRACE_ENABLED: bool = True  # 是否记录召回 Trace
     TRACE_SAMPLE_RATE: float = 1.0  # Trace 采样率 0~1（include_trace 请求不受采样影响）

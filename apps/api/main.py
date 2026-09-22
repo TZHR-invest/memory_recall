@@ -75,9 +75,15 @@ async def lifespan(app: FastAPI):
         print("✅ 后台任务调度器已启动")
 
         from src.api.crystal.worker import start_crystal_worker
+        from src.config import settings as _settings
 
-        start_crystal_worker()
-        print("✅ crystal 对账 worker 已启动")
+        # 开关默认关（见 config.ENABLE_CRYSTAL_WORKER 注释）：生产库当前没有 crystal schema，
+        # 无条件启动只会每 5 秒刷一条 ERROR，把真实错误淹没。
+        if _settings.ENABLE_CRYSTAL_WORKER:
+            start_crystal_worker()
+            print("✅ crystal 对账 worker 已启动")
+        else:
+            print("⏭  crystal 对账 worker 未启动（ENABLE_CRYSTAL_WORKER=false）")
     except Exception as e:
         print(f"❌ 数据库连接失败: {e}")
         raise
@@ -86,9 +92,11 @@ async def lifespan(app: FastAPI):
 
     try:
         from src.api.crystal.worker import stop_crystal_worker
+        from src.config import settings as _settings
 
-        stop_crystal_worker()
-        print("✅ crystal 对账 worker 已停止")
+        if _settings.ENABLE_CRYSTAL_WORKER:
+            stop_crystal_worker()
+            print("✅ crystal 对账 worker 已停止")
     except Exception as e:
         print(f"⚠️  crystal 对账 worker 停止出错: {e}")
 
