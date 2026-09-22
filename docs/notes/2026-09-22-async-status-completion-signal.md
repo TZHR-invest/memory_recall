@@ -34,10 +34,37 @@
    "处理中"本身不再算异常（在跑是正常态）。
 5. **顺手修掉一个既有 bug（实测发现）**：收尾写回的 `fresh_meta` 来自**重新读库的行**，
    而 `_pending_*` 只在函数开头从内存副本 pop —— 旧写法只"不新增"、**从未删除**，
-   实测近 3 天 **340/340** 条已完成记忆仍残留 `_pending_extract_entities` /
-   `_pending_auto_relations` / `_pending_entity_context` 等键（而注释声称"移除 pending 标记"）。
-   现在收尾时显式过滤 `_pending_*`。留着这些键的风险是：一旦同一记忆被重跑，会按陈旧标记重做提取。
-   *存量残留未清理*（它们目前无消费者，属惰性数据；要清可用一次性 UPDATE 过滤 metadata 键）。
+   实测近 3 天 **340/340** 条已完成记忆仍残留 `_pending_extract_entities` 等键（而注释声称
+   "移除 pending 标记"）。现在收尾时显式过滤 `_pending_*`。
+
+## 存量清理（2026-09-22 同日执行）
+
+把范围从"近 3 天"放宽到全库后，实际残留比最初看到的大一个量级：
+
+| 项 | 数 |
+|---|---|
+| 带顶层 `_pending_*` 的行 | **6590**（6587 行无 `_status`＝已处理完，3 行 `completed`） |
+| 残留键总数 | **32,945**（5 类键 × 行数） |
+| 其中处于 `processing`（在飞） | **0** |
+
+**判据核查**（防误伤）：`_pending_*` 的唯一读取者是 `process_memory_async` 开头（把键当后台任务入参）；
+插件侧零引用；`document_store` 用的是另一套同名前缀键、不同表。⇒ 对"已处理完"的行，这些键是纯惰性残留。
+
+**决定：清理**。理由不是"占空间"，而是**它会误导排查**：审计"这条记忆为什么没实体"时看到
+`_pending_extract_entities: true` 会误以为提取还没做（我自己在写测试时就被它带偏过一次）。
+
+**执行**：
+1. 备份（可回滚）：`apps/api/backups/pending-keys-rollback-20260922.json`（5.5 MB，6590 行的 id+完整
+   旧 metadata；该目录已在 `.gitignore` 里，含敏感数据不入库）；
+2. `UPDATE` 用 `jsonb_object_agg(...) FILTER (WHERE left(key,9) <> '_pending_')` 重写 metadata，
+   **带在飞保护**（`_status='processing'` 的行不动 —— 它们的 `_pending_*` 是正在跑的任务入参）；
+   **不动 `updated_at`**（少一个副作用面）；
+3. 结果：`pending_keys 32,945 → 0`，记忆总数 8948 不变，抽样行 `type`/`entities`/`profile_worthy` 均在。
+
+**顺带堵住"再长出来"的源头**：`create()` 里加了剥离——调用方（尤其 `create_update_version`
+整份复制旧版本 metadata）带进来的 `_pending_*` 一律先删掉，再由 async 分支写入本次任务真正需要的键。
+那 3 行 `completed` 就是这么来的（同步/更新路径不覆盖这些键，于是永久继承）。新增回归测试
+`test_create_strips_inherited_pending_markers`。
 
 ## 验证
 

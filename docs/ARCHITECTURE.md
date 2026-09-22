@@ -67,5 +67,8 @@
   "处理异常"卡片按它和 `failed` 标红，"处理中"本身不再算异常。
 - `_pending_*` 参数在收尾时必须**真删**（`fresh_meta` 要过滤，而不只是"不新增"）：旧写法实测
   在 340/340 条已完成记忆里留下 `_pending_extract_entities` 等残留键，重跑会重做提取。
+  另外 `create()` 也会先剥掉**调用方带进来的** `_pending_*`（`create_update_version` 整份复制旧版本
+  metadata ⇒ 同步路径不覆盖这些键，新版本会永久继承"提取还没做"的假标记）。存量 6590 行 /
+  32,945 个残留键已于 2026-09-22 清库（备份 `apps/api/backups/pending-keys-rollback-20260922.json`）。
 
 *状态: ACTIVE · 版本: v1.0 · 最后更新: 2026-08-13*
