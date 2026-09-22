@@ -1175,6 +1175,129 @@ class MemoryStore:
         await _traverse(memory_id, 0)
         return results[:max_nodes]
 
+    async def resolve_entity_families(
+        self,
+        entity_ids: List[str],
+        container_tag: Optional[str] = None,
+    ) -> Dict[str, List[str]]:
+        """把实体 id 归并为「同名家族」：同容器内 lower(trim(name)) 相同即同一实体。
+
+        背景：entities 的唯一键是 (name, type, container_tag)，而 type 是 LLM 抽出来的、
+        同一个实体换个 run 就可能变（实测 424 组同名不同型、856 行、16.2% 的记忆链接挂在
+        非主行上，且同组两行之间 0 条关系边 ⇒ 只看单个 id 就只能看到其中一半）。
+        同名 + 同型 + 同容器本来就被 unique 约束强制成一行 ⇒ 系统本来就按「同名即同实体」
+        处理，这里只是把因类型漂移而分裂的异常行补回来，不是新增一类混淆。
+        容器是租户边界：只在同一 container_tag 内归并，绝不跨容器。
+
+        Returns:
+            {代表 id: [成员 id, ...]}；成员按（记忆链接数 DESC, id ASC）排序，
+            代表 = 链接最多的成员（平局取 id 最小）⇒ 结果确定、可复现。
+        """
+        ids = [str(i) for i in entity_ids if i]
+        if not ids:
+            return {}
+
+        rows = await db.fetch(
+            """
+            WITH src AS (
+                SELECT e.id, e.container_tag, lower(btrim(e.name)) AS norm_name
+                FROM entities e
+                WHERE e.id = ANY($1)
+                  AND ($2::text IS NULL OR e.container_tag = $2)
+            ), fam AS (
+                SELECT s.id AS src_id, e2.id AS member_id,
+                       (SELECT COUNT(*) FROM memory_entities me WHERE me.entity_id = e2.id) AS link_count
+                FROM src s
+                JOIN entities e2
+                  ON lower(btrim(e2.name)) = s.norm_name
+                 AND e2.container_tag = s.container_tag
+            )
+            SELECT src_id, member_id, link_count
+            FROM fam
+            ORDER BY src_id, link_count DESC, member_id
+            """,
+            ids,
+            container_tag,
+        )
+
+        families: Dict[str, List[str]] = {}
+        rep_of: Dict[str, str] = {}
+        for row in rows:
+            src_id = str(row["src_id"])
+            member_id = str(row["member_id"])
+            rep = rep_of.get(src_id)
+            if rep is None:
+                rep = member_id  # ORDER BY link_count DESC ⇒ 首行即代表
+                rep_of[src_id] = rep
+                families[rep] = []
+            if member_id not in families[rep]:
+                families[rep].append(member_id)
+        return families
+
+    async def expand_entity_ids_by_name(
+        self,
+        entity_ids: List[str],
+        container_tag: Optional[str] = None,
+    ) -> List[str]:
+        """把实体 id 展开成同容器内所有同名行（含自身）；库里查不到的 id 原样保留。"""
+        ids = [str(i) for i in entity_ids if i]
+        if not ids:
+            return []
+
+        families = await self.resolve_entity_families(ids, container_tag)
+        rep_of: Dict[str, str] = {
+            member: members[0] for members in families.values() for member in members
+        }
+
+        expanded: List[str] = []
+        for eid in ids:
+            rep = rep_of.get(eid)
+            if rep is None:
+                expanded.append(eid)  # 未登记/已删除 ⇒ 不展开，保持原行为
+                continue
+            for member in families[rep]:
+                if member not in expanded:
+                    expanded.append(member)
+        return expanded
+
+    async def _entity_neighbor_ids(
+        self,
+        entity_ids: List[str],
+        direction: str,
+        relation_types: Optional[List[str]] = None,
+        container_tag: Optional[str] = None,
+    ) -> List[str]:
+        """取一个「同名家族」在某一方向上的邻居 id（confidence DESC, id 确定排序）。
+
+        direction="out" 取出边邻居，direction="in" 取入边邻居。
+        """
+        if not entity_ids:
+            return []
+
+        if direction == "out":
+            select_col, match_col = "to_entity_id", "from_entity_id"
+        else:
+            select_col, match_col = "from_entity_id", "to_entity_id"
+
+        query = f"""
+            SELECT {select_col} AS entity_id FROM entity_relations
+            WHERE {match_col} = ANY($1)
+        """
+        params: List[Any] = [list(entity_ids)]
+
+        if relation_types:
+            params.append(list(relation_types))
+            query += f" AND relation_type = ANY(${len(params)})"
+
+        if container_tag:
+            params.append(container_tag)
+            query += f" AND container_tag = ${len(params)}"
+
+        query += " ORDER BY confidence DESC, id"
+
+        rows = await db.fetch(query, *params)
+        return [str(row["entity_id"]) for row in rows]
+
     async def traverse_entity_relations(
         self,
         entity_id: str,
@@ -1183,21 +1306,44 @@ class MemoryStore:
         relation_types: Optional[List[str]] = None,
         container_tag: Optional[str] = None,
     ) -> List[Entity]:
+        """从实体出发沿关系边 BFS（确定性 + 同名家族感知）。
+
+        两处确定性：① 边按 (confidence DESC, id) 取，不再依赖未定义的物理顺序；
+        ② 同一「同名家族」只占 1 个节点预算，但家族内所有行的边都并起来查
+        （否则次行身上那批边永远走不到）。max_nodes 含起点自身（保持原语义）。
+        ENTITY_FAMILY_EXPANSION=False 时退化为单行语义（每个 id 自成一家），用于 A/B。
+        """
         visited = set()
-        results = []
+        results: List[Entity] = []
+        rep_of: Dict[str, str] = {}
+        members_of: Dict[str, List[str]] = {}
+
+        async def _load_families(ids: List[str]) -> None:
+            pending = [i for i in dict.fromkeys(ids) if i and i not in rep_of]
+            if not pending:
+                return
+            if settings.ENTITY_FAMILY_EXPANSION:
+                families = await self.resolve_entity_families(pending, container_tag)
+                for rep, members in families.items():
+                    members_of[rep] = members
+                    for member in members:
+                        rep_of[member] = rep
+            # 库里查不到的 id（或 ENTITY_FAMILY_EXPANSION=False）：自己当自己的代表
+            for i in pending:
+                rep_of.setdefault(i, i)
+                members_of.setdefault(i, [i])
 
         async def _traverse(current_id: str, depth: int):
             if depth > max_depth or len(results) >= max_nodes:
                 return
 
-            if current_id in visited:
+            await _load_families([current_id])
+            rep = rep_of[current_id]
+            if rep in visited:
                 return
-            visited.add(current_id)
+            visited.add(rep)
 
-            row = await db.fetchrow(
-                "SELECT * FROM entities WHERE id = $1",
-                current_id,
-            )
+            row = await db.fetchrow("SELECT * FROM entities WHERE id = $1", rep)
             if not row:
                 return
 
@@ -1214,49 +1360,27 @@ class MemoryStore:
                 )
             )
 
-            query = """
-                SELECT to_entity_id as entity_id FROM entity_relations
-                WHERE from_entity_id = $1
-            """
-            params: List[Any] = [current_id]
+            members = members_of.get(rep, [rep])
+            out_neighbors = await self._entity_neighbor_ids(
+                members, "out", relation_types, container_tag
+            )
+            in_neighbors = await self._entity_neighbor_ids(
+                members, "in", relation_types, container_tag
+            )
+            raw_neighbors = out_neighbors + in_neighbors
 
-            if relation_types:
-                query += " AND relation_type = ANY($2)"
-                params.append(list(relation_types))
+            await _load_families(raw_neighbors)
 
-            if container_tag:
-                param_idx = len(params) + 1
-                query += f" AND container_tag = ${param_idx}"
-                params.append(container_tag)
+            ordered_reps: List[str] = []
+            for neighbor in raw_neighbors:
+                neighbor_rep = rep_of[neighbor]
+                if neighbor_rep not in ordered_reps:
+                    ordered_reps.append(neighbor_rep)
 
-            related = await db.fetch(query, *params)
-
-            for rel in related:
+            for neighbor_rep in ordered_reps:
                 if len(results) >= max_nodes:
                     return
-                await _traverse(str(rel["entity_id"]), depth + 1)
-
-            reverse_query = """
-                SELECT from_entity_id as entity_id FROM entity_relations
-                WHERE to_entity_id = $1
-            """
-            reverse_params: List[Any] = [current_id]
-
-            if relation_types:
-                reverse_query += " AND relation_type = ANY($2)"
-                reverse_params.append(list(relation_types))
-
-            if container_tag:
-                param_idx = len(reverse_params) + 1
-                reverse_query += f" AND container_tag = ${param_idx}"
-                reverse_params.append(container_tag)
-
-            reverse_related = await db.fetch(reverse_query, *reverse_params)
-
-            for rel in reverse_related:
-                if len(results) >= max_nodes:
-                    return
-                await _traverse(str(rel["entity_id"]), depth + 1)
+                await _traverse(neighbor_rep, depth + 1)
 
         await _traverse(entity_id, 0)
         return results[:max_nodes]
@@ -1265,14 +1389,32 @@ class MemoryStore:
         self,
         memory_ids: List[str],
     ) -> List[Entity]:
+        """取已召回记忆关联的实体，按「共现次数」降序（确定性种子列表）。
+
+        为什么必须排序：调用方只取前几个实体做图扩展（context_inject_service 取 [:5]），
+        而一次召回通常产生 30~50 个候选实体（每记忆平均 6.2 个链接）⇒ 原实现
+        （SELECT DISTINCT 无 ORDER BY）实际是"按链接表物理顺序"取的（实测：5 个种子来自
+        不同记忆、与本次召回相关性无关），且语义上不保证稳定（计划/统计信息/VACUUM 都会改）。
+        共现次数 = 该实体被多少条「本次已召回记忆」链接，即当前结果集的枢纽；
+        平局按 mention_count、id 兜底 ⇒ 完全确定、可复现。
+        ENTITY_FAMILY_EXPANSION=False 时回退为不排序（旧行为，用于 A/B）。
+        """
         if not memory_ids:
             return []
 
+        order_by = (
+            "ORDER BY co_occur_count DESC, e.mention_count DESC, e.id"
+            if settings.ENTITY_FAMILY_EXPANSION
+            else ""
+        )
         rows = await db.fetch(
-            """
-            SELECT DISTINCT e.* FROM entities e
+            f"""
+            SELECT e.*, COUNT(*) AS co_occur_count
+            FROM entities e
             JOIN memory_entities me ON e.id = me.entity_id
             WHERE me.memory_id = ANY($1)
+            GROUP BY e.id
+            {order_by}
             """,
             memory_ids,
         )
@@ -1300,20 +1442,30 @@ class MemoryStore:
         if not entity_ids:
             return []
 
+        # 同名家族展开：LLM 类型漂移会把同一实体拆成多行（实测 424 组），只查传入的那一行
+        # 会漏掉另一半（466 条记忆 / 585 个「记忆↔实体组」链接在主行上查不到）。
+        if settings.ENTITY_FAMILY_EXPANSION:
+            ids = await self.expand_entity_ids_by_name(entity_ids, container_tag)
+            count_expr = "COUNT(DISTINCT lower(btrim(e.name)))"
+        else:
+            ids = entity_ids
+            count_expr = "COUNT(me.entity_id)"
+
         rows = await db.fetch(
-            """
-            SELECT m.*, COUNT(me.entity_id) as entity_match_count
+            f"""
+            SELECT m.*, {count_expr} as entity_match_count
             FROM memories m
             JOIN memory_entities me ON m.id = me.memory_id
+            JOIN entities e ON e.id = me.entity_id
             WHERE me.entity_id = ANY($1)
             AND m.container_tag = $2
             AND m.is_latest = TRUE
             AND m.is_forgotten = FALSE
             GROUP BY m.id
-            ORDER BY entity_match_count DESC, m.created_at DESC
+            ORDER BY entity_match_count DESC, m.created_at DESC, m.id
             LIMIT $3
             """,
-            entity_ids,
+            ids,
             container_tag,
             limit,
         )

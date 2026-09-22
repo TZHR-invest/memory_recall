@@ -39,6 +39,7 @@ from src.services.core.recall_trace_service import (
 from src.services.core.recall_embedding_service import recall_embedding_service
 from src.services.core.profile_service import profile_service
 from src.services.core.memory_store import memory_store
+from src.services.graph_tools import normalize_entity_name
 from src.services.core.document_store import document_store
 from src.embedding.client import get_embedding_client
 
@@ -400,8 +401,28 @@ class ContextInjectService:
                             )
 
                             if entities:
+                                if settings.ENTITY_FAMILY_EXPANSION:
+                                    # 同一实体可能因 LLM 类型漂移被拆成多行（库内 424 组），
+                                    # 按「同名同容器」去重，避免同一实体占掉 2 个种子位；
+                                    # entities 已按共现次数降序 ⇒ 保留的是更枢纽的那一行。
+                                    seed_entities = []
+                                    seen_seed_names = set()
+                                    for entity in entities:
+                                        seed_key = (
+                                            entity.container_tag or "",
+                                            normalize_entity_name(entity.name),
+                                        )
+                                        if seed_key in seen_seed_names:
+                                            continue
+                                        seen_seed_names.add(seed_key)
+                                        seed_entities.append(entity)
+                                        if len(seed_entities) >= 5:
+                                            break
+                                else:
+                                    seed_entities = entities[:5]
+
                                 related_entities = []
-                                for entity in entities[:5]:
+                                for entity in seed_entities:
                                     try:
                                         related = await memory_store.traverse_entity_relations(
                                             entity_id=entity.id,

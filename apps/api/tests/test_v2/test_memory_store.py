@@ -934,14 +934,18 @@ class TestTraverseEntityRelations:
                     },
                 ]
             )
-            mock_db.fetch = AsyncMock(
-                side_effect=[
-                    [{"entity_id": entity_id_2}],
-                    [],
-                    [],
-                    [],
-                ]
-            )
+            async def fake_fetch(sql, *args):
+                if "lower(btrim(e2.name))" in sql:
+                    # 家族解析查询：本用例无同名分裂行 ⇒ 每个 id 自成一家
+                    return [
+                        {"src_id": i, "member_id": i, "link_count": 1}
+                        for i in args[0]
+                    ]
+                if "to_entity_id AS entity_id" in sql and entity_id_1 in args[0]:
+                    return [{"entity_id": entity_id_2}]
+                return []
+
+            mock_db.fetch = AsyncMock(side_effect=fake_fetch)
 
             results = await self.store.traverse_entity_relations(
                 entity_id_1, max_depth=2
@@ -1091,8 +1095,15 @@ class TestFindMemoriesByEntities:
         entity_id = "00000000-0000-0000-0000-000000000001"
 
         with patch("src.services.core.memory_store.db") as mock_db:
-            mock_db.fetch = AsyncMock(
-                return_value=[
+
+            async def fake_fetch(sql, *args):
+                if "lower(btrim(e2.name))" in sql:
+                    # 家族解析查询：无同名分裂行 ⇒ 输入 id 自成一家
+                    return [
+                        {"src_id": i, "member_id": i, "link_count": 1}
+                        for i in args[0]
+                    ]
+                return [
                     {
                         "id": "mem_1",
                         "container_tag": "user_001",
@@ -1108,7 +1119,8 @@ class TestFindMemoriesByEntities:
                         "is_forgotten": False,
                     }
                 ]
-            )
+
+            mock_db.fetch = AsyncMock(side_effect=fake_fetch)
 
             results = await self.store.find_memories_by_entities(
                 [entity_id], "user_001"
@@ -1124,8 +1136,14 @@ class TestFindMemoriesByEntities:
         entity_id_2 = "00000000-0000-0000-0000-000000000002"
 
         with patch("src.services.core.memory_store.db") as mock_db:
-            mock_db.fetch = AsyncMock(
-                return_value=[
+
+            async def fake_fetch(sql, *args):
+                if "lower(btrim(e2.name))" in sql:
+                    return [
+                        {"src_id": i, "member_id": i, "link_count": 1}
+                        for i in args[0]
+                    ]
+                return [
                     {
                         "id": "mem_1",
                         "container_tag": "user_001",
@@ -1141,7 +1159,8 @@ class TestFindMemoriesByEntities:
                         "is_forgotten": False,
                     }
                 ]
-            )
+
+            mock_db.fetch = AsyncMock(side_effect=fake_fetch)
 
             results = await self.store.find_memories_by_entities(
                 [entity_id_1, entity_id_2], "user_001"
@@ -1155,8 +1174,14 @@ class TestFindMemoriesByEntities:
         entity_id = "00000000-0000-0000-0000-000000000001"
 
         with patch("src.services.core.memory_store.db") as mock_db:
-            mock_db.fetch = AsyncMock(
-                return_value=[
+
+            async def fake_fetch(sql, *args):
+                if "lower(btrim(e2.name))" in sql:
+                    return [
+                        {"src_id": i, "member_id": i, "link_count": 1}
+                        for i in args[0]
+                    ]
+                return [
                     {
                         "id": f"mem_{i}",
                         "container_tag": "user_001",
@@ -1173,7 +1198,8 @@ class TestFindMemoriesByEntities:
                     }
                     for i in range(3)
                 ]
-            )
+
+            mock_db.fetch = AsyncMock(side_effect=fake_fetch)
 
             results = await self.store.find_memories_by_entities(
                 [entity_id], "user_001", limit=3

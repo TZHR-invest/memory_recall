@@ -71,4 +71,24 @@
   metadata ⇒ 同步路径不覆盖这些键，新版本会永久继承"提取还没做"的假标记）。存量 6590 行 /
   32,945 个残留键已于 2026-09-22 清库（备份 `apps/api/backups/pending-keys-rollback-20260922.json`）。
 
+### 实体图谱通道必须是确定性的（勿把 `ORDER BY` 删掉）
+
+`context_inject_service` 的实体图扩展只取前 5 个种子，而 `get_entities_for_memories` 原先
+`SELECT DISTINCT e.*` **没有排序** ⇒ 实际按链接表物理顺序取（与本次召回相关性无关，语义上也不保证稳定）；
+`traverse_entity_relations` 的出/入边查询同样没有排序，而 `max_nodes`（默认 3）**含起点自身**
+⇒ 每种子实际只跟 ~2 条边。两处都必须保持 `ORDER BY`（种子：`co_occur_count DESC, mention_count DESC, id`；
+边：`confidence DESC, id`），否则同一 query 两次召回可能给出不同结果，A/B 也无法归因。
+
+### 同名实体按「家族」归一（`ENTITY_FAMILY_EXPANSION`）
+
+`entities` 的唯一键是 `(name, type, container_tag)`，而 `type` 由 LLM 抽取、同一实体换个 run 就可能变
+⇒ 生产库实测 **424 组**同名多型（856 行）：16.2% 的记忆链接挂在非主行、751 条关系边在次行、
+**同组两行之间 0 条关系边**（互为孤岛）。所以读路径统一按家族处理：`resolve_entity_families` /
+`expand_entity_ids_by_name`（同容器内 `lower(btrim(name))` 相同即一族，代表 = 链接最多者、平局取 id 最小
+⇒ 确定）。接入点三处：种子去重、遍历邻居展开（一个家族只占 1 个节点预算，但**边取并集**）、
+`find_memories_by_entities` 回查前展开（命中计数用 `COUNT(DISTINCT lower(btrim(name)))`，否则一个实体
+拆 3 行会被算 3 次）。**容器是租户边界：只在同一 `container_tag` 内归并，绝不能跨容器。**
+开关 `settings.ENTITY_FAMILY_EXPANSION`（默认 True；置 False = 单行旧行为，供 A/B 与回滚）。
+背景、实测数据与活 A/B 见 [note](notes/2026-09-22-entity-graph-determinism-and-name-normalization.md)。
+
 *状态: ACTIVE · 版本: v1.0 · 最后更新: 2026-08-13*

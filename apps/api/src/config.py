@@ -114,6 +114,16 @@ class Settings(BaseSettings):
     # 要正式退役：保持 False 并清理 /api/v2 路由与 web/crystal。
     ENABLE_CRYSTAL_WORKER: bool = False
 
+    # 图谱通道「同名家族」归一开关（默认开）。
+    # 背景（2026-09-22 实测）：entities 唯一键是 (name, type, container_tag)，而 type 由 LLM
+    # 抽取、同一实体换个 run 就可能变 ⇒ 库内 424 组同名不同型（856 行），16.2% 的记忆链接
+    # 挂在非主行上，且同组两行之间 0 条关系边（互为孤岛）；只看单个 id 就只能看到一半。
+    # 开启后：种子按共现次数确定性排序、同名家族合并成 1 个遍历节点（边取并集）、
+    # 记忆回查按名字展开 ⇒ tailscale 一组实测 +15 条记忆、+15 条边。
+    # 置 False = 回到"只认单行"的旧行为（种子排序一并回退；关系边仍保持确定性排序），
+    # 用于 A/B 与一键回滚 —— 改后需重启 API。
+    ENTITY_FAMILY_EXPANSION: bool = True
+
     # Recall Trace 配置
     TRACE_ENABLED: bool = True  # 是否记录召回 Trace
     TRACE_SAMPLE_RATE: float = 1.0  # Trace 采样率 0~1（include_trace 请求不受采样影响）
