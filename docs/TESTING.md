@@ -36,6 +36,13 @@
 - 同源 loop 冲突也发生在 `tests/test_crystal/integration/` 与 `tests/test_stats_tz_integration.py`
   一起跑时：crystal 套件先在模块 loop 上建全局池，tz 测试在另一模块 loop 复用会报
   "attached to a different loop"。tz 测试已改为先 `db.disconnect()` 再 `db.connect()` 规避。
+- **⚠️ 别裸赋值 patch 单例方法（会污染整个会话）**：`context_inject_service._get_chunks = AsyncMock(...)`
+  这种写法**不还原**，之后所有测试模块都静默走那个 mock（2026-09-22 实测：`test_context_inject_with_chunks`
+  泄漏的 mock 让后续模块的 chunks 段永远返回 `chunk_001`，且**单跑通过、全套失败**，极难归因）。
+  一律用 `with patch.object(instance, "method", ...)`。**判据**：新测试若"单跑过、全套挂"，先查前序文件有没有泄漏 patch。
+- **`patch("<模块>.<名字>")` 对函数内的本地 import 无效**：`context_inject_service._get_chunks` 内部是
+  `from src.embedding.client import get_embedding_client`（本地 import）⇒ 必须 patch
+  `src.embedding.client.get_embedding_client` 那一处；只为省事 patch 模块属性会"看起来 patch 了但没生效"。
 - 集成测试不清理自己的测试数据（容器如 `test_integration_*`、`test_perf_*`）。
   **⚠️ 会持续累积，需定期清理**（历史上 08-14 / 08-15 / 08-17 / 09-22 各清过一次，每次都能再长回来）：
   ```bash

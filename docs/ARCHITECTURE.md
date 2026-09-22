@@ -71,6 +71,15 @@
   metadata ⇒ 同步路径不覆盖这些键，新版本会永久继承"提取还没做"的假标记）。存量 6590 行 /
   32,945 个残留键已于 2026-09-22 清库（备份 `apps/api/backups/pending-keys-rollback-20260922.json`）。
 
+### 召回通道失败必须留日志（勿写裸 `except Exception: pass`）
+
+四个召回通道里，profile/memories/chunks 的**通道级**失败本来就有 `logger.warning(...)` 且会进响应的
+`failed_channels`；但**记忆图 / 实体图 / chunks 实体命中子通道**曾各有一处 `except: pass`（2026-09-22 已补）。
+两个坑值得记住：①记忆图的 `try` 在 `for mem in all_memories[:3]` **内**且**没有外层 handler** ⇒ 整条通道
+可以无声消失；②实体图**外层有** `logger.error("entity_graph injection failed")`，但逐种子的异常被内层
+吞掉后**外层永不触发**（`traverse_entity_relations` 整体坏掉时零日志）。新增静默兜底前先问一句
+"它坏掉时谁会知道"。细节 → [note](notes/2026-09-22-graph-channel-silent-failure-logging.md)。
+
 ### 实体图谱通道必须是确定性的（勿把 `ORDER BY` 删掉）
 
 `context_inject_service` 的实体图扩展只取前 5 个种子，而 `get_entities_for_memories` 原先

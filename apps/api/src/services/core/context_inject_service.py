@@ -117,8 +117,8 @@ class ContextInjectService:
             try:
                 if await recall_trace_service.should_record(force=include_trace):
                     await recall_trace_service.save(trace)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("recall trace save failed (all channels down): %s", e)
             raise RuntimeError(f"Context injection failed: {err}")
 
         all_items = self._collect_items_with_tags(
@@ -387,8 +387,15 @@ class ContextInjectService:
 
                                     if len(all_memories) >= max_memories * 2:
                                         break
-                            except Exception:
-                                pass
+                            except Exception as e:
+                                # 这个 try 在 for 循环内、且**没有外层 handler** ⇒ 不记日志就完全静默
+                                # （整条记忆图通道可以无声消失；2026-09-22 加）
+                                logger.warning(
+                                    "context-inject memory_graph expansion failed for %s (mem=%s): %s",
+                                    container_tag,
+                                    mem.get("id"),
+                                    e,
+                                )
 
                     if enable_entity_graph and all_memories:
                         entity_graph_depth = config.get("entity_graph_depth", 2)
@@ -439,8 +446,16 @@ class ContextInjectService:
                                                     r_entity.name,
                                                     scope=scope,
                                                 )
-                                    except Exception:
-                                        pass
+                                    except Exception as e:
+                                        # 逐种子吞掉异常 ⇒ 若 traverse 整体坏掉，外层
+                                        # `entity_graph injection failed` 永远不会触发 ⇒ 零日志。
+                                        # 2026-09-22 加（当时的候选故障正是 traverse 的 SQL）。
+                                        logger.warning(
+                                            "context-inject entity_graph traverse failed for %s (seed=%s): %s",
+                                            container_tag,
+                                            entity.name,
+                                            e,
+                                        )
 
                                 if related_entities:
                                     entity_ids = list(
@@ -642,8 +657,14 @@ class ContextInjectService:
                                             "_entity_hit": True,
                                         }
                                     )
-                except Exception:
-                    pass
+                except Exception as e:
+                    # 实体命中 chunk 子通道同样不该静默（外层 `chunks fetch failed` 只覆盖
+                    # 更外层的异常，这里吞掉后它不会触发）
+                    logger.warning(
+                        "context-inject chunks entity-hit failed for %s: %s",
+                        container_tag,
+                        e,
+                    )
 
             threshold = config.get("chunks_similarity_threshold", 0.45)
             entity_threshold = config.get("entity_chunk_threshold", 0.30)
@@ -693,7 +714,10 @@ class ContextInjectService:
             return semantic_dedup_service.compute_cosine_similarity(
                 query_embedding, chunk_embedding
             )
-        except Exception:
+        except Exception as e:
+            # 兜底返回 0.0 是有意设计（丢弃坏 embedding），但按 chunk 逐条调用 ⇒ 用 debug
+            # 级别留痕，避免坏数据刷屏
+            logger.debug("chunk similarity failed (%s): %s", type(e).__name__, e)
             return 0.0
 
     def _extract_query_keywords(self, text: str) -> set:

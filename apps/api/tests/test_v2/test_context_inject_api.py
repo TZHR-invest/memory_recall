@@ -465,33 +465,40 @@ class TestContextInjectAPI:
 
         mock_memory_store.get_by_container = AsyncMock(return_value=[])
 
-        context_inject_service._get_chunks = AsyncMock(
-            return_value=[
-                {
-                    "id": "chunk_001",
-                    "content": "项目文档内容",
-                    "embedding": [0.3] * 1024,
-                    "document_id": "doc_001",
-                    "similarity": 0.8,
-                }
-            ]
-        )
-
-        result = asyncio.run(
-            context_inject_service.inject_with_tags(
-                user_tag="user_test",
-                project_tag="user_test",
-                query="项目文档",
-                config={
-                    "inject_profile": False,
-                    "max_profile_items": 10,
-                    "max_memories": 0,
-                    "max_chunks": 3,
-                    "enable_semantic_dedup": False,
-                    "language": "zh_CN",
-                },
+        # ⚠️ 必须用 patch.object 包起来：直接 `context_inject_service._get_chunks = AsyncMock(...)`
+        # 会把单例的该方法**永久**替换（无还原）⇒ 整个 pytest 会话里后续所有测试模块的 chunks
+        # 通道都静默走这个 mock（2026-09-22 实测：test_graph_channel_failure_logging 因此在全套
+        # 运行时拿到 chunk_001 而进不了真实分支）。
+        with patch.object(
+            context_inject_service,
+            "_get_chunks",
+            AsyncMock(
+                return_value=[
+                    {
+                        "id": "chunk_001",
+                        "content": "项目文档内容",
+                        "embedding": [0.3] * 1024,
+                        "document_id": "doc_001",
+                        "similarity": 0.8,
+                    }
+                ]
+            ),
+        ):
+            result = asyncio.run(
+                context_inject_service.inject_with_tags(
+                    user_tag="user_test",
+                    project_tag="user_test",
+                    query="项目文档",
+                    config={
+                        "inject_profile": False,
+                        "max_profile_items": 10,
+                        "max_memories": 0,
+                        "max_chunks": 3,
+                        "enable_semantic_dedup": False,
+                        "language": "zh_CN",
+                    },
+                )
             )
-        )
 
         assert result["stats"]["chunks_count"] > 0
 
