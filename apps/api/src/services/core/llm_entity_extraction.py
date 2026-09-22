@@ -9,6 +9,7 @@ Supports:
 """
 
 import asyncio
+import logging
 import re
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
@@ -352,6 +353,9 @@ MEANINGLESS_ENTITIES = {
 # 不需要的实体类型
 SKIP_ENTITY_TYPES = {"time", "number", "activity"}
 
+# 模块级 logger：原本本模块没有任何日志出口，导致"降级"完全静默（2026-09-22 补）
+logger = logging.getLogger(__name__)
+
 ENGLISH_ENTITY_EXTRACTION_PROMPT = """You are an entity extraction expert. Extract entities from text and return JSON.
 
 Text: {text}
@@ -664,11 +668,27 @@ class LLMEntityExtractor:
                     "confidence": result.get("confidence", 0.5),
                 }
 
+            # result 为空 ⇒ LLM 返回了内容但 JSON 解析失败（或返回空 content）；此前无日志
+            logger.warning(
+                "实体关系提取解析失败降级（返回 None，文本 %d 字符）→ 退回规则提取",
+                len(text or ""),
+            )
             return self._fallback_extract_with_relations(text, entity_context)
 
         except asyncio.TimeoutError:
+            # 静默降级是"零实体记忆"查不清的根因（2026-09-22 验证时发现：一条 889 字符技术记忆
+            # 写入时 0 实体、事后无法归因，因两条降级分支都没有日志）。这里补日志，至少能区分
+            # 超时 / 解析失败 / 异常三类降级。
+            logger.warning(
+                "实体关系提取超时降级（timeout=%.0fs，文本 %d 字符）→ 退回规则提取",
+                self.timeout, len(text or ""),
+            )
             return self._fallback_extract_with_relations(text, entity_context)
-        except Exception:
+        except Exception as e:
+            logger.warning(
+                "实体关系提取异常降级（%s: %s，文本 %d 字符）→ 退回规则提取",
+                type(e).__name__, e, len(text or ""),
+            )
             return self._fallback_extract_with_relations(text, entity_context)
 
     def _get_prompt_with_relations(

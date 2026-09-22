@@ -536,3 +536,28 @@ class TestExtractWithRelations:
             assert types, f"{lang} prompt 未解析到类型"
             missing = types - set(ENTITY_TYPES)
             assert not missing, f"{lang} prompt 用了白名单外的类型（会被压成 thing）: {sorted(missing)}"
+
+    @pytest.mark.asyncio
+    async def test_fallback_is_logged_not_silent(self, caplog):
+        """降级必须留痕（2026-09-22）。
+
+        验证线上"零实体记忆"时发现：一条 889 字符技术记忆写入时 0 实体，事后**无法归因**——
+        因为 `extract_with_relations` 的超时/异常/解析失败三条降级分支都没有日志。
+        本测试锁住"解析失败会 WARNING"，否则零实体率永远查不清。
+        """
+        import logging
+
+        mock_client = MagicMock()
+        mock_client.aextract_json = AsyncMock(return_value=None)  # 模拟解析失败
+
+        with patch(
+            "src.services.core.llm_entity_extraction.get_llm_client",
+            return_value=mock_client,
+        ):
+            extractor = LLMEntityExtractor()
+            with caplog.at_level(logging.WARNING):
+                result = await extractor.extract_with_relations("一段技术文本")
+
+        assert "entities" in result
+        messages = [r.getMessage() for r in caplog.records]
+        assert any("解析失败降级" in m for m in messages), f"解析失败未记日志（静默降级）: {messages}"
