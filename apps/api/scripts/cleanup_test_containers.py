@@ -42,14 +42,18 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.database import db  # noqa: E402
 
 # 有真实内容、**必须保留**的容器后缀（防误删，随发现补充）
-PROTECTED_SUFFIXES = ("project-ai-agent", "project-deployment", "project-dshte", "_hermes")
+PROTECTED_SUFFIXES = ("project-ai-agent", "project-deployment", "_hermes")
 
 JUNK_PREDICATE = r"""
   tag LIKE 'test\_%' OR tag = 'user_test'
   OR tag = '085288ba-8eab-439b-b0d4-b92382e0f95d_project-'
   OR tag ~ '^085288ba-8eab-439b-b0d4-b92382e095d$'
-  OR tag ~ '^085288ba-8eab-439b-b0d4-b92382e0f95d_project-(capture-(accum|test|throttle)-[0-9]+|recall-test(-[0-9]+)?|debug[0-9]*(-[0-9]+)?|debug-tag|e2e-test|update-test|tmp|root|stock|deepseek-harness|office_64g)$'
+  OR tag ~ '^085288ba-8eab-439b-b0d4-b92382e0f95d_project-(capture-(accum|test|throttle)-[0-9]+|recall-test(-[0-9]+)?|debug[0-9]*(-[0-9]+)?|debug-tag|e2e-test|update-test|tmp|root|stock|deepseek-harness|office_64g|dshte)$'
 """
+
+# 说明：`dshte` 是 2026-09-11 的工具验证容器（web_search/web_fetch 行为笔记），
+# 经用户 2026-09-22 确认删除后并入本判据；原代码里它曾被列进 PROTECTED_SUFFIXES（已移除）。
+
 
 ALL_TAGS_SQL = """
 SELECT DISTINCT tag FROM (
