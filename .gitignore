@@ -37,6 +37,8 @@ test_venv/
 # Environment Variables
 .env
 .env.local
+# 改配置前的备份（含 API Key，勿入库）
+.env.bak-*
 
 # Logs
 *.log

@@ -19,6 +19,17 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+# 思考型（reasoning）provider：模型先产出思考链，思考 token 计入 max_tokens。
+# 官方直连 deepseek 与 opencodex 上的 deepseek-v4.1-flash 都属此类。
+REASONING_PROVIDERS = {"deepseek", "opencodex"}
+
+# 思考型 provider 的 max_tokens 下限（调用方传更小时抬到这个值）。
+# 依据（2026-09-22 换 opencodex/deepseek-v4.1-flash 实测）：抽取 prompt 1.3k 字符需
+# 1.2k~1.6k 思考 token，5k 字符 prompt 会把调用方默认的 2000 吃满 → content 为空、
+# 实体提取静默丢结果（日志特征：`ok=false content='' → 返回空`，reasoning 顶到上限）。
+# 该下限只抬高上限、不预扣费用（模型自然结束不产生额外成本）；crystal 链路另有显式 16000。
+REASONING_MIN_MAX_TOKENS = 8000
+
 
 def _prompt_len(messages: List[Dict[str, str]]) -> int:
     """prompt 摘要：全部消息 content 的字符总数（近似 token 量）"""
@@ -33,7 +44,9 @@ def _response_summary(response, content: Optional[str], elapsed: float) -> str:
     """
     message = response.choices[0].message
     content_len = len(content or "")
-    reasoning = getattr(message, "reasoning_content", None) or ""
+    # 思考链字段名随 provider 而异：官方直连是 reasoning_content，
+    # opencodex（聚合商透传）是 reasoning —— 都读，否则排查时看到 reasoning_len=0 会误判。
+    reasoning = getattr(message, "reasoning_content", None) or getattr(message, "reasoning", None) or ""
     reasoning_len = len(reasoning) if reasoning else 0
     usage = getattr(response, "usage", None)
     usage_parts: List[str] = []
@@ -78,6 +91,12 @@ class LLMClient:
             api_key = settings.DEEPSEEK_API_KEY
             base_url = settings.DEEPSEEK_API_BASE
             model = settings.DEEPSEEK_LLM_MODEL
+        elif settings.LLM_PROVIDER == "opencodex":
+            if not settings.OPENCODEX_API_KEY:
+                raise ValueError("LLM_PROVIDER=opencodex 但未配置 OPENCODEX_API_KEY")
+            api_key = settings.OPENCODEX_API_KEY
+            base_url = settings.OPENCODEX_API_BASE
+            model = settings.OPENCODEX_LLM_MODEL
         else:
             if not settings.VOLC_API_KEY:
                 raise ValueError("VOLC_API_KEY 未配置")
@@ -96,7 +115,9 @@ class LLMClient:
         )
         self.model = model
         # 深度思考模型会先消耗思维链 token，调用方给的 max_tokens 过小时结果会被截断为空
-        self._min_max_tokens = 1000 if self.provider == "deepseek" else 0
+        self._min_max_tokens = (
+            REASONING_MIN_MAX_TOKENS if self.provider in REASONING_PROVIDERS else 0
+        )
 
     def _effective_max_tokens(self, max_tokens: int) -> int:
         return max(max_tokens, self._min_max_tokens)
@@ -158,11 +179,11 @@ class LLMClient:
         return result
 
     def _apply_reasoning_effort(self, kwargs: Dict[str, Any]) -> Dict[str, Any]:
-        """deepseek 思考型模型：默认 thinking effort=low（缩短思考链，
+        """思考型模型（deepseek / opencodex）：默认 thinking effort=low（缩短思考链，
         防复杂任务思考吃光 max_tokens 导致 content 空；也更快更省）。
-        调用方可传 reasoning_effort 覆盖；非 deepseek provider 不传。
+        调用方可传 reasoning_effort 覆盖；非思考型 provider 不传。
         """
-        if self.provider != "deepseek":
+        if self.provider not in REASONING_PROVIDERS:
             return kwargs
         if "reasoning_effort" not in kwargs:
             kwargs["reasoning_effort"] = "low"

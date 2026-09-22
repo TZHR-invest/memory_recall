@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     VOLC_API_KEY: Optional[str] = None
     VOLC_API_BASE: str = "https://ark.cn-beijing.volces.com/api/v3"
 
-    # LLM 提供商：volcengine 或 deepseek
+    # LLM 提供商：volcengine / deepseek / opencodex
     LLM_PROVIDER: str = "volcengine"
 
     # LLM 模型配置（支持动态切换）
@@ -40,6 +40,15 @@ class Settings(BaseSettings):
     DEEPSEEK_API_KEY: Optional[str] = None
     DEEPSEEK_API_BASE: str = "https://api.deepseek.com"
     DEEPSEEK_LLM_MODEL: str = "deepseek-v4-flash"
+
+    # OpenCodeX 代理 LLM 配置（LLM_PROVIDER=opencodex 时生效）
+    # 聚合商模型 id 是斜杠形态（commandcode/deepseek/deepseek-v4.1-flash），
+    # 与官方直连的 deepseek-v4-flash 不是同一命名空间。
+    # base 默认写局域网 IP 而非 127.0.0.1：容器内 127.0.0.1 是容器自身，
+    # 只有宿主直跑 uvicorn 时两者等价（opencodex 监听 0.0.0.0:10100）。
+    OPENCODEX_API_KEY: Optional[str] = None
+    OPENCODEX_API_BASE: str = "http://192.168.0.206:10100/v1"
+    OPENCODEX_LLM_MODEL: str = "commandcode/deepseek/deepseek-v4.1-flash"
 
     VOLC_EMBEDDING_MODEL: str = "doubao-embedding-vision-251215"
 

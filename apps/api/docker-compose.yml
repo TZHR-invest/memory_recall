@@ -21,6 +21,9 @@ services:
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
       - DEEPSEEK_API_BASE=${DEEPSEEK_API_BASE:-https://api.deepseek.com}
       - DEEPSEEK_LLM_MODEL=${DEEPSEEK_LLM_MODEL:-deepseek-v4-flash}
+      - OPENCODEX_API_KEY=${OPENCODEX_API_KEY}
+      - OPENCODEX_API_BASE=${OPENCODEX_API_BASE:-http://192.168.0.206:10100/v1}
+      - OPENCODEX_LLM_MODEL=${OPENCODEX_LLM_MODEL:-commandcode/deepseek/deepseek-v4.1-flash}
     depends_on:
       postgres:
         condition: service_healthy
