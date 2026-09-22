@@ -66,6 +66,12 @@
 | 开关双向 | flag=True 记忆 56 / flag=False 41；`.env` 恢复默认后线上结果与 ON 完全一致（回滚路径有效） |
 | 单测 | 新增 13 条 `tests/test_v2/test_entity_family_expansion.py` 全绿；快速单元循环 FAILED 集合与改前**逐项一致**（487 passed = 改前 474 + 新增 13） |
 
+> ⚠️ 验证过程的一个副作用（已处置）：为对照"改动前"而跑的完整 `tests/test_v2/`（含 `test_performance.py` /
+> `test_integration.py`）**会往库里写测试数据且自己不清理**——本次写出 6 个测试容器 / 97 条记忆
+> （`test_perf_container` 89 条等）。已用 `scripts/cleanup_test_containers.py --apply` 清掉
+> （备份 `apps/api/backups/test-containers-rollback-20260922-171708.json`，残留复核 0），
+> **业务容器零写入**。下次做对照请直接加 `--ignore=tests/test_v2/test_integration.py --ignore=tests/test_v2/test_performance.py`。
+
 ## 未验证 / 边界（诚实清单）
 
 - **质量没做盲判 A/B**：本次只证明"确定性 + 覆盖"，**没证明注入质量变好**。要下结论得跑
