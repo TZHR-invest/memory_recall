@@ -98,6 +98,11 @@ class Settings(BaseSettings):
     # dropped 可审计），宁丢勿存
     CAPTURE_DEDUP_THRESHOLD: float = 0.80
 
+    # 异步处理"卡住"判定阈值（分钟）：memories.metadata._status 停在 processing 且
+    # created_at 早于该阈值即视为卡死（stats/overview 的 anomalies.processing_stuck）。
+    # 依据：思考型模型下后台单条处理实测 13~25s，10 分钟足够区分"在跑"与"丢了"。
+    STUCK_PROCESSING_MINUTES: int = 10
+
     # Recall Trace 配置
     TRACE_ENABLED: bool = True  # 是否记录召回 Trace
     TRACE_SAMPLE_RATE: float = 1.0  # Trace 采样率 0~1（include_trace 请求不受采样影响）

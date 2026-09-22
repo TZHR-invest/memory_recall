@@ -22,6 +22,7 @@ from src.api.auth import (
     verify_container_ownership,
 )
 from src.database import db
+from src.config import settings
 
 router = APIRouter(prefix="/stats", tags=["Stats"])
 
@@ -178,10 +179,15 @@ async def get_overview(
         exact,
         prefix,
     )
+    # anomalies.processing_stuck：_status 仍是 processing 且已超过阈值 ⇒ 后台任务多半已丢
+    # （进程重启/BackgroundTasks 未跑）。没有它，dashboard 无法区分"在跑"与"卡死"。
+    stuck_minutes = int(settings.STUCK_PROCESSING_MINUTES)
     anomalies = await db.fetchrow(
         f"""
         SELECT
             COUNT(*) FILTER (WHERE metadata->>'_status' = 'processing') AS processing,
+            COUNT(*) FILTER (WHERE metadata->>'_status' = 'processing'
+                               AND created_at < NOW() - INTERVAL '{stuck_minutes} minutes') AS processing_stuck,
             COUNT(*) FILTER (WHERE metadata->>'_status' = 'failed') AS failed
         FROM memories
         WHERE {_scope_sql('container_tag', 1, 2, 'is_latest = TRUE AND is_forgotten = FALSE')}

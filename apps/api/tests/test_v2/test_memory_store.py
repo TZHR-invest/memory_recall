@@ -1214,3 +1214,124 @@ class TestFindMemoriesByEntities:
                         assert call_kwargs["metadata"]["type"] == "learned-pattern"
                         assert mock_relation.called
 
+    @pytest.mark.asyncio
+    async def test_process_memory_async_writes_terminal_status(self):
+        """异步收尾必须落终态：_status=completed + _processed_at（2026-09-22）。
+
+        此前实现是把 _status pop 掉 ⇒ "异步已完成"与"同步写入（从没设过该键）"在库里
+        无法区分，且拿不到后台耗时（卡死判定只能靠 created_at 年龄）。
+        """
+        memory = Memory(
+            id="mem_async_done",
+            container_tag="user_001",
+            content="待异步处理的内容",
+            is_static=False,
+            is_latest=True,
+            metadata={
+                "_status": "processing",
+                "_pending_extract_entities": False,
+                "_pending_auto_relations": False,
+            },
+        )
+
+        with patch.object(
+            self.store, "get_by_id", new_callable=AsyncMock, return_value=memory
+        ):
+            with patch.object(
+                self.store, "update_metadata", new_callable=AsyncMock, return_value=True
+            ) as mock_update:
+                with patch(
+                    "src.services.core.profile_service.profile_service.invalidate_cache",
+                    new_callable=AsyncMock,
+                ):
+                    await self.store.process_memory_async("mem_async_done")
+
+        assert mock_update.called
+        written = mock_update.call_args.args[1]
+        assert written["_status"] == "completed"
+        assert written["_processed_at"]  # ISO 时间戳，用于测后台耗时
+        # pending 标记必须清干净（否则 _status=processing 的重复消费会重跑提取）
+        assert not [k for k in written if k.startswith("_pending_")]
+
+    @pytest.mark.asyncio
+    async def test_process_memory_async_failure_writes_failed_status(self):
+        """异步失败必须落 _status=failed + _processed_at（区分"卡住"与"失败过"）。"""
+        memory = Memory(
+            id="mem_async_fail",
+            container_tag="user_001",
+            content="会失败的内容",
+            is_static=False,
+            is_latest=True,
+            metadata={
+                "_status": "processing",
+                "_pending_extract_entities": False,
+                "_pending_auto_relations": False,
+            },
+        )
+
+        with patch.object(
+            self.store, "get_by_id", new_callable=AsyncMock, return_value=memory
+        ):
+            with patch.object(
+                self.store, "update_metadata", new_callable=AsyncMock, return_value=True
+            ) as mock_update:
+                with patch(
+                    "src.services.core.profile_service.profile_service.invalidate_cache",
+                    new_callable=AsyncMock,
+                    side_effect=RuntimeError("boom"),
+                ):
+                    await self.store.process_memory_async("mem_async_fail")
+
+        assert mock_update.called
+        written = mock_update.call_args.args[1]
+        assert written["_status"] == "failed"
+        assert written["_processed_at"]
+
+    @pytest.mark.asyncio
+    async def test_process_embedding_async_merge_writes_terminal_status(self):
+        """捕获/重复记忆合并后也应落终态（不是 pop 成空），否则与"同步写入"混淆。"""
+        memory = Memory(
+            id="mem_merge",
+            container_tag="user_001",
+            content="与既有记忆重复的内容",
+            is_static=False,
+            is_latest=True,
+            metadata={"_status": "processing", "_pending_extract_entities": True},
+        )
+
+        with patch.object(
+            self.store, "get_by_id", new_callable=AsyncMock, return_value=memory
+        ):
+            with patch.object(
+                self.store,
+                "_generate_embedding",
+                new_callable=AsyncMock,
+                return_value=[0.1] * 1024,
+            ):
+                with patch.object(
+                    self.store,
+                    "_check_similar_memory",
+                    new_callable=AsyncMock,
+                    return_value={"id": "mem_existing", "similarity": 0.97},
+                ):
+                    with patch.object(
+                        self.store,
+                        "merge_similar_memory",
+                        new_callable=AsyncMock,
+                        return_value=True,
+                    ):
+                        with patch.object(
+                            self.store,
+                            "update_metadata",
+                            new_callable=AsyncMock,
+                            return_value=True,
+                        ) as mock_update:
+                            with patch("src.services.core.memory_store.db") as mock_db:
+                                mock_db.execute = AsyncMock(return_value=None)
+                                await self.store.process_embedding_async("mem_merge")
+
+        assert mock_update.called
+        written = mock_update.call_args.args[1]
+        assert written["_status"] == "completed"
+        assert written["_processed_at"]
+

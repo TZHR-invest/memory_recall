@@ -342,14 +342,16 @@ class MemoryStore:
                         else:
                             _logger.info(f"Merging memory {memory_id} into {similar['id']}")
                             await self.merge_similar_memory(similar["id"], memory.content)
-                            # 合并后立即清理 processing 状态，避免残留脏状态导致 dashboard 误报"处理中"
+                            # 合并即终态（本行不再做实体/关系提取）⇒ 写 completed + _processed_at，
+                            # 而不是留空：留空会与"同步写入"混淆，也会让 dashboard 误报"处理中"
                             try:
                                 merged = await self.get_by_id(
                                     memory_id, include_forgotten=True
                                 )
                                 if merged:
                                     meta = merged.metadata.copy()
-                                    meta.pop("_status", None)
+                                    meta["_status"] = "completed"
+                                    meta["_processed_at"] = datetime.now(timezone.utc).isoformat()
                                     for k in list(meta):
                                         if k.startswith("_pending_"):
                                             meta.pop(k, None)
@@ -377,7 +379,8 @@ class MemoryStore:
 
     async def process_memory_async(self, memory_id: str) -> None:
         """异步处理记忆：LLM 实体提取 + 关系创建。
-        由 FastAPI BackgroundTasks 调用，处理完成后 _status=done。"""
+        由 FastAPI BackgroundTasks 调用；收尾写 metadata._status=completed（失败写 failed）
+        并落 _processed_at 时间戳（终态契约见收尾处注释）。"""
         import logging as _logging
         _logger = _logging.getLogger("memory_store.async")
 
@@ -491,12 +494,26 @@ class MemoryStore:
                 except Exception as e:
                     _logger.warning(f"Memory {memory_id}: auto relations failed: {e}")
 
-            # 更新 metadata：移除 pending 标记，设置 status=done
+            # 更新 metadata：清理 pending 标记，写终态 status=completed（2026-09-22）
+            # 终态约定（metadata._status）：processing=后台在跑 / completed=处理完 / failed=处理失败。
+            # ⚠️ 这里以前是把 _status pop 掉，导致"异步已完成"与"同步写入（从没设过该键）"
+            # 在库里无法区分，也拿不到后台耗时。现在显式落终态 + _processed_at。
+            # "卡住"判据 = _status 仍是 processing 且 created_at 已过期
+            # （stats/overview 的 anomalies.processing_stuck）。
             # 重新读取最新 metadata 再合并，避免覆盖 _update_embedded_relations 刚写入的 relations
             latest = await self.get_by_id(memory_id)
             if latest:
-                fresh_meta = latest.metadata.copy()
-                fresh_meta.pop("_status", None)
+                # ⚠️ 陈旧 _pending_* 必须在这里真删：它们只被本函数开头 pop（内存副本），
+                # 而 fresh_meta 来自重新读库的行 ⇒ 旧写法只"不新增"、没有删除，
+                # 实测近 3 天 340/340 条已完成记忆仍残留 _pending_extract_entities 等键
+                # （注释声称"移除 pending 标记"，实际没做到）。留着会让重跑重做提取。
+                fresh_meta = {
+                    k: v
+                    for k, v in latest.metadata.items()
+                    if not k.startswith("_pending_")
+                }
+                fresh_meta["_status"] = "completed"
+                fresh_meta["_processed_at"] = datetime.now(timezone.utc).isoformat()
                 for k, v in meta.items():
                     if k.startswith("_pending_") or k == "relations" or k == "_status":
                         continue
@@ -514,12 +531,13 @@ class MemoryStore:
 
         except Exception as e:
             _logger.error(f"Memory {memory_id}: async processing failed: {e}", exc_info=True)
-            # 标记失败
+            # 标记失败（终态 + 结束时间，便于区分"卡住"与"失败过"）
             try:
                 memory = await self.get_by_id(memory_id, include_forgotten=True)
                 if memory:
                     meta = memory.metadata.copy()
                     meta["_status"] = "failed"
+                    meta["_processed_at"] = datetime.now(timezone.utc).isoformat()
                     await self.update_metadata(memory_id, meta)
             except Exception:
                 pass

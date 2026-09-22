@@ -246,6 +246,12 @@
         const mrTypes = (d.memory_relations_by_type || []).map(r => `${r.relation_type} ${r.count}`).join(' · ') || '暂无';
         const anom = d.anomalies || {};
         const anomTotal = (anom.processing || 0) + (anom.failed || 0);
+        // 卡住（_status=processing 且已超阈值）才算异常；"处理中"是正常在跑，不再一律标红
+        const anomStuck = anom.processing_stuck || 0;
+        const anomBad = (anom.failed || 0) > 0 || anomStuck > 0;
+        const anomSub = anomTotal
+            ? `处理中 ${anom.processing || 0}${anomStuck ? `（卡住 ${anomStuck}）` : ''} · 失败 ${anom.failed || 0}`
+            : '无异常';
         const prof = d.profiles || {};
         const profMain = (prof.main_static != null) ? (prof.main_static + prof.main_dynamic) : ((prof.static || 0) + (prof.dynamic || 0));
         const profMainStatic = (prof.main_static != null) ? prof.main_static : (prof.static || 0);
@@ -256,7 +262,7 @@
             { num: m.inferred || 0, lbl: '推断记忆', sub: `占 ${pct(m.inferred, m.total)}` },
             { num: m.forgotten || 0, lbl: '已遗忘', sub: `版本历史 ${m.old_versions || 0}` },
             { num: m.effective_embedding_count != null ? m.effective_embedding_count : (m.with_embedding || 0), lbl: '有向量', sub: (m.effective_embedding_count != null && m.total) ? (m.effective_embedding_count >= m.total ? '全部有效记忆均已向量化' : `${m.total - m.effective_embedding_count} 条向量生成中`) : '' },
-            { num: anomTotal || 0, lbl: '处理异常', sub: anomTotal ? `处理中 ${anom.processing || 0} · 失败 ${anom.failed || 0}` : '无异常', bad: anomTotal > 0 },
+            { num: anomTotal || 0, lbl: '处理异常', sub: anomSub, bad: anomBad },
             { num: d.entities || 0, lbl: '实体', sub: `${(d.entity_relations || 0)} 条实体关系` },
             { num: d.memory_relations || 0, lbl: '记忆关系', sub: mrTypes },
             { num: profMain, lbl: '用户画像', sub: `静态 ${profMainStatic} / 动态 ${profMainDynamic} · 注入于会话首条消息 · ${profMainAge}` },
