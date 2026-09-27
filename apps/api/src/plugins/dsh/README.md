@@ -98,6 +98,7 @@ headless 冒烟需 headless profile（首次 `dsh --profile headless "1"` 自动
 | `enableGraphRecall` / `enableEntityRecall` | `true` / `true` | 图谱召回通道 |
 | `language` | `auto` | `auto` / `zh_CN` / `en_US` |
 | `smartRecallKeywords` | 内置中英文关键词表 | 关键词触发 |
+| `minRecallQueryLength` | 5 | 查询长度闸门，**只约束非首轮**（<5 字的非首轮查询不触发召回，挡住 "嗯"/"ok" 白跑一次语义检索）；首轮无条件注入、画像随首轮下发，不受长度限制（2026-09-28 修：此前闸门排在首轮判定之前，"继续"/"test" 这类 ≤4 字开场会连画像一起丢） |
 | `captureMode` | `extract` | `extract` / `raw` |
 | `captureMinLength` / `captureMaxChars` | 100 / 4000 | 捕获门槛与截断（2026-08-16 门槛 40→100 抑制短轮碎片） |
 | `captureMinIntervalMs` | 600000 | 捕获节流：两次蒸馏最小间隔（ms，0=关闭）；窗口内摘要累计到下轮，信息不丢（2026-08-16） |
@@ -127,14 +128,20 @@ headless 冒烟需 headless profile（首次 `dsh --profile headless "1"` 自动
 ln -sfn ~/.dsh/profiles/node_modules node_modules
 
 # 运行测试（单元 + 集成；集成用例连真实后端，缺 API Key 时自动跳过）
-node --test
+node --test            # 需要 node ≥18：本机系统 node 是 v12，用 nvm 的 node 执行
+MR_TEST_BASE_URL=http://<后端>:8000 node --test   # 后端不在本机时
 ```
 
 测试覆盖：配置解析/边界夹取/标签推导/语言检测/关键词触发；6 个工具端到端
 （store→update 版本链→search→profile→forget）；自动召回（smart 关键词触发、
-once 首次注入、摘要去重、后端不可达 fail-open）；自动捕获（turn 落库 + 无回复
-不落库）；bundle 生成产物同步性 + classic-script 合法性 + `__ModuleLoader__.load`
-注册形态。
+once 首次注入、首轮短查询仍注入、非首轮长度闸门、跨轮去重、后端不可达 fail-open）；
+摘要去重 source 形态兼容（v3/v4）；自动捕获（turn 落库 + 无回复不落库 + 节流）；
+bundle 生成产物同步性 + classic-script 合法性 + `__ModuleLoader__.load` 注册形态。
+
+⚠️ 测试里有联网用例（连真实后端、部分单条 >25s），且默认 `baseUrl` 是
+`http://localhost:8000`——后端不在本机时用 `MR_TEST_BASE_URL` 指向真实地址，
+否则整组用例假失败；且**不要**把用例的容器目录写死复用（后端对高相似内容会合并
+去重，旧内容会让"刚写入的 marker"断言假失败），按 `xxx-<Date.now()>` 每轮独立。
 
 ## 客户端 bundle 生成（MR-023）
 
@@ -167,18 +174,31 @@ dsh web 用 script 标签按 classic script 加载插件 bundle：不能含 impo
    node build-bundle.mjs
    ```
 
-3. **全量测试**：`node --test`（21 例全绿）。
+3. **全量测试**：`node --test`（29 例全绿；其中联网用例约 60s）。
 
 4. **安装**：`bash install.sh --check`（先只查不装）→ `bash install.sh`。
 
 5. **冒烟试启动**（防"启动即崩"）：`bash install.sh --smoke` 在隔离的 headless
    profile 里真实 boot 一次插件组合（约 10-30 秒），插件契约/加载有问题会在
    boot 阶段崩溃并被判定中止（退出码 1），正式 web 完全不受影响。
-6. **激活**：在**终端**里执行 `bash install.sh --restart`（内置冒烟，插件问题
-   自动中止重启）。⚠️ **绝不在 agent（dsh 会话）内部重启宿主 dsh web 进程**
-   ——agent 就跑在 dsh web 里，重启等于杀掉自己；且 dsh web 无守护进程托管，
-   崩溃后无人拉起（2026-08-14 事故：GUI 挂机约 3 小时，靠手动重启恢复）。
-   回滚：`bash install.sh --uninstall` + 重启即可恢复上一个可用状态。
+6. **激活**：**绝不在 agent（dsh 会话）内部重启宿主 dsh web 进程** —— agent 就跑在
+   dsh web 里，重启等于杀掉自己（2026-08-14 事故：GUI 挂机约 3 小时）。当前 dsh web
+   由 **systemd 用户单元**托管（`dsh.service`，`Restart=always`），在**终端**里执行：
+   ```bash
+   systemctl --user restart dsh.service
+   ```
+   ⚠️ **systemd 托管下不要用 `bash install.sh --restart`**（2026-09-28 实测）：该单元的
+   ExecStart 是相对路径 `node ./lib/bin.js web --trusted-host …`，脚本里 5 个
+   `pkill -f` 模式（`dsh web` / `node_modules/.bin/dsh web` / `npm exec …` /
+   `sh -c dsh web` / `@deepseek-ai/dsh/lib/bin.js web`）**没有一个匹配它**（逐条子串
+   验证过），于是旧进程杀不掉，脚本又 `setsid nohup` 起一个竞争进程抢 3080。
+   （`--smoke` 在 MR-025 之后已能正确定位 dsh：`command -v dsh` 优先，覆盖 nvm/npm
+   全局安装与 npx 缓存两种形态。）
+   手动冒烟与回滚：
+   ```bash
+   MEMORY_RECALL_API_KEY=<key> dsh --profile headless "1"    # 隔离 headless 试启动
+   bash install.sh --uninstall && systemctl --user restart dsh.service   # 回滚
+   ```
 
 7. **验证**：页面 200；`/plugins/<id>/client.js` 返回 200；boot 日志无
    `client-modules:` 报错；新会话里自动召回注入出现。

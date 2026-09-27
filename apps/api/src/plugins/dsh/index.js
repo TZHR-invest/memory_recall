@@ -30,6 +30,37 @@ const name = "memory-recall-dsh";
 /** 需要的宿主服务：agents（pre-step 事件）+ tools（工具注册） */
 const inject = ["agents", "tools"];
 
+/**
+ * 注入消息的 source 形态随宿主会话格式自适应（2026-09-28 加，为 dsh 0.1.7 适配）。
+ *
+ * dsh 0.1.7 起会话格式升到 **v4**，写入路径要求 message 的 source 是「producer-owned」
+ * 形态，旧的 `{ kind: "plugin", plugin: <name> }` 会直接抛：
+ *
+ *     format v4 message requires a producer-owned source kind
+ *
+ * ⇒ **新会话第一轮就失败**（headless 实测 exit=1、无输出；摘掉本插件即恢复正常）。
+ * 上游自己的 dsh-time-context 就是这么改的（0.1.5: `kind:"plugin"` + `plugin` 字段
+ * → 0.1.7: 直接用 producer kind）。我们取 `plugin:<name>`，与 v3→v4 迁移器
+ * `producerKind()` 的产物一致，这样「迁移过来的旧会话」与「新写的会话」形态统一。
+ *
+ * ⚠️ 不能无条件改：0.1.5（格式 v3）下 dsh 内部正是靠 `kind === "plugin" &&
+ * plugin === <name>` 识别插件注入的，改掉就认不出来了。故按宿主
+ * `SESSION_FORMAT_VERSION` 判断；探测失败一律 fail-safe 回旧形态。
+ *
+ * @returns {Promise<string|null>} v4+ 返回 `plugin:<name>`，否则 null（用旧形态）
+ */
+let hostProducerKind;
+function producerSourceKind() {
+  if (hostProducerKind === undefined) {
+    hostProducerKind = import("@deepseek-ai/dsh-session")
+      .then((mod) => (typeof mod.SESSION_FORMAT_VERSION === "number" && mod.SESSION_FORMAT_VERSION >= 4
+        ? `plugin:${name}`
+        : null))
+      .catch(() => null);
+  }
+  return hostProducerKind;
+}
+
 /** Schemastery 配置校验（patch config 中只写想覆盖的字段即可，其余走默认/环境变量） */
 const Config = z.object({
   apiKey: z.string(),
@@ -187,9 +218,14 @@ function apply(ctx, config = {}) {
 
     try {
       const text = firstUserText(decision.messages);
-      if (!text || text.length < resolved.minRecallQueryLength) return decision;
+      if (!text) return decision;
 
       const isFirst = !firstRoundDoneByAgent.has(agent.id);
+      // 长度闸门只约束「非首轮」（2026-09-28 修）：首轮是无条件注入（画像随首轮下发），
+      // 若在首轮也拦，"继续"/"接着做"/"test" 这类 ≤4 字开场会连画像一起丢掉——
+      // 而这恰是最依赖记忆的场景。闸门对非首轮仍有意义（挡住 "嗯"/"ok" 触发语义检索）。
+      if (!isFirst && text.length < resolved.minRecallQueryLength) return decision;
+
       let shouldInject;
       if (resolved.injectionStrategy === "always") {
         shouldInject = true;
@@ -227,14 +263,14 @@ function apply(ctx, config = {}) {
       const digest = contextDigest(rendered);
       if (hasInjectedDigest(agent, digest)) return decision;
 
+      // source 形态随宿主会话格式自适应（v4 起必须 producer-owned，见 producerSourceKind）
+      const producerKind = await producerSourceKind();
+      const snapshot = { form: "snapshot", sections: [{ name, text: rendered }] };
       const message = createUserMessage({
         content: [{ type: "text", text: rendered }],
-        source: {
-          kind: "plugin",
-          plugin: name,
-          form: "snapshot",
-          sections: [{ name, text: rendered }],
-        },
+        source: producerKind
+          ? { kind: producerKind, ...snapshot }
+          : { kind: "plugin", plugin: name, ...snapshot },
       });
       if (resolved.debug) {
         logger?.debug?.("[memory-recall-dsh] 注入召回上下文 %s（策略=%s, 首次=%s, 命中 %d 项）",

@@ -72,6 +72,16 @@ export function textFromContent(content) {
     .join("\n");
 }
 
+/** 插件注入消息的 source 形态：v3 = { kind:"plugin", plugin:<name> }；v4 = { kind:"plugin:<name>" } */
+const PLUGIN_NAME = "memory-recall-dsh";
+
+/** 判断一条 message 的 source 是否本插件注入（兼容 v3/v4 两种形态） */
+function isOwnInjectionSource(source) {
+  if (!source || typeof source.kind !== "string") return false;
+  if (source.kind === `plugin:${PLUGIN_NAME}`) return true;
+  return source.kind === "plugin" && source.plugin === PLUGIN_NAME;
+}
+
 /** 会话内去重：检查 agent 会话历史中是否已注入过同一摘要的召回消息 */
 export function hasInjectedDigest(agent, digest) {
   const events = agent?.session?.events;
@@ -79,7 +89,11 @@ export function hasInjectedDigest(agent, digest) {
   for (const event of events) {
     if (!event || event.type !== "user/message") continue;
     const data = event.data;
-    if (data?.source?.kind !== "plugin" || data.source.plugin !== "memory-recall-dsh") continue;
+    // 2026-09-28 修：dsh 0.1.7（会话格式 v4）起注入消息是 producer-owned 形态
+    // （kind = "plugin:<name>"，见 index.js producerSourceKind）。此前只认 v3 的
+    // {kind:"plugin", plugin}，导致本函数在 v4 宿主上恒 false ⇒ 摘要去重静默失效、
+    // 同一段召回上下文会被反复注入（与 index.js 的 source 形态修复配套）。
+    if (!isOwnInjectionSource(data?.source)) continue;
     const text = textFromContent(data.content);
     if (text && contextDigest(text) === digest) return true;
   }

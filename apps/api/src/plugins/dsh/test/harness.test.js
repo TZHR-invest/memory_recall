@@ -16,6 +16,7 @@ import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
 import { apply } from "../index.js";
+import { buildInjectionText, contextDigest, hasInjectedDigest } from "../context.js";
 import { createUserMessage } from "@deepseek-ai/dsh-llm";
 
 const PLUGIN = "memory-recall-dsh";
@@ -114,10 +115,25 @@ function directUserMessage(text) {
   });
 }
 
+/**
+ * 注入消息的 source 形态随宿主会话格式版本变化：
+ *   - 格式 v3（dsh ≤0.1.5）：{ kind: "plugin", plugin: <name> }
+ *   - 格式 v4（dsh ≥0.1.7）：{ kind: "plugin:<name>" }（producer-owned，见 index.js producerSourceKind）
+ * 两种形态都要认，否则在 v4 宿主上断言会假阴性。
+ */
+function isPluginInjected(message) {
+  const kind = message?.source?.kind;
+  if (typeof kind !== "string") return false;
+  if (kind === `plugin:${PLUGIN}`) return true;
+  return kind === "plugin" && message.source.plugin === PLUGIN;
+}
+
 function makeConfig(overrides = {}) {
   return {
     apiKey: API_KEY,
-    baseUrl: "http://localhost:8000",
+    // 后端地址可用 MR_TEST_BASE_URL 覆盖（默认 localhost:8000 = 后端同机场景）；
+    // devbox 上后端在另一台机器时用 env 指向真实地址，避免整组用例假失败
+    baseUrl: process.env.MR_TEST_BASE_URL ?? "http://localhost:8000",
     autoRecall: true,
     autoCapture: true,
     injectionStrategy: "smart",
@@ -168,6 +184,26 @@ test("memory_store / memory_search / memory_profile / memory_forget 端到端（
   assert.equal(gone.success, true, JSON.stringify(gone));
 });
 
+test("摘要去重：hasInjectedDigest 兼容 v3/v4 两种注入 source 形态", () => {
+  const text = buildInjectionText("召回内容占位", "zh_CN");
+  const digest = contextDigest(text);
+  const withEvents = (...sources) => ({
+    session: {
+      events: sources.map((source) => ({ type: "user/message", data: { source, content: [{ type: "text", text }] } })),
+    },
+  });
+
+  // v3（dsh ≤0.1.5）：{ kind: "plugin", plugin: <name> }
+  assert.equal(hasInjectedDigest(withEvents({ kind: "plugin", plugin: PLUGIN }), digest), true, "v3 形态应识别");
+  // v4（dsh ≥0.1.7）：producer-owned，kind = "plugin:<name>"（修复前这里恒 false，去重静默失效）
+  assert.equal(hasInjectedDigest(withEvents({ kind: `plugin:${PLUGIN}` }), digest), true, "v4 形态应识别");
+  // 不误判：别人的插件注入 / 真实用户消息 / 空历史 / 摘要不一致
+  assert.equal(hasInjectedDigest(withEvents({ kind: "plugin", plugin: "other-plugin" }), digest), false);
+  assert.equal(hasInjectedDigest(withEvents({ kind: "user" }), digest), false);
+  assert.equal(hasInjectedDigest({ session: { events: [] } }, digest), false);
+  assert.equal(hasInjectedDigest(withEvents({ kind: `plugin:${PLUGIN}` }), contextDigest("另一段文本")), false);
+});
+
 test("自动召回：smart 策略下关键词触发注入（连真实后端）", { skip: !HAS_BACKEND }, async () => {
   const ctx = makeCtx();
   apply(ctx, makeConfig({ debug: true }));
@@ -190,7 +226,7 @@ test("自动召回：smart 策略下关键词触发注入（连真实后端）",
     async () => ({ kind: "enter", messages: [directUserMessage(`你还记得${marker}的项目架构决策吗`)] }),
   );
   assert.equal(decision.kind, "enter");
-  const injected = decision.messages.filter((m) => m.source?.kind === "plugin" && m.source.plugin === PLUGIN);
+  const injected = decision.messages.filter(isPluginInjected);
   assert.ok(injected.length === 1, `应注入一条召回消息，实际 ${injected.length} 条：${JSON.stringify(decision.messages.map((m) => m.source))}`);
   const text = injected[0].content.find((b) => b.type === "text").text;
   assert.ok(text.startsWith("<system-reminder>"), "注入文本应以 system-reminder 开头");
@@ -206,7 +242,9 @@ test("自动召回：smart 策略下关键词触发注入（连真实后端）",
     { agent, messages: [], turn: 3, step: 1, signal: new AbortController().signal },
     async () => ({ kind: "enter", messages: [directUserMessage(`你还记得${marker}的项目架构决策吗`)] }),
   );
-  const injected2 = second.messages.filter((m) => m.source?.kind === "plugin" && m.source.plugin === PLUGIN);
+  // v4 适配：注入消息 source 形态是 producer-owned（kind = "plugin:<name>"），
+  // 只认 v3 的 {kind:"plugin", plugin} 会让这里的断言在 dsh 0.1.7 上静默跳过
+  const injected2 = second.messages.filter(isPluginInjected);
   if (injected2.length > 0) {
     const text2 = injected2[0].content.find((b) => b.type === "text").text;
     const mm = text2.indexOf(marker);
@@ -239,7 +277,7 @@ test("自动召回：非关键词且非首次 → 不注入", { skip: !HAS_BACKE
     { agent, messages: [], turn: 1, step: 1, signal: new AbortController().signal },
     async () => ({ kind: "enter", messages: [directUserMessage("还记得这里的项目架构吗")] }),
   );
-  const firstInjected = first.messages.filter((m) => m.source?.kind === "plugin" && m.source.plugin === PLUGIN);
+  const firstInjected = first.messages.filter(isPluginInjected);
   assert.ok(firstInjected.length === 1, "首轮关键词应注入，实际 " + firstInjected.length);
 
   // 非首次 + 非关键词 → 不注入
@@ -247,7 +285,7 @@ test("自动召回：非关键词且非首次 → 不注入", { skip: !HAS_BACKE
     { agent, messages: [], turn: 2, step: 1, signal: new AbortController().signal },
     async () => ({ kind: "enter", messages: [directUserMessage("帮我写个 hello world")] }),
   );
-  const injected = decision.messages.filter((m) => m.source?.kind === "plugin" && m.source.plugin === PLUGIN);
+  const injected = decision.messages.filter(isPluginInjected);
   assert.equal(injected.length, 0);
 });
 
@@ -261,7 +299,7 @@ test("自动召回：策略 once 只在首次注入", { skip: !HAS_BACKEND }, as
     { agent, messages: [], turn: 1, step: 1, signal: new AbortController().signal },
     async () => ({ kind: "enter", messages: [directUserMessage("你好，帮我看看这个项目")] }),
   );
-  assert.ok(first.messages.filter((m) => m.source?.kind === "plugin").length === 1);
+  assert.ok(first.messages.filter(isPluginInjected).length === 1);
 
   // 非首次：即使有关键词也不注入
   agent.session.events.push({ type: "user/message", data: { source: { kind: "user" }, content: [] } });
@@ -269,7 +307,43 @@ test("自动召回：策略 once 只在首次注入", { skip: !HAS_BACKEND }, as
     { agent, messages: [], turn: 2, step: 1, signal: new AbortController().signal },
     async () => ({ kind: "enter", messages: [directUserMessage("还记得上次的决策吗")] }),
   );
-  assert.equal(second.messages.filter((m) => m.source?.kind === "plugin").length, 0);
+  assert.equal(second.messages.filter(isPluginInjected).length, 0);
+});
+
+test("自动召回：首轮短查询（≤4 字）仍注入——长度闸门只约束非首轮", { skip: !HAS_BACKEND }, async () => {
+  const ctx = makeCtx();
+  apply(ctx, makeConfig()); // 默认 minRecallQueryLength=5
+  const agent = makeFakeAgent("/home/user/projects/recall-test");
+  // "test" 长度 4 < 5 且不含任何召回关键词：修复前会被长度闸门拦掉（连画像一起丢）
+  const decision = await ctx.emitPreStep(
+    { agent, messages: [], turn: 1, step: 1, signal: new AbortController().signal },
+    async () => ({ kind: "enter", messages: [directUserMessage("test")] }),
+  );
+  const injected = decision.messages.filter(isPluginInjected);
+  assert.equal(injected.length, 1, `首轮短查询应注入，实际 ${injected.length} 条`);
+  const text = injected[0].content.find((b) => b.type === "text").text;
+  assert.ok(text.includes("用户上下文") || text.includes("永久特征") || text.length > 100,
+    "首轮注入应携带画像/记忆内容");
+});
+
+test("自动召回：非首轮短查询（含关键词但 <5 字）仍被长度闸门拦住", { skip: !HAS_BACKEND }, async () => {
+  const ctx = makeCtx();
+  apply(ctx, makeConfig());
+  const agent = makeFakeAgent("/home/user/projects/recall-test");
+
+  // 先跑一轮长查询完成首轮注入
+  const first = await ctx.emitPreStep(
+    { agent, messages: [], turn: 1, step: 1, signal: new AbortController().signal },
+    async () => ({ kind: "enter", messages: [directUserMessage("帮我看看这个项目的架构设计")] }),
+  );
+  assert.equal(first.messages.filter(isPluginInjected).length, 1, "首轮应注入");
+
+  // 非首轮 + 4 字含关键词（"怎么回事" 命中 "怎么"/"什么"）：闸门仍在，不注入
+  const second = await ctx.emitPreStep(
+    { agent, messages: [], turn: 2, step: 1, signal: new AbortController().signal },
+    async () => ({ kind: "enter", messages: [directUserMessage("怎么回事")] }),
+  );
+  assert.equal(second.messages.filter(isPluginInjected).length, 0, "非首轮短查询不应注入（闸门保留）");
 });
 
 test("自动召回：后端不可达时 fail-open 不注入", async () => {
@@ -281,7 +355,7 @@ test("自动召回：后端不可达时 fail-open 不注入", async () => {
     async () => ({ kind: "enter", messages: [directUserMessage("你还记得之前的架构决策吗")] }),
   );
   assert.equal(decision.kind, "enter");
-  assert.equal(decision.messages.filter((m) => m.source?.kind === "plugin").length, 0);
+  assert.equal(decision.messages.filter(isPluginInjected).length, 0);
 });
 
 test("自动捕获：turn 结束写入会话摘要（连真实后端，清理验证）", { skip: !HAS_BACKEND }, async () => {
