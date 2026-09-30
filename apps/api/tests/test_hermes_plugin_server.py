@@ -40,6 +40,7 @@ def captured(monkeypatch, mod):
         box["method"] = method
         box["path"] = path
         box["body"] = body
+        box["timeout"] = timeout
         return {"id": "mem_test", "status": "done", "container_tag": body.get("container_tag")}
 
     monkeypatch.setattr(mod, "api_request", fake_api)
@@ -93,6 +94,12 @@ class TestAddProfileWorthy:
         _call_add(mod, {"content": "偏好", "type": "preference"})
 
         assert captured["body"]["metadata"] == {"type": "preference"}
+
+    def test_write_timeout_is_90s(self, mod, captured):
+        """MR-028：写超时必须 ≥ 同步写实测耗时（25s+），否则客户端先超时但服务端已写入 ⇒ 重试重复。"""
+        _call_add(mod, {"content": "x"})
+
+        assert captured["timeout"] == 90.0, "hermes add 写超时应为 90s（与 dsh writeTimeoutMs 对齐）"
 
     def test_other_fields_untouched(self, mod, captured):
         _call_add(

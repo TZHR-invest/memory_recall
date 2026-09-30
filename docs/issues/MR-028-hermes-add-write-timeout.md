@@ -1,6 +1,6 @@
 # MR-028: hermes 插件 `add` 同步写超时 30s 偏紧（客户端超时但服务端已落库 ⇒ 重试产生重复）
 
-> 状态: OPEN · 严重度: P2 · 发现: 2026-10-01（MR-027 配套改动的真实链路 E2E 中撞到）· 系统: v5 · 关联: [MR-027](MR-027-profile-channel-pollution.md)
+> 状态: **已解决（2026-10-01）** · 严重度: P2 · 发现: 2026-10-01（MR-027 配套改动的真实链路 E2E 中撞到）· 系统: v5 · 关联: [MR-027](MR-027-profile-channel-pollution.md)
 
 ## 现象（实测）
 
@@ -24,11 +24,16 @@ embedding + LLM 实体提取 + 关系检测，**实测 25s+**"，dsh 插件对�
 - 走 `asyncProcess=false` 的写入（插件默认是 true，故影响面有限）易触发；
 - 触发后 agent 常按"失败→重试"处理 ⇒ 重复条目进库 ⇒ 只能靠事后查重/清理。
 
-## 修复建议（未排期）
+## 修复（2026-10-01 已实施）
 
-1. `timeout=30.0` → **90s**（与 dsh 插件 `writeTimeoutMs` 对齐）；
-2. 或在工具描述里写明"超时后**先 search 查重**再决定是否重试"，并把默认 `asyncProcess=true` 明确成推荐路径；
-3. 可选：后端为写请求返回幂等键（当前无），从根上消除"超时重试致重复"。
+1. **`timeout=30.0` → 90.0**（`plugins/hermes/server.py`，与 dsh 插件 `writeTimeoutMs` 对齐）；
+   安全性已核实：MCP 客户端 `read_timeout_seconds` 默认 `None`、hermes 外层工具期限 **420s** ⇒ 90s 不会被上层截断。
+2. **同步修正 hermes skill 里那条会致重复的回退建议**（`autonomous-agent-evolution` SKILL.md Step 0c 的 `#588` 条目）：
+   原文"ReadTimeout → 改用 asyncProcess=true 重试"对**写类**调用有害（服务端可能已写入）；
+   改为"写类超时先 `search` 查重再决定是否重试"，并修正"默认 false"的过时描述（代码默认已是 true）。
+3. 测试：`tests/test_hermes_plugin_server.py` 增 `test_write_timeout_is_90s`（8 用例全绿）。
+
+**仍未做**（属另一层，需后端配合）：写请求的幂等键 —— 有了它才能从根上消除"超时重试致重复"。
 
 ## 关联
 

@@ -424,7 +424,10 @@ async def _handle_add(args: dict) -> list[TextContent]:
     if skip_extraction:
         body["skip_extraction"] = True
 
-    result = await api_request("POST", "/memories", body, timeout=30.0)
+    # 写超时 90s（MR-028，2026-10-01）：同步写含 embedding + LLM 实体提取，实测 25s+；
+    # 原 30s 会让客户端先超时、而服务端其实已写入成功 ⇒ 调用方重试即产生重复记忆。
+    # 与 dsh 插件 writeTimeoutMs 默认 90s 对齐；外层 hermes 工具期限 420s，不会被截断。
+    result = await api_request("POST", "/memories", body, timeout=90.0)
     preview = content[:80] + "..." if len(content) > 80 else content
     status = result.get("status", "done")
     status_hint = "（后台处理实体提取中）" if status == "processing" else ""

@@ -49,7 +49,8 @@
 - 后端契约：`X-API-Key` 头，`GET /auth/verify` → keyId；统一召回 `POST /context-inject`
   带 `user_tag` + `project_tag`。
 - 写入注意：`POST /memories` 同步含 embedding + LLM 实体提取 + 关系检测，实测 25s+；
-  插件写入超时（`writeTimeoutMs`）需单独放宽（dsh 插件默认 90s）。
+  插件写入超时（`writeTimeoutMs`）需单独放宽（dsh 插件默认 90s；hermes 插件 2026-10-01 起也是 90s，
+  此前 30s 会让**客户端先超时、服务端其实已写入成功** ⇒ 调用方重试即重复，见 [MR-028](issues/MR-028-hermes-add-write-timeout.md)）。
 
 ### 写入契约（⚠️ MR-027 教训，写脚本直连 API 前必读）
 
@@ -77,4 +78,4 @@
 > 于是"退出画像"只能靠直连脚本 —— 这正是 MR-027 里长留档反复进画像的原因之一。
 > hermes 端补齐后，进化流程的"旧 prompt 备份"类写入可直接用工具参数表达。
 
-*状态: ACTIVE · 版本: v1.3 · 最后更新: 2026-10-01*
+*状态: ACTIVE · 版本: v1.4 · 最后更新: 2026-10-01*

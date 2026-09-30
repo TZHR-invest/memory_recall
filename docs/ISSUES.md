@@ -33,7 +33,6 @@
 | MR-020 | /history 端点对显式版本链返回空（版本历史双路径不一致） | P2 | [详情](issues/MR-020-version-history-gap.md) |
 | MR-024 | 测试文件全局 db 连接跨 asyncio loop 冲突（两文件不能同跑） | P2 | [详情](issues/MR-024-test-loop-conflict.md) |
 | MR-026 | v5 基线坏测试 6 个（Python 3.14 event loop 冲突 + extract-memory 签名漂移），全量回归需 --deselect | P2 | [详情](issues/MR-026-v5-baseline-broken-tests.md) |
-| MR-028 | hermes 插件 add 同步写超时 30s 偏紧（客户端超时但服务端已落库 ⇒ 重试产生重复） | P2 | [详情](issues/MR-028-hermes-add-write-timeout.md) |
 
 ## 已关闭（决策导致不再适用）
 
@@ -59,6 +58,7 @@
 | MR-023 | memory-recall-dsh 浏览器端未注册（HARNESS: loaded without registering ... via __ModuleLoader__.load） | 见 [MR-023 详情](issues/MR-023-dsh-client-registration.md)（2026-08-14 修复，生成式 classic-script bundle：client-lib.js + build-bundle.mjs） |
 | MR-025 | dsh web 局域网 403：补丁打在错误副本（npm 全局安装 vs npx 缓存，运行副本缺三层补丁） | 见 [MR-025 详情](issues/MR-025-dsh-lan-patch-root-mismatch.md)（2026-08-18 修复，install.sh ROOT 定位/DSH_BIN 解析/pkill 宽匹配） |
 | MR-027 | 画像通道混装与污染（static/dynamic 合并渲染 + dynamic 无长度/opt-out 闸门 + 写入静默回退用户容器） | 见 [MR-027 详情](issues/MR-027-profile-channel-pollution.md)（2026-09-30 修复：分层渲染 + `PROFILE_ITEM_MAX_CHARS=600` + `profile_worthy` 两桶对称 + `POST /memories` scope 守卫 422 + `/api/v2` 缺 schema 503；commit `14923bc`） |
+| MR-028 | hermes 插件 add 同步写超时 30s 偏紧（客户端超时但服务端已落库 ⇒ 重试产生重复） | 见 [MR-028 详情](issues/MR-028-hermes-add-write-timeout.md)（2026-10-01 修复：30s→90s + skill 回退建议改为先查重；幂等键仍待做） |
 
 ## 优先行动建议
 
@@ -67,4 +67,4 @@
 3. **同时做产品面最小闭环**（MR-011）：让用户看到并纠正系统记住了什么，这是信任与留存的基础。
 4. **清理工程债**（MR-013 迁移框架 / MR-015 死代码 / MR-017 cap 配置化 / MR-018 画像去重 / MR-020 版本历史读取）。
 
-*状态: ACTIVE · 版本: v1.8 · 最后更新: 2026-10-01*
+*状态: ACTIVE · 版本: v1.9 · 最后更新: 2026-10-01*
