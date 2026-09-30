@@ -123,6 +123,14 @@ async def _list_tools_impl() -> list[Tool]:
                         "type": "boolean",
                         "description": "异步处理实体提取和关系创建（默认 true，响应更快）",
                     },
+                    "profileWorthy": {
+                        "type": "boolean",
+                        "description": (
+                            "是否参与用户画像通道（默认 true = 参与）。"
+                            "存长留档/归档类内容（prompt 全文备份、日志快照、大段粘贴、研究报告原文）时传 false："
+                            "该条不进每个会话的画像注入（static/dynamic 两桶都排除），但仍可被 search/向量召回"
+                        ),
+                    },
                 },
                 "required": ["content"],
             },
@@ -392,6 +400,7 @@ async def _handle_add(args: dict) -> list[TextContent]:
     memory_type = args.get("type")
     entity_context = args.get("entityContext")
     skip_extraction = args.get("skipExtraction", False)
+    profile_worthy = args.get("profileWorthy")  # None = 不传（后端默认 true，即进画像）
     async_process = args.get("asyncProcess", True)  # 默认异步，避免超时
 
     body = {
@@ -400,8 +409,16 @@ async def _handle_add(args: dict) -> list[TextContent]:
         "is_static": is_static,
         "async_process": async_process,
     }
+    # metadata 组装：type 与画像开关可共存（此前 metadata 只在有 type 时下发）
+    metadata: dict = {}
     if memory_type:
-        body["metadata"] = {"type": memory_type}
+        metadata["type"] = memory_type
+    if profile_worthy is not None:
+        # 画像通道开关（MR-027）：false ⇒ static/dynamic 两桶都排除，但仍可 search 召回。
+        # 显式 false 之外一律不下发该键，保持"缺省 = 后端默认 true"零行为变化。
+        metadata["profile_worthy"] = bool(profile_worthy)
+    if metadata:
+        body["metadata"] = metadata
     if entity_context:
         body["entity_context"] = entity_context
     if skip_extraction:
@@ -411,9 +428,14 @@ async def _handle_add(args: dict) -> list[TextContent]:
     preview = content[:80] + "..." if len(content) > 80 else content
     status = result.get("status", "done")
     status_hint = "（后台处理实体提取中）" if status == "processing" else ""
+    profile_hint = (
+        "｜已排除出画像通道（profile_worthy=false，仍可 search 召回）"
+        if profile_worthy is False
+        else ""
+    )
     return [TextContent(
         type="text",
-        text=f'✅ 已存储到 {scope} 范围{status_hint}\nID: {result.get("id", "N/A")}\n内容: "{preview}"',
+        text=f'✅ 已存储到 {scope} 范围{status_hint}{profile_hint}\nID: {result.get("id", "N/A")}\n内容: "{preview}"',
     )]
 
 

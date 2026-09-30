@@ -61,6 +61,20 @@
 - **长留档（prompt 全文备份 / 日志快照 / 大段粘贴）必须带 `metadata.profile_worthy=false`**：
   画像通道（`/context-inject` 的 static + dynamic 两桶）会把它排除，但 `search` 仍可召回。
   不带该标记的长文本会随画像进**每个新会话首轮**（MR-027 实测：3 条 8–9K 字留档占注入块 81%）。
+  **各端可达性见下表**——此前四端工具都传不出去（开关存在但不可达），2026-10-01 起 hermes 端已补齐。
 - 画像单条超过 `PROFILE_ITEM_MAX_CHARS`(600) 会被截断并标注，条数见 `stats.profile_truncated_count`。
 
-*状态: ACTIVE · 版本: v1.2 · 最后更新: 2026-09-30*
+#### `profile_worthy` 各端可达性（2026-10-01 实测）
+
+| 端 | 工具参数 | 能否设 `profile_worthy=false` | 生效方式 |
+|---|---|---|---|
+| **hermes**（`plugins/hermes/server.py`） | `add(profileWorthy=…)` | ✅ 已支持（缺省不下发该键 = 后端默认 true，零行为变化） | MCP server 从仓库路径加载 ⇒ **下一个会话即生效**，无需分发 |
+| dsh（`plugins/dsh/tools.js`） | 无该参数（底层 `client.addMemory` 已支持 `metadata` 透传，仅工具未暴露） | ❌ | 待需要时加参数 + `install.sh` 分发到各机 profile 并重启 dsh |
+| codex / opencode / openclaw | 无该参数（payload 只拼 `{"type": …}`） | ❌ | 同上 |
+| 直连 HTTP 写脚本 | `metadata: {"profile_worthy": false}` | ✅ | 即刻 |
+
+> 缺口背景：后端 2026-08-18 就有 `profile_worthy` 开关，但**客户端工具层一直没有出口**，
+> 于是"退出画像"只能靠直连脚本 —— 这正是 MR-027 里长留档反复进画像的原因之一。
+> hermes 端补齐后，进化流程的"旧 prompt 备份"类写入可直接用工具参数表达。
+
+*状态: ACTIVE · 版本: v1.3 · 最后更新: 2026-10-01*
