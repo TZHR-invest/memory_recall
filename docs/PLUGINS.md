@@ -51,4 +51,16 @@
 - 写入注意：`POST /memories` 同步含 embedding + LLM 实体提取 + 关系检测，实测 25s+；
   插件写入超时（`writeTimeoutMs`）需单独放宽（dsh 插件默认 90s）。
 
-*状态: ACTIVE · 版本: v1.1 · 最后更新: 2026-08-14*
+### 写入契约（⚠️ MR-027 教训，写脚本直连 API 前必读）
+
+- **容器只由 `container_tag` 决定，`scope` 不是 API 字段**。插件的工具签名里有 `scope`
+  （`user`/`project`），但那是**工具层**参数，由插件翻译成 `container_tag`；
+  直接 `POST /memories` 时若只把 `scope` 塞进 `metadata` 而不传 `container_tag`，
+  记忆会**静默落用户容器**（Pydantic 丢弃未知字段，与 MR-017 同一 bug 类）。
+  现在后端会 **422 fail-closed**（`metadata.scope` 与解析出的容器冲突时拒绝写入）。
+- **长留档（prompt 全文备份 / 日志快照 / 大段粘贴）必须带 `metadata.profile_worthy=false`**：
+  画像通道（`/context-inject` 的 static + dynamic 两桶）会把它排除，但 `search` 仍可召回。
+  不带该标记的长文本会随画像进**每个新会话首轮**（MR-027 实测：3 条 8–9K 字留档占注入块 81%）。
+- 画像单条超过 `PROFILE_ITEM_MAX_CHARS`(600) 会被截断并标注，条数见 `stats.profile_truncated_count`。
+
+*状态: ACTIVE · 版本: v1.2 · 最后更新: 2026-09-30*

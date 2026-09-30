@@ -30,6 +30,11 @@ flowchart LR
 
 - 静态记忆在写入时打分类标记（`_classification`：行为规则 vs 临时记录），与召回侧
   `TRANSIENT_STATIC_MARKERS` 共用同一套正则，防读写漂移；
+- **容器只由 `container_tag` 决定，`scope` 不是 API 字段**（MR-027）：写入方若把 `scope` 塞进
+  `metadata` 却不传 `container_tag`，记忆会静默落**用户容器**。现改为 fail-closed——
+  `metadata.scope` 与解析出的容器冲突（如声明 `project` 却落用户容器）直接 422，不再回退；
+- `metadata.profile_worthy=false` = **退出画像通道**（static / dynamic 两桶都认，MR-027 起对称生效），
+  内容仍可经 `search`/向量召回 —— 长留档（prompt 全量备份等）应显式打此标记；
 - 会话摘要是会话状态，**不写入记忆库**（[ADR-0006](decisions/0006-session-summary-not-stored-as-memory.md)）。
 
 ## 3. 处理管线
@@ -72,9 +77,13 @@ profile（画像） → memory vector（记忆向量） → memory graph（记�
 
 ### 响应
 
-- `context`：给 LLM 读的 Markdown（画像 → 项目记忆 → 用户记忆 → 文档分区；中英自动检测；空结果返回 `""`）；
-- `sources`：结构化引用（含 id，供插件记账）；
-- `stats`：去重/上限统计；
+- `context`：给 LLM 读的 Markdown（**画像分两节**：`### 永久特征`(static) → `### 近期动态`(dynamic)
+  → 项目记忆 → 用户记忆 → 文档分区；中英自动检测；空结果返回 `""`）。
+  画像单条超 `PROFILE_ITEM_MAX_CHARS`(600) 会截断并标注，截断条数见 `stats.profile_truncated_count`
+  （MR-027：此前两桶合并渲染在「永久特征」下，动态长留档被误读成永久记忆）；
+- `sources`：结构化引用（含 id，供插件记账）；`sources.profile` 为 static+dynamic 的字符串数组
+  （**契约保持字符串**，桶信息走 `context` 分节，勿改成对象数组）；
+- `stats`：去重/上限统计（含 `profile_count` / `profile_truncated_count`）；
 - `trace`：`include_trace=true` 时附召回链路与各通道结果。
 
 ### 降级语义（[ADR-0004](decisions/0004-context-inject-graceful-degradation.md)）

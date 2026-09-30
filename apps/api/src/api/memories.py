@@ -53,6 +53,49 @@ class MemoryResponse(BaseModel):
     created_at: Optional[str] = Field(None, description="Creation timestamp")
 
 
+def _assert_scope_container_consistency(
+    metadata: Dict[str, Any],
+    container_tag: str,
+    user_container: str,
+) -> None:
+    """metadata.scope 与 container_tag 的一致性闸门（MR-027，2026-09-30）。
+
+    `scope` **不是本 API 的字段**（见 CreateMemoryRequest）：写入方把 scope 塞进 metadata 时，
+    后端既不解析也不校验，容器**只**由 `container_tag` 决定——不传就落用户容器。
+    历史上由此产生静默污染：写入方以 `metadata.scope="project"` 备份 cron prompt 全文
+    却不传 container_tag ⇒ 8–9K 字留档落进用户容器并随 dynamic 进首轮画像
+    （实测占注入块 81%，详见 docs/issues/MR-027-profile-channel-pollution.md）。
+
+    这里 fail-closed（宁报错也不静默落错容器）：
+    - `scope=project` 却解析到用户容器 ⇒ 422，要求显式传项目容器；
+    - `scope=user` 却解析到非用户容器 ⇒ 422（语义自相矛盾）；
+    - 未声明 scope ⇒ 不干预（保持 `container_tag or 用户容器` 的既有语义）。
+    """
+    scope = metadata.get("scope")
+    if scope not in ("project", "user"):
+        return
+
+    if scope == "project" and container_tag == user_container:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "metadata.scope='project' 但 container_tag 未指定（或指向用户容器）："
+                "容器只由 container_tag 决定，scope 不是 API 字段。请显式传 container_tag"
+                "（如 '<key_id>_project-<项目名>'）。本次写入已拒绝且未落库"
+                "（fail-closed：防止项目留档静默进入用户画像）。"
+            ),
+        )
+
+    if scope == "user" and container_tag != user_container:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"metadata.scope='user' 但 container_tag={container_tag} 不是用户容器"
+                f"（{user_container}）。用户级记忆请省略 container_tag 或传用户容器。"
+            ),
+        )
+
+
 class SearchRequest(BaseModel):
     query: str = Field(..., description="Search query", examples=["饮食偏好"])
     container_tag: Optional[str] = Field(
@@ -174,6 +217,10 @@ async def create_memory(
     container_tag = request.container_tag or current_user["container_tag"]
 
     verify_container_ownership(container_tag, current_user["key_id"])
+
+    _assert_scope_container_consistency(
+        request.metadata, container_tag, current_user["container_tag"]
+    )
 
     # 自动分类：type=preference 时强制为永久特征
     is_static = request.is_static

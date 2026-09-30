@@ -129,6 +129,7 @@
 | 422 | 422 | body 结构校验失败（FastAPI 默认） |
 | 429 | 429 | 速率限制（复用 v5 `check_rate_limit`） |
 | 500 | 500 | 服务器内部错误（`settings.APP_DEBUG` 控制 detail 透出） |
+| 503 | 503 | **crystal schema 未初始化（本库尚未部署 v2）**：统一前置闸门 `guards.require_crystal_schema` 探测 `to_regclass('crystal.claim')` 为 NULL 时返回，message 含处置指引（跑 `init_crystal_db.py`）。修复前该状态表现为 `relation "crystal.claim" does not exist` 的裸 500（MR-027 D4，2026-09-30） |
 
 ### 3.2 响应信封（统一）
 

@@ -17,6 +17,9 @@ class DedupItem:
     id: Optional[str] = None
     relation_type: Optional[str] = None  # updates/extends/derives 语义关系类型
     created_at: Optional[str] = None  # 记忆记录时间（ISO），供注入标注陈旧度
+    # profile 通道的来源桶（"static" / "dynamic"，其余 source 为 None）：
+    # 分层渲染用（MR-027：永久特征 vs 近期动态分节，勿再合并到一个标题下）
+    bucket: Optional[str] = None
 
 
 SOURCE_PRIORITY = {

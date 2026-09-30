@@ -307,9 +307,19 @@ class ProfileService:
             if m.metadata.get("profile_worthy", True)
         ]
 
+        # 对称 honored（MR-027，2026-09-30）：dynamic 桶此前完全不认 profile_worthy，
+        # 于是「退出画像」开关只对 static 生效——长留档（历史 cron prompt 全量备份等）
+        # 仍随 dynamic 进首轮画像（实测 3 条 19,029 字占注入块 81%）。
+        # 两桶统一：显式 profile_worthy=false 即退出画像通道，内容仍可向量召回。
+        profile_dynamic = [
+            m.content
+            for m in dynamic_memories
+            if m.metadata.get("profile_worthy", True)
+        ]
+
         return {
             "static_memories": profile_static,
-            "dynamic_memories": [m.content for m in dynamic_memories],
+            "dynamic_memories": profile_dynamic,
         }
 
     async def _get_cached_profile(self, container_tag: str) -> Optional[Dict[str, Any]]:

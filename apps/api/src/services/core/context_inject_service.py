@@ -27,6 +27,13 @@ TRANSIENT_STATIC_MARKERS = [
     r"机器主机名", r"hostnamectl",
     r"关键bug已修复", r"bug\s*已修复",
 ]
+
+# 画像单条长度闸门（MR-027，2026-09-30）：static/dynamic 两桶统一施加。
+# 画像的定位是「每会话必见的核心特征」，单条超长留档（历史 cron prompt 全量备份等）
+# 曾把首轮注入顶到 2 万字（实测 3 条备份 ≈ 19,029 字，占「永久特征」小节 92%）。
+# 超长条目截断保留头部 + 显式标注，原文仍可经 memory_search 召回；
+# 截断条数经 stats.profile_truncated_count 暴露，避免静默丢信息。
+PROFILE_ITEM_MAX_CHARS = 600
 from src.services.core.semantic_dedup_service import (
     semantic_dedup_service,
     DedupItem,
@@ -157,7 +164,12 @@ class ContextInjectService:
             project_chunks,
             capped_items,
         )
-        stats = self._build_stats_with_tags(all_items, deduped_items, capped_items)
+        stats = self._build_stats_with_tags(
+            all_items,
+            deduped_items,
+            capped_items,
+            profile_truncated_count=profile.get("truncated_count", 0),
+        )
         stats["failed_channels"] = failed_channels
 
         if await recall_trace_service.should_record(force=include_trace):
@@ -177,9 +189,9 @@ class ContextInjectService:
         self,
         container_tag: str,
         config: Dict[str, Any],
-    ) -> Dict[str, List[str]]:
+    ) -> Dict[str, Any]:
         if not config.get("inject_profile", True):
-            return {"static": [], "dynamic": []}
+            return {"static": [], "dynamic": [], "truncated_count": 0}
 
         try:
             max_static = config.get("max_static_profile_items", 30)
@@ -207,13 +219,43 @@ class ContextInjectService:
             remaining = max(0, max_static - len(behavior_rules))
             static = behavior_rules + transient_facts[:remaining]
             # dynamic 为近期活动（时效即价值），按 max_profile_items 取最新
+            dynamic = profile.get("dynamic", [])[:max_dynamic]
+
+            # 体量闸门（MR-027）：两桶统一截断超长条目，截断条数回传 stats
+            static, static_truncated = self._truncate_profile_items(static)
+            dynamic, dynamic_truncated = self._truncate_profile_items(dynamic)
             return {
                 "static": static,
-                "dynamic": profile.get("dynamic", [])[:max_dynamic],
+                "dynamic": dynamic,
+                "truncated_count": static_truncated + dynamic_truncated,
             }
         except Exception as e:
             logger.warning("profile fetch failed for %s: %s", container_tag, e)
             raise
+
+    def _truncate_profile_items(self, facts: List[str]) -> tuple:
+        """画像单条长度闸门（MR-027）：超过 PROFILE_ITEM_MAX_CHARS 截断 + 显式标注。
+
+        返回 (处理后的列表, 被截断条数)。画像条目本就无 embedding（MR-018），
+        截断不影响去重链路；标注文案指向 memory_search，避免 agent 以为原文就这么多。
+        """
+        if not facts:
+            return list(facts), 0
+        out: List[str] = []
+        truncated = 0
+        for fact in facts:
+            text = fact or ""
+            if len(text) <= PROFILE_ITEM_MAX_CHARS:
+                out.append(fact)
+                continue
+            keep = text[:PROFILE_ITEM_MAX_CHARS]
+            out.append(
+                f"{keep}…（画像单条超 {PROFILE_ITEM_MAX_CHARS} 字，"
+                f"此处已截断 {len(text) - PROFILE_ITEM_MAX_CHARS} 字；"
+                f"原文可用 memory_search 召回）"
+            )
+            truncated += 1
+        return out, truncated
 
     def _is_transient_static(self, content: str) -> bool:
         """判定 static 事实是否为临时性记录（配置记录/一次性事件），而非永久行为规则。
@@ -769,6 +811,7 @@ class ContextInjectService:
                     content=fact,
                     source="profile",
                     priority=SOURCE_PRIORITY["profile"],
+                    bucket="static",
                 )
             )
             seen_contents.add(fact.strip())
@@ -779,6 +822,7 @@ class ContextInjectService:
                     content=fact,
                     source="profile",
                     priority=SOURCE_PRIORITY["profile"],
+                    bucket="dynamic",
                 )
             )
             seen_contents.add(fact.strip())
@@ -934,9 +978,22 @@ class ContextInjectService:
         user_memory_items = [i for i in items if i.source == "userMemory"]
         chunk_items = [i for i in items if i.source == "chunk"]
 
-        if profile_items:
+        # 画像分层渲染（MR-027）：static（永久特征）与 dynamic（近期活动）分节。
+        # 修复前两桶合并渲染在「### 永久特征」下，动态条目被读成永久记忆
+        # （实测 3 条 cron prompt 全量备份占该小节 92%）。bucket 缺省时按 static 处理，
+        # 保证外部直接构造的 profile 条目仍有归属。
+        static_profile_items = [i for i in profile_items if i.bucket != "dynamic"]
+        dynamic_profile_items = [i for i in profile_items if i.bucket == "dynamic"]
+
+        if static_profile_items:
             lines.append("### 永久特征" if is_zh else "### Static Facts")
-            for item in profile_items:
+            for item in static_profile_items:
+                lines.append(f"- {item.content}")
+            lines.append("")
+
+        if dynamic_profile_items:
+            lines.append("### 近期动态" if is_zh else "### Recent Activity")
+            for item in dynamic_profile_items:
                 lines.append(f"- {item.content}")
             lines.append("")
 
@@ -1008,6 +1065,7 @@ class ContextInjectService:
         all_items: List[DedupItem],
         deduped_items: List[DedupItem],
         capped_items: List[DedupItem],
+        profile_truncated_count: int = 0,
     ) -> Dict[str, int]:
         return {
             "total_items": len(all_items),
@@ -1015,6 +1073,8 @@ class ContextInjectService:
             "deduped_count": len(all_items) - len(deduped_items),
             "capped_count": len(capped_items),
             "profile_count": len([i for i in capped_items if i.source == "profile"]),
+            # MR-027：画像单条长度闸门截断条数（0 = 无超长条目），供调用方察觉信息被折叠
+            "profile_truncated_count": profile_truncated_count,
             "project_memories_count": len(
                 [i for i in capped_items if i.source == "projectMemory"]
             ),
