@@ -43,6 +43,13 @@
 独立 Python MCP stdio 服务（`python server.py`），用 `MEMORY_RECALL_*` 环境变量配置。
 `deepseek-tui` 文档里的 `install.sh` 被 gitignore 且缺失 —— 只有手动配置可用。
 
+⚠️ **改完 `plugins/hermes/server.py` 后必须重启 hermes gateway 才生效**（2026-10-01 实测）：
+该 MCP 子进程是**常驻**的（实测存活 1 天 22 小时，属 gateway cgroup），进程启动时导入一次模块 ⇒
+"下个会话即生效"是**错的**。生效步骤：`XDG_RUNTIME_DIR=/run/user/1000 systemctl --user stop hermes-gateway
+&& sleep 3 && systemctl --user start hermes-gateway`（`hermes gateway restart` CLI 有 drain 180s vs CLI 30s
+超时坑），重启后验证 `logs/gateway.log` 出现 `✓ feishu connected`，并用子进程 `etime` 确认已重生。
+运行该插件测试需 **mcp ≥ 2.0**（`Server(on_list_tools=…)` 回调 API；1.x 会报 unexpected keyword）。
+
 ## 标签约定与后端契约
 
 - `userTag = keyId`（跨项目），`projectTag = {keyId}_project-<dirName>`（dsh/opencode/codex 一致）。
@@ -78,4 +85,4 @@
 > 于是"退出画像"只能靠直连脚本 —— 这正是 MR-027 里长留档反复进画像的原因之一。
 > hermes 端补齐后，进化流程的"旧 prompt 备份"类写入可直接用工具参数表达。
 
-*状态: ACTIVE · 版本: v1.4 · 最后更新: 2026-10-01*
+*状态: ACTIVE · 版本: v1.5 · 最后更新: 2026-10-01*
