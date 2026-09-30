@@ -2,7 +2,7 @@
 
 > 状态: **已解决（2026-09-30，已上线）** · 严重度: P1 · 发现: 2026-09-30（.205 机器 dsh 会话实测）· 系统: v5 · 关联: [MR-017](MR-017-injection-caps.md)（同类「Pydantic 静默丢弃未知字段」）、[MR-008](MR-008-profile-cache.md)
 >
-> 落地 commit：（见文末「落地」）· 过程记录: [docs/notes/2026-09-30-profile-channel-pollution-fix.md](../notes/2026-09-30-profile-channel-pollution-fix.md)
+> 落地 commit：`14923bc`· 过程记录: [docs/notes/2026-09-30-profile-channel-pollution-fix.md](../notes/2026-09-30-profile-channel-pollution-fix.md)
 
 ## 现象（用户可见）
 
@@ -101,5 +101,5 @@
 | D4 v2 503 | `src/api/crystal/guards.py`（新增）、`src/api/crystal/__init__.py`（统一依赖）、`docs/initiatives/crystal/api-contract.md` §3.1 |
 | 测试 | `tests/test_v2/test_profile_channel_buckets.py`、`tests/test_api/test_create_memory_scope_guard.py`、`tests/test_crystal/unit/test_schema_guard.py`（22 用例） |
 
-落地 commit：（见下）
+落地 commit：`14923bc`（2026-09-30）
 

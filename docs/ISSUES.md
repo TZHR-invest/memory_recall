@@ -57,7 +57,7 @@
 | MR-022 | memory-recall-dsh 缺 dsh.client.platform + exports["./client"]，dsh web 启动即崩溃（3080 无监听） | 见 [MR-022 详情](issues/MR-022-dsh-client-platform-missing.md)（2026-08-14 修复，package.json 补元数据 + install.sh --restart） |
 | MR-023 | memory-recall-dsh 浏览器端未注册（HARNESS: loaded without registering ... via __ModuleLoader__.load） | 见 [MR-023 详情](issues/MR-023-dsh-client-registration.md)（2026-08-14 修复，生成式 classic-script bundle：client-lib.js + build-bundle.mjs） |
 | MR-025 | dsh web 局域网 403：补丁打在错误副本（npm 全局安装 vs npx 缓存，运行副本缺三层补丁） | 见 [MR-025 详情](issues/MR-025-dsh-lan-patch-root-mismatch.md)（2026-08-18 修复，install.sh ROOT 定位/DSH_BIN 解析/pkill 宽匹配） |
-| MR-027 | 画像通道混装与污染（static/dynamic 合并渲染 + dynamic 无长度/opt-out 闸门 + 写入静默回退用户容器） | 见 [MR-027 详情](issues/MR-027-profile-channel-pollution.md)（2026-09-30 修复：分层渲染 + `PROFILE_ITEM_MAX_CHARS=600` + `profile_worthy` 两桶对称 + `POST /memories` scope 守卫 422 + `/api/v2` 缺 schema 503；commit 见详情「落地」） |
+| MR-027 | 画像通道混装与污染（static/dynamic 合并渲染 + dynamic 无长度/opt-out 闸门 + 写入静默回退用户容器） | 见 [MR-027 详情](issues/MR-027-profile-channel-pollution.md)（2026-09-30 修复：分层渲染 + `PROFILE_ITEM_MAX_CHARS=600` + `profile_worthy` 两桶对称 + `POST /memories` scope 守卫 422 + `/api/v2` 缺 schema 503；commit `14923bc`） |
 
 ## 优先行动建议
 

@@ -3,7 +3,7 @@
 > 类型: 修复记录（含根因调研）
 > 日期: 2026-09-30
 > 参与: 用户（拍板处理范围与数据处置）/ ai-agent(206) 侧 agent
-> 关联: [MR-027](../issues/MR-027-profile-channel-pollution.md) · [MR-017](../issues/MR-017-injection-caps.md)（同类 Pydantic 静默丢字段）· [MR-008](../issues/MR-008-profile-cache.md) · 2026-08-18 画像净化笔记
+> 关联: [MR-027](../issues/MR-027-profile-channel-pollution.md) · 落地 commit `14923bc` · [MR-017](../issues/MR-017-injection-caps.md)（同类 Pydantic 静默丢字段）· [MR-008](../issues/MR-008-profile-cache.md) · 2026-08-18 画像净化笔记
 
 ## 背景
 
