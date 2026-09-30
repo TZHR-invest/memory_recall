@@ -1,7 +1,10 @@
 """Memory Recall hermes 插件 server.py handler 单元测试（mock API，不需后端）。
 
-依赖 mcp 包；不可用时自动跳过（仓库默认 venv 未装 mcp，用带 mcp 的 venv 跑：
-`python -m pytest tests/test_hermes_plugin_server.py`）。
+依赖 mcp 包；不可用时自动跳过（仓库默认 venv 未装 mcp）。可复现的跑法（与 codex 插件测试同模式）：
+`apps/api/src/plugins/hermes/.venv/bin/python -m pytest tests/test_hermes_plugin_server.py`
+—— 该自举 venv 已装 pytest；⚠️ 它需要 **mcp ≥ 2.0**（`Server(on_list_tools=…)` 回调 API），
+与运行时一致（hermes 用 `~/.hermes/hermes-agent/venv` 的 mcp 2.0.0 起该插件）；mcp 1.x 会报
+`Server.__init__() got an unexpected keyword argument 'on_list_tools'`。
 
 覆盖 2026-10-01 新增的 `add(profileWorthy=…)`（MR-027 配套）：
 画像通道开关此前只有后端 `metadata.profile_worthy` 一个入口，四端插件工具都传不出去 ⇒
