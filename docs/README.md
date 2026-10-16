@@ -66,7 +66,7 @@ docs/
 | [PROJECT_PLAN.md](PROJECT_PLAN.md) | ACTIVE | 2026-08-14 | 项目定位、产品支柱、路线图、不做清单 |
 | [ENTITY_DESIGN.md](ENTITY_DESIGN.md) | ACTIVE | 2026-08-12 | 记忆/文档/实体/图谱领域模型，schema 为准 |
 | [ISSUES.md](ISSUES.md) | ACTIVE | 2026-08-13 | 已知问题索引（open 清单）；详情在 [issues/](issues/) |
-| [DEPLOYMENT.md](DEPLOYMENT.md) | ACTIVE | 2026-08-12 | Docker Compose / 手动部署 / 备份恢复 |
+| [DEPLOYMENT.md](DEPLOYMENT.md) | ACTIVE | 2026-10-16 | Docker Compose / 手动部署 / 备份恢复；故障排查（含 Embedding DNS 解析失败，2026-10-16 补） |
 | [MEMORY_FLOW.md](MEMORY_FLOW.md) | ACTIVE | 2026-08-12 | 核心数据流：写入 → 处理 → 召回/注入 → 消费（含 /context-inject 契约） |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | ACTIVE | 2026-08-13 | 架构与模块地图：后端分层、核心服务、惰性导入、死代码清单 |
 | [TESTING.md](TESTING.md) | ACTIVE | 2026-10-16 | 测试指南：三层分级、环境注意点、常用命令；CI 无 VOLC_API_KEY 运行策略；测试容器残留清理脚本判据（命名 + 探针双条件，2026-10-16 更新） |

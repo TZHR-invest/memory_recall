@@ -1,6 +1,6 @@
 # Memory Recall 部署文档
 
-> 状态: ACTIVE · 版本: v1.0 · 最后更新: 2026-08-12
+> 状态: ACTIVE · 版本: v1.1 · 最后更新: 2026-10-16
 
 ## 部署方式概览
 
@@ -129,6 +129,8 @@ curl -X POST http://localhost:8000/auth/api-keys \
 | 依赖安装失败（macOS） | 系统 Python 3.9 过旧 | 用 `python3.11+ -m venv venv` 创建 |
 | 记忆创建/召回空结果 | VOLC_API_KEY 缺失或失效 | 检查 .env 与日志；`/debug/embedding-logs` 查看调用失败 |
 | 连接失败 | 五件套配置错误 | 确认 DATABASE_HOST/PORT/NAME/USER/PASSWORD（不是 DATABASE_URL） |
+| Embedding 报 `[Errno -3] Temporary failure in name resolution` | **宿主机 DNS 解析故障**，不是 Key/API 问题：容器走 Docker `127.0.0.11` → 宿主 `systemd-resolved`（127.0.0.53）→ 上游 DNS；上游不可达时每次调用先白等 4–8s 解析超时（httpx timeout=30s 不触发），注入通道降级 | ①`journalctl -u systemd-resolved -o short-iso \| grep -E "degraded feature set\|set DNS server list"` 看上游是否抖动（出现 `degraded feature set ... for DNS server <X>` 即 X 不可达）；②`resolvectl status ens18` + `resolvectl query ark.cn-beijing.volces.com` 实测；③临时救急 `sudo resolvectl dns ens18 <可用> <备用> && sudo resolvectl flush-caches`，并在 `/etc/netplan/*.yaml` 的 `nameservers.addresses` 固化（配 NM `ipv4.ignore-auto-dns=true` 防 DHCP 覆盖）；④容器侧复核 `docker exec memory_recall-api-1 python -c "import socket;print(socket.gethostbyname('ark.cn-beijing.volces.com'))"` |
+| dashboard「embedding 调用失败」集中在某个时间窗（如 28 次全失败、前后零失败） | 同上（宿主网络/DNS 瞬时事件）；看 `kind` 即可判影响面：`context_query`/`context_chunks` = 仅注入降级，`memory` = 写入受影响 | 定位窗口：`SELECT date_trunc('minute',created_at) m, count(*) FILTER (WHERE ok) ok, count(*) FILTER (WHERE NOT ok) fail FROM recall_embedding_logs WHERE created_at > now() - interval '1 day' GROUP BY 1 ORDER BY 1;` 窗口内无 `kind='memory'` 行即无记忆丢失（实例见 [STATUS.md](STATUS.md) 2026-10-16 行） |
 
 ## 备份与恢复
 
