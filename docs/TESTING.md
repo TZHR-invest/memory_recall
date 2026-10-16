@@ -44,18 +44,27 @@
   `from src.embedding.client import get_embedding_client`（本地 import）⇒ 必须 patch
   `src.embedding.client.get_embedding_client` 那一处；只为省事 patch 模块属性会"看起来 patch 了但没生效"。
 - 集成测试不清理自己的测试数据（容器如 `test_integration_*`、`test_perf_*`）。
-  **⚠️ 会持续累积，需定期清理**（历史上 08-14 / 08-15 / 08-17 / 09-22 各清过一次，每次都能再长回来）：
+  **⚠️ 会持续累积，需定期清理**（历史上 08-14 / 08-15 / 08-17 / 09-22 / 10-16 各清过一次，每次都能再长回来）：
   ```bash
   cd apps/api
   python scripts/cleanup_test_containers.py            # 预览（默认 dry-run）
   python scripts/cleanup_test_containers.py --apply    # 备份 + 删除 + 复核
+  python scripts/cleanup_test_containers.py --skip-probe   # 只按命名判据扫（停用探针判据）
   ```
-  脚本按**可判定命名**匹配（`test_*` / `user_test` / `_project-{capture-(test|accum|throttle)-<ts>|
+  脚本按**可判定命名 / 可判定数据**匹配：`test_*` / `user_test` / `_project-{capture-(test|accum|throttle)-<ts>|
   recall-test[-<ts>]|debug<N>[-<ts>]|e2e-test|update-test|tmp|root|stock|…}` / 空项目名 / 拼错 keyId /
-  `MEMDECK-CROSS-CONTAINER-TEST-*` 测试行），删除前把受影响行备份到
-  `apps/api/backups/test-containers-rollback-<ts>.json`（该目录已 gitignore），并带**保护名单**
-  （有真实内容的 `ai-agent` / `deployment` 等不删）。
-  **新增会建容器的测试时，请同步把命名规则加进脚本的 `JUNK_PREDICATE`**——否则下次清理又会漏，
+  `MEMDECK-CROSS-CONTAINER-TEST-*` 测试行（= `JUNK_NAMED_PREDICATE`）；另有一条**探针判据**
+  （`PROBE_JUNK_PREDICATE`，2026-10-16 第 5 次清理后补）：命名里 `probe` / `probes` / `probe<数字>`
+  是**独立片段**（`-probe`、`-probe2`、`-gate-probe`）**且该容器 0 条有效记忆**
+  （有效 = `is_latest AND NOT is_forgotten`）。成因：「写一条 → 验证 → `memory_forget`」的探针，
+  因 forget 是**软删除**（只置 `is_forgotten=TRUE`，行/图谱/日志都留着）必然留下 0 有效容器
+  （实测 `_project-mr-gate-probe` / `_project-mr-probe2`，看板"有效记忆"显示 0）。
+  **双条件不可简化**：只看命名会误删有真实内容的调试容器（如历史 `latency-probe`）；
+  只看"0 有效"会误删"整容器被遗忘"的真实容器。预览逐条标注命中判据（`[命名]` / `[探针]`）并打印有效记忆数。
+  删除前把受影响行备份到 `apps/api/backups/test-containers-rollback-<ts>.json`（该目录已 gitignore），
+  并带**保护名单**（有真实内容的 `ai-agent` / `deployment` 等不删）。
+  **新增会建容器的测试时，请同步把命名规则加进脚本的 `JUNK_NAMED_PREDICATE`**（探针类命名改
+  `PROBE_NAME_PATTERN`，改一处要看两处：SQL 判据与 Python 打标签共用同一正则）——否则下次清理又会漏，
   这正是它反复长回来的原因。
 - **`pytest.ini` 的 `asyncio_default_test_loop_scope = module` 不能删**：pytest-asyncio 1.x 默认测试函数用
   函数级 loop，而异步 fixture/db 用模块级 loop，asyncpg 连接会报 "attached to a different loop"。
