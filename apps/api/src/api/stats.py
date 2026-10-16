@@ -188,7 +188,14 @@ async def get_overview(
             COUNT(*) FILTER (WHERE metadata->>'_status' = 'processing') AS processing,
             COUNT(*) FILTER (WHERE metadata->>'_status' = 'processing'
                                AND created_at < NOW() - INTERVAL '{stuck_minutes} minutes') AS processing_stuck,
-            COUNT(*) FILTER (WHERE metadata->>'_status' = 'failed') AS failed
+            COUNT(*) FILTER (WHERE metadata->>'_status' = 'failed') AS failed,
+            -- 抽取降级（2026-10-16 补）：LLM 不可用时实体/关系退回规则抽取，以前只在日志里留
+            -- WARNING ⇒ commandcode 欠费 12 天、实体/天掉到 1/10、捕获归零，看板全绿没人发现。
+            -- 现在 memory_store 把降级原因写进 metadata._extraction_degraded，这里暴露计数。
+            COUNT(*) FILTER (WHERE metadata ? '_extraction_degraded'
+                               AND created_at >= NOW() - INTERVAL '24 hours') AS extraction_degraded_24h,
+            COUNT(*) FILTER (WHERE metadata ? '_extraction_degraded'
+                               AND created_at >= NOW() - INTERVAL '7 days') AS extraction_degraded_7d
         FROM memories
         WHERE {_scope_sql('container_tag', 1, 2, 'is_latest = TRUE AND is_forgotten = FALSE')}
         """,

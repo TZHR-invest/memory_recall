@@ -412,6 +412,10 @@ class MemoryStore:
             # Step 1: LLM 实体提取
             llm_is_static = None
             llm_profile_worthy = None
+            # 降级原因（None=LLM 正常）。非空 ⇒ 本条记忆的实体/关系是规则兜底结果，
+            # 落库为 metadata._extraction_degraded：否则"零实体记忆"事后无法归因，
+            # 事故会静默累积（2026-10-16 commandcode 欠费 12 天无人发现的教训）。
+            extraction_degraded = None
             if extract_entities:
                 if use_llm_extraction:
                     try:
@@ -425,6 +429,7 @@ class MemoryStore:
                             relations_to_store = extraction.get("relations", [])
                             llm_is_static = extraction.get("is_static")
                             llm_profile_worthy = extraction.get("profile_worthy")
+                            extraction_degraded = extraction.get("degraded")
 
                             if entities_to_store:
                                 entities_dict = {}
@@ -449,8 +454,10 @@ class MemoryStore:
                                 meta["entities"] = llm_fact.entities
                             llm_is_static = llm_fact.is_static
                             llm_profile_worthy = llm_fact.profile_worthy
+                            extraction_degraded = llm_fact.degraded
                     except Exception as e:
                         _logger.warning(f"Memory {memory_id}: LLM extraction failed: {e}")
+                        extraction_degraded = f"llm_exception: {type(e).__name__}"
                         # fallback to rule-based extraction
                         try:
                             entities = entity_extractor.extract_to_metadata(content)
@@ -465,6 +472,12 @@ class MemoryStore:
                             meta["entities"] = entities
                     except Exception:
                         pass
+
+                # 降级落库标记（成功则清除，便于回填脚本按标记筛选 + 失败后自动复原）
+                if extraction_degraded:
+                    meta["_extraction_degraded"] = extraction_degraded
+                else:
+                    meta.pop("_extraction_degraded", None)
 
                 # 用 LLM 的静态判断更新 is_static 列 (若 LLM 给出了判断)
                 if isinstance(llm_is_static, bool):

@@ -48,7 +48,7 @@ class Settings(BaseSettings):
     # 只有宿主直跑 uvicorn 时两者等价（opencodex 监听 0.0.0.0:10100）。
     OPENCODEX_API_KEY: Optional[str] = None
     OPENCODEX_API_BASE: str = "http://192.168.0.206:10100/v1"
-    OPENCODEX_LLM_MODEL: str = "commandcode/deepseek/deepseek-v4.1-flash"
+    OPENCODEX_LLM_MODEL: str = "opencode-go/deepseek-v4.1-flash"
 
     VOLC_EMBEDDING_MODEL: str = "doubao-embedding-vision-251215"
 

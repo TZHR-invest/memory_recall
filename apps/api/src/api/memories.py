@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, HTTPException, Query, Depends, BackgroundTasks
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
@@ -13,6 +15,8 @@ from src.api.auth import (
     check_rate_limit,
     verify_container_ownership,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Memories"])
 
@@ -1077,6 +1081,11 @@ class ExtractMemoryResponse(BaseModel):
         default_factory=list,
         description="Dropped candidates (duplicates of existing memories, 2026-08-16 dedup)",
     )
+    # 蒸馏链路降级（2026-10-16 补）：LLM 不可用时以前会静默返回"无值得保存"，
+    # 插件据此判断"尊重判断、不落库" ⇒ 内容被无声丢弃（commandcode 欠费 12 天，
+    # 捕获从 65~117 条/天掉到 0，无人发现）。现在显式告知降级，让插件可回退 raw 保全信息。
+    degraded: bool = Field(False, description="True = LLM 蒸馏失败，结果不可信（非'确实无价值'）")
+    degraded_reason: Optional[str] = Field(None, description="降级原因（供审计/告警）")
 
 
 @router.post(
@@ -1200,7 +1209,13 @@ Analyze the summary and return JSON format:
         )
 
         if not result or "memories" not in result:
-            return ExtractMemoryResponse(memories=[], has_worthwhile=False)
+            logger.warning(
+                "/extract-memory 蒸馏返回空结果（LLM 返回 None 或缺少 memories 键）→ 标记降级",
+            )
+            return ExtractMemoryResponse(
+                memories=[], has_worthwhile=False,
+                degraded=True, degraded_reason="llm_empty_result",
+            )
 
         # 类型白名单：LLM 乱填/未知类型一律归 learned-pattern（与插件端 fallback 对齐，服务端统一校验）
         # 2026-08-15：此前无校验，LLM 返回的任意 type 原样透传（曾出现 learn-pattern 等错拼入库）
@@ -1249,4 +1264,16 @@ Analyze the summary and return JSON format:
         )
 
     except Exception as e:
-        return ExtractMemoryResponse(memories=[], has_worthwhile=False)
+        # ⚠️ 以前这里静默返回"无值得保存"（无日志），插件无法区分"确实无价值"与"链路故障"，
+        # 于是故障期间捕获量归零却毫无痕迹。现在：打 WARNING + 返回 degraded 标记。
+        msg = str(e)
+        if "insufficient credits" in msg:
+            reason = "llm_error: insufficient_credits"
+        elif "429" in msg or "rate_limit" in msg.lower():
+            reason = "llm_error: rate_limited"
+        else:
+            reason = f"llm_error: {type(e).__name__}"
+        logger.warning("/extract-memory 蒸馏失败降级（%s）→ 返回 degraded 标记供插件回退", reason)
+        return ExtractMemoryResponse(
+            memories=[], has_worthwhile=False, degraded=True, degraded_reason=reason,
+        )

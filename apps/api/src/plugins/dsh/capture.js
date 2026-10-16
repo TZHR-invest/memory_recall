@@ -55,8 +55,16 @@ export function createCaptureHandler({ client, config, resolveTags, logger }) {
           logger?.info?.("[memory-recall-dsh] 蒸馏捕获 %d 条记忆", extracted.memories.length);
           return;
         }
+        // 蒸馏降级（2026-10-16 补）：后端 LLM 不可用时以前会静默返回"无值得保存"，
+        // 插件无法区分"确实无价值"与"链路故障" ⇒ commandcode 欠费 12 天、捕获量归零却毫无痕迹。
+        // 现在后端带 degraded 标记，这里当成故障处理：告警 + 走 raw 回退保全信息。
+        if (extracted?.degraded) {
+          const why = extracted.degraded_reason || "unknown";
+          logger?.warn?.("[memory-recall-dsh] 蒸馏降级（%s）⇒ 回退 raw 捕获保全信息", why);
+          throw new Error(`extract-memory degraded: ${why}`);
+        }
         // 蒸馏判断"无值得保存的内容"：尊重判断，不落库（不再回退 raw 存全文，
-        // 避免把临时对话灌进长期记忆）；仅接口报错才走下方 raw 回退保全信息
+        // 避免把临时对话灌进长期记忆）；仅接口报错/降级才走下方 raw 回退保全信息
         logger?.debug?.("[memory-recall-dsh] 蒸馏判定无可保存记忆，跳过本轮捕获");
         return;
       } catch (error) {

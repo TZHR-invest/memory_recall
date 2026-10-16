@@ -112,6 +112,10 @@ class ExtractedFact:
     profile_worthy: bool = True
     asmr_dimension: Optional[str] = None
     entity_context: Optional[str] = None
+    # 降级原因（None = LLM 正常产出）。非空表示这条记忆的实体/关系是规则兜底的结果，
+    # 调用方须落库标记（memory_store 写 metadata._extraction_degraded），
+    # 否则"零实体记忆"事后无法归因（2026-10-16 commandcode 欠费事故的教训）。
+    degraded: Optional[str] = None
 
 
 DEFAULT_TIMEOUT = 30.0
@@ -488,7 +492,7 @@ class LLMEntityExtractor:
         entity_context: Optional[str] = None,
     ) -> ExtractedFact:
         if not self.llm_client:
-            return self._fallback_extraction(text, entity_context)
+            return self._fallback_extraction(text, entity_context, "no_llm_client")
 
         language = detect_language(text)
 
@@ -523,12 +527,14 @@ class LLMEntityExtractor:
                     entity_context=entity_context,
                 )
 
-            return self._fallback_extraction(text, entity_context)
+            return self._fallback_extraction(text, entity_context, "llm_empty_result")
 
         except asyncio.TimeoutError:
-            return self._fallback_extraction(text, entity_context)
-        except Exception:
-            return self._fallback_extraction(text, entity_context)
+            return self._fallback_extraction(text, entity_context, "llm_timeout")
+        except Exception as e:
+            return self._fallback_extraction(
+                text, entity_context, f"llm_error: {type(e).__name__}"
+            )
 
     def _get_prompt(
         self,
@@ -579,6 +585,7 @@ class LLMEntityExtractor:
         self,
         text: str,
         entity_context: Optional[str] = None,
+        reason: str = "rule_fallback",
     ) -> ExtractedFact:
         from src.services.core.entity_extraction import entity_extractor
 
@@ -597,6 +604,7 @@ class LLMEntityExtractor:
             confidence=0.5,
             asmr_dimension=asmr_dimension,
             entity_context=entity_context,
+            degraded=reason,
         )
 
     def _detect_primary_asmr_dimension(
@@ -638,7 +646,7 @@ class LLMEntityExtractor:
             }
         """
         if not self.llm_client:
-            return self._fallback_extract_with_relations(text, entity_context)
+            return self._fallback_extract_with_relations(text, entity_context, "no_llm_client")
 
         language = detect_language(text)
 
@@ -673,7 +681,9 @@ class LLMEntityExtractor:
                 "实体关系提取解析失败降级（返回 None，文本 %d 字符）→ 退回规则提取",
                 len(text or ""),
             )
-            return self._fallback_extract_with_relations(text, entity_context)
+            return self._fallback_extract_with_relations(
+                text, entity_context, "llm_parse_failed"
+            )
 
         except asyncio.TimeoutError:
             # 静默降级是"零实体记忆"查不清的根因（2026-09-22 验证时发现：一条 889 字符技术记忆
@@ -683,13 +693,22 @@ class LLMEntityExtractor:
                 "实体关系提取超时降级（timeout=%.0fs，文本 %d 字符）→ 退回规则提取",
                 self.timeout, len(text or ""),
             )
-            return self._fallback_extract_with_relations(text, entity_context)
+            return self._fallback_extract_with_relations(
+                text, entity_context, f"llm_timeout: {self.timeout:.0f}s"
+            )
         except Exception as e:
             logger.warning(
                 "实体关系提取异常降级（%s: %s，文本 %d 字符）→ 退回规则提取",
                 type(e).__name__, e, len(text or ""),
             )
-            return self._fallback_extract_with_relations(text, entity_context)
+            msg = str(e)
+            if "insufficient credits" in msg:
+                reason = "llm_error: insufficient_credits"
+            elif "429" in msg or "rate_limit" in msg.lower():
+                reason = "llm_error: rate_limited"
+            else:
+                reason = f"llm_error: {type(e).__name__}"
+            return self._fallback_extract_with_relations(text, entity_context, reason)
 
     def _get_prompt_with_relations(
         self,
@@ -955,6 +974,7 @@ Output:
         self,
         text: str,
         entity_context: Optional[str] = None,
+        reason: str = "rule_fallback",
     ) -> Dict[str, Any]:
         """
         降级提取：当 LLM 不可用时，使用现有实体提取方法
@@ -980,6 +1000,8 @@ Output:
             "entities": entities_list,
             "relations": [],
             "confidence": 0.3,
+            # 规则兜底：关系恒为空（非"确实没有关系"），调用方据此落降级标记
+            "degraded": reason,
         }
 
     async def extract_entities_only(
@@ -1205,6 +1227,10 @@ Return JSON:
         candidates: List[Dict[str, Any]],
     ) -> List[BatchRelationResult]:
         """Fallback to rule-based detection when LLM fails."""
+        logger.warning(
+            "记忆关系检测降级为关键词规则（候选 %d 条，文本 %d 字符）",
+            len(candidates or []), len(new_content or ""),
+        )
         from src.services.core.chinese_entity_types import (
             has_update_marker,
             has_extend_marker,

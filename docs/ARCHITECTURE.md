@@ -1,6 +1,6 @@
 # Memory Recall 架构与模块地图
 
-> 状态: ACTIVE · 版本: v1.0 · 最后更新: 2026-08-13
+> 状态: ACTIVE · 版本: v1.1 · 最后更新: 2026-10-16
 >
 > 后端代码结构与各模块职责（v5 端点层）。领域模型见 [ENTITY_DESIGN.md](ENTITY_DESIGN.md)，
 > 核心数据流见 [MEMORY_FLOW.md](MEMORY_FLOW.md)。
@@ -65,6 +65,14 @@
 - 卡死判定：`stats/overview` 的 `anomalies.processing_stuck` = `_status=processing` 且
   `created_at` 超过 `STUCK_PROCESSING_MINUTES`（默认 10 分钟）⇒ 后台任务多半已丢。dashboard 的
   "处理异常"卡片按它和 `failed` 标红，"处理中"本身不再算异常。
+- **抽取降级标记（`metadata._extraction_degraded`，2026-10-16 补，勿删）**：LLM 不可用时实体/关系会
+  **静默**退回规则抽取（`relations: []` 写死为空），只留一条 WARNING —— 结果就是上游欠费 12 天、
+  实体/天掉到 1/10、dsh 自动捕获归零，而看板全绿没人发现（同类 429 事故 09-24~09-26 也静默过）。
+  现在 `llm_entity_extraction` 的每条降级路径都带原因（`no_llm_client` / `llm_timeout` /
+  `llm_parse_failed` / `llm_error: insufficient_credits|rate_limited|<Type>`），`process_memory_async`
+  把非空原因落成该键、成功时清除；`stats/overview.anomalies.extraction_degraded_{24h,7d}` 暴露计数，
+  dashboard "抽取降级 (24h)" 卡片 >0 即标红，`scripts/llm_health_probe.py`（cron 每 15 分钟）故障时发邮件。
+  回填存量见 `scripts/backfill_entities.py`（按该键或"零实体"筛选，走同一条 `_store_entity_graph` 写路径）。
 - `_pending_*` 参数在收尾时必须**真删**（`fresh_meta` 要过滤，而不只是"不新增"）：旧写法实测
   在 340/340 条已完成记忆里留下 `_pending_extract_entities` 等残留键，重跑会重做提取。
   另外 `create()` 也会先剥掉**调用方带进来的** `_pending_*`（`create_update_version` 整份复制旧版本
