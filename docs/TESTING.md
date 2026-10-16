@@ -1,6 +1,6 @@
 # Memory Recall 测试指南
 
-> 状态: ACTIVE · 版本: v1.1 · 最后更新: 2026-08-20
+> 状态: ACTIVE · 版本: v1.2 · 最后更新: 2026-10-16
 
 `pytest.ini`: `asyncio_mode = auto`、`testpaths = tests`。**没有 `conftest.py`** —— fixture 内联在各文件
 （照抄 `test_v2/test_context_inject_api.py` 或 `test_v2/test_chunks_search.py` 的模式）。
