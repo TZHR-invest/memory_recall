@@ -73,7 +73,8 @@ POST ark.cn-beijing.volces.com (doubao-seed-2-0-mini)             → 200
 | 看板可见 | `stats/overview.anomalies.extraction_degraded_{24h,7d}` + dashboard 新卡片「抽取降级 (24h)」，>0 即标红 | 卡片取数同上 |
 | 邮件告警 | 新增 `scripts/llm_health_probe.py`：①按 `.env` provider 发最小 chat 请求；②查近 60 分钟 `_extraction_degraded`；任一失败即故障。状态机：ok→fail 立即发信、持续失败每 6h 复提醒、fail→ok 发恢复信。`/etc/cron.d/memory-recall-llm-probe` 每 15 分钟跑（flock 防重叠） | 实测：`--test-mail` 收到；用欠费线路 `--model commandcode/...` → 收到 🔴 告警且复跑不重复；恢复正常线路 → 收到 🟢 恢复信 |
 | 插件不再丢内容 | `/extract-memory` 降级时返回 `degraded=true + degraded_reason` 并打 WARNING；dsh 插件把 degraded 当故障 ⇒ 告警 + 回退 raw 捕获（`capture.js`） | dsh 插件测试 **29/29 全绿**（含联网捕获用例）；部署副本已同步，**待重启 dsh 生效** |
-| 存量回填 | 新增 `scripts/backfill_entities.py`（默认 dry-run；按 `_extraction_degraded` 或"零实体"筛选；走线上同一 `extract_with_relations` + `_store_entity_graph` 写路径；幂等） | 候选 111 条，`--apply` 运行中（实体/分 ≈14~32、关系/20 分钟 115 条），完成后复核零实体数 |
+| 存量回填 | 新增 `scripts/backfill_entities.py`（默认 dry-run；按 `_extraction_degraded` 或"零实体"筛选；走线上同一 `extract_with_relations` + `_store_entity_graph` 写路径；幂等） | 候选 111 条；`--apply` 以 systemd 瞬态单元 `mr-backfill-entities` 脱离会话运行（见下"踩坑"） |
+| 回归测试 | 新增 `tests/test_v2/test_extraction_degraded_marker.py`（4 用例）：降级 ⇒ 必须落 `_extraction_degraded` 且仍写 `completed`；正常 ⇒ 必须清除该键；规则兜底返回值自带原因；`insufficient credits` 归类为 `llm_error: insufficient_credits` | 4 passed；CI 快跑档 524 passed / 6 failed / 38 errors，失败与 MR-026 基线**逐项一致** |
 
 ## 复算/运维入口
 
@@ -88,6 +89,17 @@ python3 scripts/llm_health_probe.py --dry-run --model opencode-go/deepseek-v4.1-
 docker exec -i memory_recall-api-1 python scripts/backfill_entities.py --dry-run
 docker exec -i memory_recall-api-1 python scripts/backfill_entities.py --apply
 ```
+
+## 落地过程中的两个坑（已写进 DEPLOYMENT）
+
+1. **`docker compose up -d` 不会重建"配置未变化"的容器**：改完 `stats.py`/`memories.py` 后 `up -d`
+   只输出 postgres Waiting/Healthy，容器 `StartedAt` 还是旧的 ⇒ 新字段查不到（本次先误判成
+   "代码没生效"，实为进程没重启）。**判据**：`docker inspect -f '{{.State.StartedAt}}' memory_recall-api-1`
+   与源文件 mtime 对比；要生效用 `docker compose restart api`。
+2. **`docker exec` 跑的长任务会随服务重启被中断**：dsh web 重启（为生效插件副本）把本会话的
+   进程树一起带走，回填脚本死在 38/111。改用
+   `sudo systemd-run --unit=mr-backfill-entities --collect /usr/bin/docker exec memory_recall-api-1 python scripts/backfill_entities.py --apply`
+   脱离会话运行（进度看 `journalctl -u mr-backfill-entities`）。
 
 ## 未做 / 待跟进
 

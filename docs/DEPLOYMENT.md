@@ -1,6 +1,6 @@
 # Memory Recall 部署文档
 
-> 状态: ACTIVE · 版本: v1.2 · 最后更新: 2026-10-16
+> 状态: ACTIVE · 版本: v1.3 · 最后更新: 2026-10-16
 
 ## 部署方式概览
 
@@ -27,6 +27,15 @@ docker compose up -d
 
 首次启动时 `docker-entrypoint-initdb.d/` 自动建库建表；已有卷时不会重复执行。
 改 schema 后需要重建卷或手动执行迁移（见"数据库初始化"）。
+
+> **改了后端代码（src/、scripts/）要生效，用 `docker compose restart api`，别指望 `up -d`**：
+> 源码是 bind mount，但 Python 只在进程启动时导入模块；而 `up -d` 在 compose 配置未变化时
+> **不会重建容器**（2026-10-16 实测踩到：改完 stats.py/memories.py 后 `up -d` 只输出
+> "postgres Waiting/Healthy"，容器 StartedAt 仍是旧时间 ⇒ 新字段/新字段逻辑不生效，白查半天）。
+> 判据：`docker inspect -f '{{.State.StartedAt}}' memory_recall-api-1` 与源文件 mtime 对比。
+> 另注意：`docker exec` 跑的长任务（如回填脚本）会随容器重启被中断 —— 用
+> `sudo systemd-run --unit=... --collect /usr/bin/docker exec memory_recall-api-1 python scripts/...`
+> 脱离会话运行。
 
 ## 方式二：手动部署（venv）
 
