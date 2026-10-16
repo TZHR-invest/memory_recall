@@ -93,7 +93,7 @@ headless 冒烟需 headless profile（首次 `dsh --profile headless "1"` 自动
 | `autoRecall` / `autoCapture` | `true` / `true` | 开关 |
 | `injectionStrategy` | `smart` | `once` / `smart` / `always` |
 | `maxMemories` / `maxProfileItems` / `maxStaticProfileItems` | 5 / 5 / 30 | 注入上限 |
-| `injectProfile` | `true` | 会话**首次**注入是否含用户画像；若本会话历史里已下发过画像则跳过（dsh 重启不会重发，2026-10-16 解耦） |
+| `injectProfile` | `true` | 会话**首次**注入是否含用户画像；若本会话历史里已下发过画像则跳过（dsh 重启不会重发，2026-10-16 解耦）。判定走 `context.js: sessionEvents()` 兼容读取（dsh 0.1.7+ 的 Session 没有 `events` 属性，只有 `snapshotEvents()/ownEvents()`） |
 | `enableChunksSearch` / `maxChunks` | `true` / 3 | 文档片段通道 |
 | `enableGraphRecall` / `enableEntityRecall` | `true` / `true` | 图谱召回通道 |
 | `language` | `auto` | `auto` / `zh_CN` / `en_US` |

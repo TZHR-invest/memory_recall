@@ -16,7 +16,14 @@ import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
 import { apply } from "../index.js";
-import { buildInjectionText, contextDigest, hasInjectedDigest, hasInjectedProfile, shouldInjectProfile } from "../context.js";
+import {
+  buildInjectionText,
+  contextDigest,
+  hasInjectedDigest,
+  hasInjectedProfile,
+  sessionEvents,
+  shouldInjectProfile,
+} from "../context.js";
 import { createUserMessage } from "@deepseek-ai/dsh-llm";
 
 const PLUGIN = "memory-recall-dsh";
@@ -184,6 +191,26 @@ test("memory_store / memory_search / memory_profile / memory_forget 端到端（
   assert.equal(gone.success, true, JSON.stringify(gone));
 });
 
+test("会话事件读取跨宿主兼容：events 属性 / snapshotEvents / ownEvents / 全缺（2026-10-16 实战教训）", () => {
+  const events = [{ type: "user/message", data: { source: { kind: `plugin:${PLUGIN}` }, content: [{ type: "text", text: "### 永久特征" }] } }];
+  // ① 旧宿主：session.events 属性
+  assert.equal(sessionEvents({ session: { events } }).length, 1, "旧宿主 events 属性");
+  // ② 新宿主（dsh 0.1.7+ 实测形态）：只有 snapshotEvents()，没有 events 属性
+  assert.equal(sessionEvents({ session: { snapshotEvents: () => events } }).length, 1, "snapshotEvents 回退");
+  // ③ ownEvents() 回退
+  assert.equal(sessionEvents({ session: { ownEvents: () => events } }).length, 1, "ownEvents 回退");
+  // ④ 宿主升级移除 API / 抛错 ⇒ 退化空数组，不抛
+  assert.deepEqual(sessionEvents({ session: {} }), []);
+  assert.deepEqual(sessionEvents({ session: { snapshotEvents: () => { throw new Error("gone"); } } }), []);
+  assert.deepEqual(sessionEvents(null), []);
+
+  // 由 snapshotEvents 形态的 agent 驱动画像判定（这正是真实宿主形态）
+  const realHostAgent = { session: { snapshotEvents: () => events } };
+  assert.equal(hasInjectedProfile(realHostAgent), true, "真实宿主形态下必须能识别已下发画像");
+  assert.equal(shouldInjectProfile(realHostAgent, true), false);
+  assert.equal(hasInjectedDigest(realHostAgent, contextDigest("### 永久特征")), true, "摘要去重同样要走兼容读取");
+});
+
 test("画像解耦：hasInjectedProfile 认会话历史里的画像小节（v3/v4 双形态、中英双语）", () => {
   const agentWith = (text, source) => ({
     session: { events: [{ type: "user/message", data: { source, content: [{ type: "text", text }] } }] },
@@ -316,6 +343,34 @@ test("画像解耦（连真实后端）：会话已有画像 ⇒ 重启后首轮
   assert.ok(text.includes("<system-reminder>"), "注入文本仍应是 system-reminder 框");
   assert.ok(!/^### (永久特征|近期动态|Static Facts|Recent Activity)\s*$/m.test(text),
     "会话已有画像 ⇒ 本轮不应再下发画像小节");
+});
+
+test("画像解耦（真实宿主形态 snapshotEvents）：会话已有画像 ⇒ 首轮只注入召回、不重复下发画像", { skip: !HAS_BACKEND }, async () => {
+  const ctx = makeCtx();
+  apply(ctx, makeConfig({ debug: true }));
+  const cwd = `/home/user/projects/profile-dedup-v4-${Date.now()}`;
+  const agent = makeFakeAgent(cwd);
+  const priorEvents = [{
+    type: "user/message",
+    data: {
+      source: { kind: `plugin:${PLUGIN}` },
+      content: [{ type: "text", text: buildInjectionText("## 用户上下文\n\n### 永久特征\n- 占位偏好\n", "zh_CN") }],
+    },
+  }];
+  // dsh 0.1.7+ 的真实形态：session 上没有 events 属性，只有 snapshotEvents()
+  delete agent.session.events;
+  agent.session.snapshotEvents = () => priorEvents;
+
+  const marker = `profile-v4-${Date.now()}`;
+  const decision = await ctx.emitPreStep(
+    { agent, messages: [], turn: 2, step: 1, signal: new AbortController().signal },
+    async () => ({ kind: "enter", messages: [directUserMessage(`${marker} 继续`)] }),
+  );
+  const injected = decision.messages.filter(isPluginInjected);
+  assert.equal(injected.length, 1, "仍应无条件注入召回");
+  const text = injected[0].content.find((b) => b.type === "text").text;
+  assert.ok(!/^### (永久特征|近期动态|Static Facts|Recent Activity)\s*$/m.test(text),
+    "真实宿主形态下也不应重复下发画像");
 });
 
 test("自动召回：非关键词且非首次 → 不注入", { skip: !HAS_BACKEND }, async () => {

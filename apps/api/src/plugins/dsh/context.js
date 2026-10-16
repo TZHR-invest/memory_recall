@@ -82,10 +82,38 @@ function isOwnInjectionSource(source) {
   return source.kind === "plugin" && source.plugin === PLUGIN_NAME;
 }
 
+/**
+ * 读取 agent 会话事件（跨宿主版本兼容）。
+ *
+ * ⚠️ 2026-10-16 实测：dsh 0.1.7+（会话格式 v4）的 `Session` **没有 `events` 属性**——
+ * 只有 `snapshotEvents(from?, to?)` / `ownEvents()`（同步读已被标记 deprecated，但实现仍在，
+ * 见 @deepseek-ai/dsh-session lib/index.js L1337）。此前 `hasInjectedDigest` 直接读
+ * `agent.session.events` ⇒ 在这台宿主上**恒为 undefined、摘要去重静默失效**（同一天
+ * 画像去重也因为同一个原因没生效）。这里按 "events 属性 → snapshotEvents → ownEvents"
+ * 依次回退，任何异常都退化为空数组（宁可重复注入，不可抛错打断对话）。
+ */
+export function sessionEvents(agent) {
+  const session = agent?.session;
+  if (!session) return [];
+  if (Array.isArray(session.events)) return session.events; // 旧宿主（v3 时代）
+  for (const name of ["snapshotEvents", "ownEvents"]) {
+    try {
+      const fn = session[name];
+      if (typeof fn === "function") {
+        const out = fn.call(session);
+        if (Array.isArray(out)) return out;
+      }
+    } catch {
+      // 宿主升级后可能移除该 API：忽略，继续回退
+    }
+  }
+  return [];
+}
+
 /** 会话内去重：检查 agent 会话历史中是否已注入过同一摘要的召回消息 */
 export function hasInjectedDigest(agent, digest) {
-  const events = agent?.session?.events;
-  if (!events) return false;
+  const events = sessionEvents(agent);
+  if (events.length === 0) return false;
   for (const event of events) {
     if (!event || event.type !== "user/message") continue;
     const data = event.data;
@@ -118,8 +146,8 @@ const PROFILE_SECTION_RE = /^### (永久特征|近期动态|Static Facts|Recent 
  * 长度闸门豁免），所以这里把**画像**单独按会话历史判定：历史里出现过画像小节就不再重复下发。
  */
 export function hasInjectedProfile(agent) {
-  const events = agent?.session?.events;
-  if (!Array.isArray(events)) return false;
+  const events = sessionEvents(agent);
+  if (events.length === 0) return false;
   for (const event of events) {
     if (!event || event.type !== "user/message") continue;
     if (!isOwnInjectionSource(event.data?.source)) continue;
