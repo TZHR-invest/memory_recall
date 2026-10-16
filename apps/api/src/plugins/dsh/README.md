@@ -93,7 +93,7 @@ headless 冒烟需 headless profile（首次 `dsh --profile headless "1"` 自动
 | `autoRecall` / `autoCapture` | `true` / `true` | 开关 |
 | `injectionStrategy` | `smart` | `once` / `smart` / `always` |
 | `maxMemories` / `maxProfileItems` / `maxStaticProfileItems` | 5 / 5 / 30 | 注入上限 |
-| `injectProfile` | `true` | 首次注入是否含用户画像 |
+| `injectProfile` | `true` | 会话**首次**注入是否含用户画像；若本会话历史里已下发过画像则跳过（dsh 重启不会重发，2026-10-16 解耦） |
 | `enableChunksSearch` / `maxChunks` | `true` / 3 | 文档片段通道 |
 | `enableGraphRecall` / `enableEntityRecall` | `true` / `true` | 图谱召回通道 |
 | `language` | `auto` | `auto` / `zh_CN` / `en_US` |

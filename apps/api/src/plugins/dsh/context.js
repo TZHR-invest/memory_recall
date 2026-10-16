@@ -100,6 +100,40 @@ export function hasInjectedDigest(agent, digest) {
   return false;
 }
 
+/**
+ * 画像小节标记：后端渲染画像时的小节头（中英双语，**行首整行**匹配）。
+ * 后端出处：src/services/core/context_inject_service.py L989/L995
+ * （`### 永久特征` / `### 近期动态`，英文 `### Static Facts` / `### Recent Activity`）。
+ * 要求整行匹配是为了避免误判：记忆正文里可能引用这些标题（如讨论画像渲染的记忆），
+ * 但它们总是以列表项形式出现（"- ..."），不会独占一行。
+ */
+const PROFILE_SECTION_RE = /^### (永久特征|近期动态|Static Facts|Recent Activity)\s*$/m;
+
+/**
+ * 会话历史里是否已经下发过用户画像。
+ *
+ * 为什么需要它：`isFirst`（"本会话还没注入过"）是**进程内存态**，dsh 重启/插件重载会清零，
+ * 于是重启后的第一条消息被当成全新会话 ⇒ 重新下发一次画像（实测：重启后首条 trace
+ * profile=16，而同一会话后续轮次为 0）。但"无条件注入"本身是要保留的（见 index.js 的
+ * 长度闸门豁免），所以这里把**画像**单独按会话历史判定：历史里出现过画像小节就不再重复下发。
+ */
+export function hasInjectedProfile(agent) {
+  const events = agent?.session?.events;
+  if (!Array.isArray(events)) return false;
+  for (const event of events) {
+    if (!event || event.type !== "user/message") continue;
+    if (!isOwnInjectionSource(event.data?.source)) continue;
+    const text = textFromContent(event.data.content);
+    if (text && PROFILE_SECTION_RE.test(text)) return true;
+  }
+  return false;
+}
+
+/** 本轮是否下发画像：仅"会话首次"且"本会话历史里还没有画像"（重启后不重复下发） */
+export function shouldInjectProfile(agent, isFirst) {
+  return Boolean(isFirst) && !hasInjectedProfile(agent);
+}
+
 /** 会话内是否已存在直接用户输入（用于判定"首次请求"；插件注入不算） */
 export function hasDirectUserMessage(agent) {
   const events = agent?.session?.events;

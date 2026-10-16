@@ -20,7 +20,13 @@ import z from "@deepseek-ai/schemastery";
 import { createUserMessage } from "@deepseek-ai/dsh-llm";
 import { resolveConfig, projectTagFor, detectLocale, shouldTriggerRecall } from "./config.js";
 import { MemoryRecallClient, buildInjectConfig } from "./client-lib.js";
-import { buildInjectionText, contextDigest, firstUserText, hasInjectedDigest } from "./context.js";
+import {
+  buildInjectionText,
+  contextDigest,
+  firstUserText,
+  hasInjectedDigest,
+  shouldInjectProfile,
+} from "./context.js";
 import { registerTools } from "./tools.js";
 import { createCaptureHandler } from "./capture.js";
 
@@ -246,7 +252,10 @@ function apply(ctx, config = {}) {
           tags.project,
           text,
           buildInjectConfig(resolved, {
-            injectProfile: isFirst,
+            // 画像解耦（2026-10-16）：isFirst 是进程内存态，dsh 重启会清零 ⇒ 重启后首条会被
+            // 当成全新会话而重发画像（实测 profile=16）。改为按**会话历史**判定画像是否已下发，
+            // 而"首轮无条件注入"（长度闸门豁免）保持不变。
+            injectProfile: shouldInjectProfile(agent, isFirst),
             excludeMemoryIds: excludedIdsFor(agent),
           }),
           signal,

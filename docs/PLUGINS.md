@@ -22,6 +22,12 @@
   （createUserMessage）、`@deepseek-ai/dsh-tools`（defineTool）；声明 `inject: ["agents", "tools"]`。
 - 标签约定：`userTag = keyId`，`projectTag = {keyId}_project-<cwd 目录名>`（按 agent 会话 cwd 推导）；
   API Key 写 profile patch `config.apiKey` 或环境变量 `MEMORY_RECALL_API_KEY`。
+- 首轮语义（2026-10-16 解耦）：`isFirst` 是**进程内存态**，dsh 重启/插件重载会清零 ⇒ 重启后第一条消息
+  按"全新会话"对待。其中"**无条件注入**"要保留（长度闸门只约束非首轮：`继续`/`test` 这类短开场最依赖记忆，
+  2026-09-28 修），但**画像不再重复下发**——画像改由会话历史判定（扫本插件注入消息里的画像小节头
+  `### 永久特征`/`### 近期动态`，中英双语，`context.js: hasInjectedProfile / shouldInjectProfile`）。
+  实测：重启后首条 trace `profile=16`、同会话后续轮次 `profile=0` ⇒ 修复后重启首条也应为 0（旧的按 digest 去重
+  只在整段文本逐字相同时才挡得住）。
 - 测试：`node --test`（单元 + 集成，集成连真实后端、缺 Key 自动跳过）。详见插件 README.md。
 
 ## opencode（TypeScript/Bun）

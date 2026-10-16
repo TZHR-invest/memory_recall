@@ -16,7 +16,7 @@ import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
 import { apply } from "../index.js";
-import { buildInjectionText, contextDigest, hasInjectedDigest } from "../context.js";
+import { buildInjectionText, contextDigest, hasInjectedDigest, hasInjectedProfile, shouldInjectProfile } from "../context.js";
 import { createUserMessage } from "@deepseek-ai/dsh-llm";
 
 const PLUGIN = "memory-recall-dsh";
@@ -184,6 +184,32 @@ test("memory_store / memory_search / memory_profile / memory_forget 端到端（
   assert.equal(gone.success, true, JSON.stringify(gone));
 });
 
+test("画像解耦：hasInjectedProfile 认会话历史里的画像小节（v3/v4 双形态、中英双语）", () => {
+  const agentWith = (text, source) => ({
+    session: { events: [{ type: "user/message", data: { source, content: [{ type: "text", text }] } }] },
+  });
+  const zh = buildInjectionText("## 用户上下文\n\n### 永久特征\n- 用户偏好中文\n", "zh_CN");
+  const en = buildInjectionText("## User Context\n\n### Recent Activity\n- something\n", "en_US");
+
+  // 正例：v4（producer-owned）+ v3 两种 source 形态，中文/英文小节头
+  assert.equal(hasInjectedProfile(agentWith(zh, { kind: `plugin:${PLUGIN}` })), true, "v4 + 中文画像小节应识别");
+  assert.equal(hasInjectedProfile(agentWith(zh, { kind: "plugin", plugin: PLUGIN })), true, "v3 形态也应识别");
+  assert.equal(hasInjectedProfile(agentWith(en, { kind: `plugin:${PLUGIN}` })), true, "英文小节头应识别");
+
+  // 反例：没有注入 / 注入过但没画像 / 用户自己的消息 / 空历史
+  assert.equal(hasInjectedProfile({ session: { events: [] } }), false);
+  assert.equal(hasInjectedProfile(agentWith("## 用户上下文\n\n### 项目记忆\n- x", { kind: `plugin:${PLUGIN}` })), false);
+  assert.equal(hasInjectedProfile(agentWith(zh, { kind: "user" })), false, "用户消息不算画像注入");
+  assert.equal(hasInjectedProfile(null), false);
+  // 误判防护：画像标题出现在列表项/正文里（记忆正文引用该标题）不算
+  assert.equal(hasInjectedProfile(agentWith(buildInjectionText("- 这条记忆提到 ### 永久特征 的渲染改动", "zh_CN"), { kind: `plugin:${PLUGIN}` })), false);
+
+  // 决策矩阵：只有"会话首次 且 历史无画像"才下发画像
+  assert.equal(shouldInjectProfile(agentWith(zh, { kind: `plugin:${PLUGIN}` }), true), false, "重启后首轮不应重发画像");
+  assert.equal(shouldInjectProfile({ session: { events: [] } }, true), true, "真首轮应下发画像");
+  assert.equal(shouldInjectProfile({ session: { events: [] } }, false), false, "非首轮从不下发画像");
+});
+
 test("摘要去重：hasInjectedDigest 兼容 v3/v4 两种注入 source 形态", () => {
   const text = buildInjectionText("召回内容占位", "zh_CN");
   const digest = contextDigest(text);
@@ -262,6 +288,34 @@ test("自动召回：smart 策略下关键词触发注入（连真实后端）",
   } finally {
     // no-op：唯一容器 + 上面的 forget 已足够（容器 tag 带时间戳，天然无历史残留）
   }
+});
+
+test("画像解耦（连真实后端）：会话已有画像 ⇒ 重启后首轮仍注入召回，但不重复下发画像", { skip: !HAS_BACKEND }, async () => {
+  const ctx = makeCtx();
+  apply(ctx, makeConfig({ debug: true }));
+  const cwd = `/home/user/projects/profile-dedup-${Date.now()}`;
+  const agent = makeFakeAgent(cwd);
+
+  // 模拟"dsh 重启前，本会话已经下发过画像"：历史里放一条本插件注入且含画像小节的消息
+  agent.session.events.push({
+    type: "user/message",
+    data: {
+      source: { kind: `plugin:${PLUGIN}` },
+      content: [{ type: "text", text: buildInjectionText("## 用户上下文\n\n### 永久特征\n- 占位偏好\n", "zh_CN") }],
+    },
+  });
+
+  const marker = `profile-dedup-${Date.now()}`;
+  const decision = await ctx.emitPreStep(
+    { agent, messages: [], turn: 2, step: 1, signal: new AbortController().signal },
+    async () => ({ kind: "enter", messages: [directUserMessage(`${marker} 继续`) ] }),
+  );
+  const injected = decision.messages.filter(isPluginInjected);
+  assert.equal(injected.length, 1, `重启后首轮仍应无条件注入（实际 ${injected.length} 条）`);
+  const text = injected[0].content.find((b) => b.type === "text").text;
+  assert.ok(text.includes("<system-reminder>"), "注入文本仍应是 system-reminder 框");
+  assert.ok(!/^### (永久特征|近期动态|Static Facts|Recent Activity)\s*$/m.test(text),
+    "会话已有画像 ⇒ 本轮不应再下发画像小节");
 });
 
 test("自动召回：非关键词且非首次 → 不注入", { skip: !HAS_BACKEND }, async () => {
