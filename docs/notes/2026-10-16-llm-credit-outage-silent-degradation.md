@@ -100,6 +100,23 @@ docker exec -i memory_recall-api-1 python scripts/backfill_entities.py --apply
    进程树一起带走，回填脚本死在 38/111。改用
    `sudo systemd-run --unit=mr-backfill-entities --collect /usr/bin/docker exec memory_recall-api-1 python scripts/backfill_entities.py --apply`
    脱离会话运行（进度看 `journalctl -u mr-backfill-entities`）。
+   副作用观察：被杀的 `docker exec` 在容器内的 python **并未立刻退出**，一度与新起的 detached
+   回填**并发**跑同一条链路。所幸写路径幂等（`_store_entity_graph` 按 (name,type,container)
+   get-or-create + `memory_entities` 约束），事后复核：重复链接 0 / 同名同型实体 0 / 重复边 0 /
+   孤儿链接 0 —— 但下次应先 `docker exec ... pgrep -f backfill_entities` 确认没有残留进程再起第二轮。
+
+## 回填结果（2026-10-16 13:01 完成）
+
+| 指标 | 数值 |
+|---|---|
+| 候选（10-04 起、降级标记或零实体） | 111 → 实际处理 **112** 条全部完成 |
+| `_extraction_backfilled_at` | 112（待处理 0） |
+| `_extraction_degraded` 残留 | 0（健康路径已清除） |
+| 末轮产出 | 成功 70 条 ⇒ 实体 963 + 关系 831 |
+| 今日图谱增量 | **实体 1358 / 实体关系 1271**（故障期：实体 11~27/天、关系≈0） |
+| 回填后仍零链接 | 1 条（内容本身没有可抽实体，已标记不再重跑） |
+| 抽样质量 | 单条 10~55 个链接，类型含 technology/config/software/version/metric（规则兜底时期只有 0.4~1 个且类型泛化） |
+| 端到端 | `/context-inject` 新 trace `{vector:5, entity_graph:19, memory_graph:5, failed_channels:[]}` —— 图谱通道恢复产出 |
 
 ## 未做 / 待跟进
 

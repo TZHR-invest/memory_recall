@@ -18,8 +18,14 @@ opencodex 上游 `commandcode` 账号自 2026-10-04 13:36 起额度耗尽（400 
 同一 prompt），再走 `memory_store._store_entity_graph()` 落库（与线上同一条写路径），
 最后写 `metadata.entities`、清 `_extraction_degraded`、记 `_extraction_backfilled_at`。
 
-幂等：已跑过的记忆因 `_extraction_degraded` 被清且已有实体链接，默认会被跳过（不会重复处理）；
-`--force` 可强制重算。默认 dry-run，`--apply` 才写库。
+幂等 / 收敛判据：处理完一条就写 `metadata._extraction_backfilled_at`，默认把它排除在候选之外
+（**不能只看"有没有实体"**：有些记忆内容本身就没有可抽的实体，靠实体数判据会每次重跑它们、
+永远不收敛；2026-10-16 实测踩到）。`--force` 可强制重算（含已回填的）。默认 dry-run，`--apply` 才写库。
+
+进度核对：
+    SELECT count(*) FILTER (WHERE metadata ? '_extraction_backfilled_at') AS done,
+           count(*) FILTER (WHERE metadata ? '_extraction_degraded') AS still_degraded
+    FROM memories WHERE created_at >= '2026-10-04';
 
 用法（必须在 api 容器内跑，那里才有 DB/VOLC/opencodex 环境变量与依赖）：
     docker exec -i memory_recall-api-1 python scripts/backfill_entities.py --dry-run
@@ -49,6 +55,8 @@ WHERE m.is_latest = TRUE
   AND ($2::text IS NULL OR m.container_tag = $2)
   AND (m.metadata ? '_extraction_degraded'
        OR NOT EXISTS (SELECT 1 FROM memory_entities me WHERE me.memory_id = m.id))
+  -- 收敛：已回填过的不再进候选（除非 --force）；否则"内容本身无实体"的记忆会被反复重跑
+  AND ($4::boolean OR NOT (m.metadata ? '_extraction_backfilled_at'))
 ORDER BY m.created_at
 LIMIT $3
 """
@@ -58,7 +66,7 @@ async def run(args):
     since = datetime.fromisoformat(args.since).replace(tzinfo=timezone.utc)
     await db.connect()
     try:
-        rows = await db.fetch(SELECT_SQL, since, args.container, args.limit)
+        rows = await db.fetch(SELECT_SQL, since, args.container, args.limit, args.force)
         if not rows:
             print("✅ 没有需要回填的记忆")
             return 0
@@ -86,6 +94,9 @@ async def run(args):
             # asyncpg 默认把 jsonb 返回成字符串（应用侧 Memory 模型也是这么解的）
             raw_meta = r["metadata"]
             meta = json.loads(raw_meta) if isinstance(raw_meta, str) else dict(raw_meta or {})
+            if not args.force and meta.get("_extraction_backfilled_at"):
+                skipped += 1
+                continue
             if r["entity_links"] and not meta.get("_extraction_degraded") and not args.force:
                 skipped += 1
                 continue
@@ -132,6 +143,12 @@ async def run(args):
 
         print(f"\n回填完成：成功 {ok} 条（实体 {ent_total}，关系 {rel_total}）、"
               f"跳过 {skipped}、失败 {failed}")
+        zero = await db.fetchval(
+            "SELECT count(*) FROM memories WHERE metadata ? '_extraction_backfilled_at' "
+            "AND created_at >= $1 AND NOT EXISTS (SELECT 1 FROM memory_entities me WHERE me.memory_id = memories.id)",
+            since,
+        )
+        print(f"其中内容本身无可抽实体（回填后仍零链接，已标记不再重跑）：{zero} 条")
         return 0 if failed == 0 else 1
     finally:
         await db.disconnect()
