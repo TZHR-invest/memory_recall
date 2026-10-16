@@ -128,3 +128,10 @@ docker exec -i memory_recall-api-1 python scripts/backfill_entities.py --apply
   必要时可离线重蒸馏（未排期）。
 - 上游额度是外部依赖：本次选了同代理的 `opencode-go` 线路，仍在 opencodex 单点内；
   若需要彻底解耦，可评估切 `LLM_PROVIDER=volcengine`（doubao，实测 key 可用）或加多 provider 轮询。
+- **已拍板（2026-10-16，用户）：commandcode 暂时不使用、不充值** ⇒ memory_recall 固定走
+  `opencode-go/deepseek-v4.1-flash`。据此顺手收口了仓库里仍指向它的两处**活跃默认**：
+  `scripts/ab_entity_family_inferiority.py --judge-model` 与 `scripts/reclassify_entities.py JUDGE_MODEL`
+  由 `commandcode/Qwen/Qwen3.7-Max` 改为 `opencode-go/qwen3.7-max`（实测 200），
+  并把 `reasoning_effort` 的适用判据从"模型名含 commandcode"泛化为 `opencode-go/`+`commandcode/` 前缀。
+  已核对本机其他消费方（dsh web `defaultModel`、hermes `model`、opencode 各 agent）**实际选中的模型均为
+  `opencode-go/...`**，opencodex 的 provider 表里 commandcode 条目保留但无任何活跃选择（GUI 可自行移除）。

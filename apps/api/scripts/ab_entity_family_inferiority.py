@@ -486,7 +486,9 @@ async def main() -> None:
     parser.add_argument("--report", action="store_true")
     parser.add_argument("--all", action="store_true")
     parser.add_argument("--queries", type=int, default=40)
-    parser.add_argument("--judge-model", default="commandcode/Qwen/Qwen3.7-Max")
+    # 裁判模型：2026-10-16 起默认走 opencode-go（用户拍板 commandcode 暂停使用/不充值；
+    # commandcode/Qwen/Qwen3.7-Max 在欠费状态下会 400 insufficient credits）
+    parser.add_argument("--judge-model", default="opencode-go/qwen3.7-max")
     parser.add_argument("--out", default=None)
     args = parser.parse_args()
 

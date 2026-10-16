@@ -61,7 +61,10 @@ TYPE_GUIDE = {
     "metric": "指标/度量（IC 值、命中率、Recall@k）",
     "concept": "概念/模式/方法论（fail-open、影子调用、LRU）",
 }
-JUDGE_MODEL = "commandcode/Qwen/Qwen3.7-Max"
+# 裁判模型：2026-10-16 起走 opencode-go（commandcode 已暂停使用：欠费期间 400 insufficient credits）
+JUDGE_MODEL = "opencode-go/qwen3.7-max"
+# 思考型模型（opencode-go / commandcode 的 deepseek/qwen 系）才接受 reasoning_effort
+REASONING_MODEL_PREFIXES = ("opencode-go/", "commandcode/")
 
 
 def _assert_taxonomy_in_sync():
@@ -96,7 +99,7 @@ async def fetch_candidates(min_links: int):
 
 async def _chat(model, messages, max_tokens=8000, effort="low"):
     body = {"model": model, "messages": messages, "temperature": 0.3, "max_tokens": max_tokens}
-    if effort and "commandcode" in model:
+    if effort and model.startswith(REASONING_MODEL_PREFIXES):
         body["reasoning_effort"] = effort
     async with httpx.AsyncClient(timeout=300) as c:
         r = await c.post(f"{settings.OPENCODEX_API_BASE}/chat/completions",
