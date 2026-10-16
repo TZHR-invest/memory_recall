@@ -1,6 +1,6 @@
 # Memory Recall 测试指南
 
-> 状态: ACTIVE · 版本: v1.2 · 最后更新: 2026-10-16
+> 状态: ACTIVE · 版本: v1.3 · 最后更新: 2026-10-16
 
 `pytest.ini`: `asyncio_mode = auto`、`testpaths = tests`。**没有 `conftest.py`** —— fixture 内联在各文件
 （照抄 `test_v2/test_context_inject_api.py` 或 `test_v2/test_chunks_search.py` 的模式）。
@@ -66,6 +66,14 @@
   **新增会建容器的测试时，请同步把命名规则加进脚本的 `JUNK_NAMED_PREDICATE`**（探针类命名改
   `PROBE_NAME_PATTERN`，改一处要看两处：SQL 判据与 Python 打标签共用同一正则）——否则下次清理又会漏，
   这正是它反复长回来的原因。
+  **已在 2026-10-16 自动化为每日 cron**（`/etc/cron.d/memory-recall-test-cleanup`，每日 04:30，
+  日志 `~/.memory-recall-test-cleanup.log`）：调度脚本
+  [`scripts/cleanup_test_containers_cron.sh`](../apps/api/scripts/cleanup_test_containers_cron.sh)
+  → `--apply`（先备份 → 单事务删除 → 残留复核），并把 30 天前的回滚备份剪掉。
+  手动跑同一条：`bash apps/api/scripts/cleanup_test_containers_cron.sh`（`--dry` 只预览）。
+  为什么必须自动化：测试**必须**每轮用唯一容器（否则后端语义去重 0.85 把测试标记当重复丢掉、断言假失败），
+  而 API 只有软删除 ⇒ 测试端删不掉容器本体，跑一次套件就长 5~6 个 0 有效记忆容器
+  （2026-10-16 实测：跑两次套件长出 11 个）；人工清理 08-14/08-15/08-17/09-22/10-16 连续 5 次复发。
 - **`pytest.ini` 的 `asyncio_default_test_loop_scope = module` 不能删**：pytest-asyncio 1.x 默认测试函数用
   函数级 loop，而异步 fixture/db 用模块级 loop，asyncpg 连接会报 "attached to a different loop"。
   删掉后整个集成套件挂掉（0/7）。
